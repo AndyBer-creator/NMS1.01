@@ -1,0 +1,24 @@
+# Generic switch profile (mostly standard MIBs).
+# Use as a baseline; adjust per vendor/device as needed.
+
+operations:
+  set_vlan_access:
+    label: "Set access VLAN (dot1qPvid)"
+    oid_template: "1.3.6.1.2.1.17.7.1.4.5.1.1.{ifIndex}"
+    type: "Integer"
+    value_template: "{vlan}"
+
+  poe_enable:
+    label: "PoE enable (pethPsePortAdminEnable)"
+    # NOTE: PoE indexing differs. Many devices use (groupIndex, portIndex) or map via pethPsePortIndex.
+    # Adjust template to your device.
+    oid_template: "1.3.6.1.2.1.105.1.1.1.3.1.1.{poePort}"
+    type: "Integer"
+    value: 1
+
+  poe_disable:
+    label: "PoE disable (pethPsePortAdminEnable)"
+    oid_template: "1.3.6.1.2.1.105.1.1.1.3.1.1.{poePort}"
+    type: "Integer"
+    value: 2
+
