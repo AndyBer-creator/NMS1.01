@@ -1,5 +1,7 @@
 # Секреты (пароли и токены из .env не коммитить)
 .env
+.env.local
+.env.*.local
 
 # Docker logs
 logs/*.log
@@ -7,3 +9,37 @@ logs/*.log
 
 # Docker
 .dockerenv
+
+# Build artifacts / binaries
+*.exe
+*.dll
+*.so
+*.dylib
+*.out
+*.test
+
+# Coverage / profiling
+*.prof
+*.pprof
+coverage.out
+
+# Temporary / editor artifacts
+*.tmp
+*.temp
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Known accidental artifacts
+Host:
+accept:
+user-agent:
+GET
+[api
+[api]
+=
+CACHED
+exporting
