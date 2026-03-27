@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html><head><title>NMS1 Dashboard</title>
+<script src="https://unpkg.com/htmx.org@1.9.10"></script>
+<script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-900 text-white min-h-screen">
+<div class="container mx-auto px-4 py-8">
+    <!-- ✅ LOGOTYP HEADER -->
+    <div class="flex items-center justify-center mb-12">
+        <img src="/static/logo.svg" alt="NMS1 Logo" class="h-20 w-auto mr-6 drop-shadow-2xl">
+        <div>
+            <h1 class="text-5xl font-bold bg-gradient-to-r from-blue-400 to-purple-500 bg-clip-text text-transparent">
+                NMS1 Dashboard LIVE!
+            </h1>
+            <p class="text-gray-400 mt-2">Network Management System v1.0</p>
+        </div>
+    </div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <!-- Devices Preview (HTMX auto-refresh каждые 30s) -->
+        <div class="bg-gray-800 p-6 rounded-xl shadow-2xl col-span-1 lg:col-span-2" 
+             hx-get="/devices/table" 
+             hx-trigger="load, every 30s" 
+             hx-indicator="#loading">
+            <h2 class="text-2xl font-semibold mb-4 flex items-center">
+                <span class="w-2 h-2 bg-blue-400 rounded-full mr-3 animate-pulse"></span>
+                📊 Устройства (<span id="devices-count">0</span>)
+            </h2>
+            <div id="devices-preview">⟳ Загрузка...</div>
+            <div id="loading" class="htmx-indicator text-sm text-blue-400 hidden">⟳ Обновление...</div>
+        </div>
+        
+        <!-- 🔥 ФОРМА ДОБАВЛЕНИЯ УСТРОЙСТВ -->
+        <div class="bg-gradient-to-br from-green-900/70 to-emerald-900/50 border-2 border-green-500/50 p-6 rounded-xl shadow-2xl">
+    <h2 class="text-2xl font-semibold mb-6 flex items-center">
+        <span class="w-3 h-3 bg-green-400 rounded-full mr-3 animate-pulse"></span>
+        ➕ Добавить устройство
+    </h2>
+    <form class="space-y-4"
+          action="/devices"
+          method="post"
+          hx-post="/devices"
+          hx-target="#devices-preview" 
+          hx-swap="beforeend"
+          hx-on:after-request="
+            this.reset(); 
+            document.getElementById('devices-count').textContent = 
+            (parseInt(document.getElementById('devices-count').textContent) || 0) + 1;
+            this.querySelector('button').textContent = '✅ Добавлено!'; 
+            setTimeout(() => this.querySelector('button').textContent = '🚀 Добавить', 2000)
+          ">
+        <input name="ip" placeholder="192.168.0.101" 
+               class="w-full p-3 bg-gray-800/50 border border-gray-600 rounded-lg focus:border-green-400 focus:outline-none focus:ring-2 focus:ring-green-400 transition-all" 
+               required autocomplete="off">
+        <input name="name" placeholder="SWITCH2" 
+               class="w-full p-3 bg-gray-800/50 border border-gray-600 rounded-lg focus:border-green-400 focus:outline-none focus:ring-2 focus:ring-green-400 transition-all" 
+               required>
+        <input name="community" type="password" placeholder="public" 
+               class="w-full p-3 bg-gray-800/50 border border-gray-600 rounded-lg focus:border-green-400 focus:outline-none focus:ring-2 focus:ring-green-400 transition-all" 
+               required>
+        <select name="snmp_version" class="w-full p-3 bg-gray-800/50 border border-gray-600 rounded-lg focus:border-green-400 focus:outline-none focus:ring-2 focus:ring-green-400">
+            <option value="2c">SNMPv2c (простой)</option>
+            <option value="v3">SNMPv3 (безопасный)</option>
+        </select>
+        
+        <!-- 🔐 SNMPv3 Auth/Privacy (для приватности параметр "private") -->
+        <div id="snmp_v3_fields" class="space-y-4 hidden">
+            <select name="auth_proto" class="w-full p-3 bg-gray-800/50 border border-gray-600 rounded-lg focus:border-green-400 focus:outline-none focus:ring-2 focus:ring-green-400 transition-all">
+                <option value="">Auth протокол (обязателен для v3)</option>
+                <option value="MD5">MD5</option>
+                <option value="SHA">SHA</option>
+                <option value="SHA256">SHA256</option>
+                <option value="SHA512">SHA512</option>
+            </select>
+
+            <input name="auth_pass" type="password" placeholder="Auth passphrase" 
+                   class="w-full p-3 bg-gray-800/50 border border-gray-600 rounded-lg focus:border-green-400 focus:outline-none focus:ring-2 focus:ring-green-400 transition-all">
+
+            <select name="priv_proto" class="w-full p-3 bg-gray-800/50 border border-gray-600 rounded-lg focus:border-green-400 focus:outline-none focus:ring-2 focus:ring-green-400 transition-all">
+                <option value="">Privacy disabled (noPriv)</option>
+                <option value="DES">DES</option>
+                <option value="AES">AES</option>
+                <option value="AES128">AES128</option>
+                <option value="AES256">AES256</option>
+            </select>
+
+            <input name="priv_pass" type="password" placeholder="Private passphrase (private)" 
+                   class="w-full p-3 bg-gray-800/50 border border-gray-600 rounded-lg focus:border-green-400 focus:outline-none focus:ring-2 focus:ring-green-400 transition-all">
+
+            <p class="text-xs text-gray-400">
+                Для v3: поле <b>community</b> используется как <b>UserName</b>, а <b>priv_pass</b> соответствует параметру <b>private</b> (privacy password).
+            </p>
+        </div>
+
+        <script>
+            (function () {
+                const snmpVersion = document.querySelector('select[name="snmp_version"]');
+                const v3Fields = document.getElementById('snmp_v3_fields');
+                const authProto = document.querySelector('select[name="auth_proto"]');
+                const authPass = document.querySelector('input[name="auth_pass"]');
+                const privProto = document.querySelector('select[name="priv_proto"]');
+                const privPass = document.querySelector('input[name="priv_pass"]');
+
+                function sync() {
+                    const isV3 = snmpVersion && snmpVersion.value === 'v3';
+                    if (v3Fields) v3Fields.classList.toggle('hidden', !isV3);
+                    if (authProto) authProto.required = isV3;
+                    if (authPass) authPass.required = isV3;
+                    if (privPass && privProto) privPass.required = isV3 && privProto.value !== '';
+                }
+
+                sync();
+                if (snmpVersion) snmpVersion.addEventListener('change', sync);
+                if (privProto) privProto.addEventListener('change', sync);
+            })();
+        </script>
+        <button type="submit" 
+                class="w-full bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 p-3 rounded-lg font-semibold transition-all shadow-lg hover:shadow-xl hover:scale-[1.02] active:scale-[0.98]">
+            🚀 Добавить в NMS1
+        </button>
+    </form>
+    <p class="text-xs text-green-400 mt-4 opacity-80 font-medium">
+        Worker автоматически начнет опрос через 60с 🟢
+    </p>
+</div>
+
+        <!-- 🕹️ УПРАВЛЕНИЕ УСТРОЙСТВАМИ (SNMP SET) -->
+        <div class="bg-gradient-to-br from-blue-900/50 to-indigo-900/30 border border-blue-500/30 p-6 rounded-xl shadow-2xl">
+            <h2 class="text-2xl font-semibold mb-6 flex items-center">
+                <span class="w-3 h-3 bg-blue-400 rounded-full mr-3 animate-pulse"></span>
+                🕹️ Управление (SNMP SET)
+            </h2>
+
+            <div class="space-y-4">
+                <select id="snmp-device" class="w-full p-3 bg-gray-800/50 border border-gray-600 rounded-lg focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-400 transition-all">
+                    <option value="">Выбери устройство…</option>
+                </select>
+
+                <select id="snmp-action" class="w-full p-3 bg-gray-800/50 border border-gray-600 rounded-lg focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-400 transition-all">
+                    <option value="port_up">Port UP (ifAdminStatus=up)</option>
+                    <option value="port_down">Port DOWN (ifAdminStatus=down)</option>
+                    <option value="set_desc">Set port description (ifAlias)</option>
+                    <option value="set_vlan_access">Set access VLAN (dot1qPvid)</option>
+                    <option value="poe_enable">PoE enable (pethPsePortAdminEnable)</option>
+                    <option value="poe_disable">PoE disable (pethPsePortAdminEnable)</option>
+                </select>
+
+                <input id="snmp-ifindex" inputmode="numeric" placeholder="ifIndex (например 1)" 
+                       class="w-full p-3 bg-gray-800/50 border border-gray-600 rounded-lg focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-400 transition-all">
+
+                <input id="snmp-desc" placeholder="Описание порта (только для Set description)" 
+                       class="w-full p-3 bg-gray-800/50 border border-gray-600 rounded-lg focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-400 transition-all hidden">
+
+                <input id="snmp-vlan" inputmode="numeric" placeholder="VLAN ID (только для Set access VLAN)" 
+                       class="w-full p-3 bg-gray-800/50 border border-gray-600 rounded-lg focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-400 transition-all hidden">
+
+                <input id="snmp-poeport" inputmode="numeric" placeholder="PoE portIndex (часто НЕ равен ifIndex)" 
+                       class="w-full p-3 bg-gray-800/50 border border-gray-600 rounded-lg focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-400 transition-all hidden">
+
+                <button id="snmp-send" type="button"
+                        class="w-full bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 p-3 rounded-lg font-semibold transition-all shadow-lg hover:shadow-xl hover:scale-[1.02] active:scale-[0.98]">
+                    ▶ Выполнить
+                </button>
+
+                <div id="snmp-result" class="text-sm text-gray-300 bg-gray-800/40 border border-gray-700 rounded-lg p-3 hidden"></div>
+
+                <p class="text-xs text-gray-400">
+                    Используются стандартные MIB’ы:
+                    <b>IF-MIB::ifAdminStatus</b> (\(1.3.6.1.2.1.2.2.1.7.\{ifIndex\}\)) и
+                    <b>IF-MIB::ifAlias</b> (\(1.3.6.1.2.1.31.1.1.1.18.\{ifIndex\}\)).
+                    Для VLAN: <b>Q-BRIDGE-MIB::dot1qPvid</b> (\(1.3.6.1.2.1.17.7.1.4.5.1.1.\{ifIndex\}\)).
+                    Для PoE: <b>POWER-ETHERNET-MIB::pethPsePortAdminEnable</b> (индексация зависит от устройства).
+                    Vendor-private MIB’ы будем класть в <code>/app/mibs</code>.
+                </p>
+            </div>
+
+            <script>
+                (function () {
+                    const deviceSel = document.getElementById('snmp-device');
+                    const actionSel = document.getElementById('snmp-action');
+                    const ifIndexEl = document.getElementById('snmp-ifindex');
+                    const descEl = document.getElementById('snmp-desc');
+                    const vlanEl = document.getElementById('snmp-vlan');
+                    const poePortEl = document.getElementById('snmp-poeport');
+                    const sendBtn = document.getElementById('snmp-send');
+                    const resultEl = document.getElementById('snmp-result');
+
+                    function showResult(ok, text) {
+                        resultEl.classList.remove('hidden');
+                        resultEl.classList.toggle('border-red-600/40', !ok);
+                        resultEl.classList.toggle('border-green-600/40', ok);
+                        resultEl.innerText = text;
+                    }
+
+                    async function loadDevices() {
+                        try {
+                            const res = await fetch('/devices', { headers: { 'Accept': 'application/json' } });
+                            if (!res.ok) throw new Error('HTTP ' + res.status);
+                            const devices = await res.json();
+                            deviceSel.innerHTML = '<option value="">Выбери устройство…</option>';
+                            for (const d of devices || []) {
+                                const opt = document.createElement('option');
+                                opt.value = d.ip;
+                                opt.textContent = `${d.name || 'device'} (${d.ip})`;
+                                deviceSel.appendChild(opt);
+                            }
+                        } catch (e) {
+                            // не блокируем UI, просто покажем ошибку
+                            showResult(false, 'Не удалось загрузить устройства: ' + (e && e.message ? e.message : e));
+                        }
+                    }
+
+                    function syncAction() {
+                        const a = actionSel.value;
+                        const isDesc = a === 'set_desc';
+                        const isVlan = a === 'set_vlan_access';
+                        const isPoe = a === 'poe_enable' || a === 'poe_disable';
+
+                        descEl.classList.toggle('hidden', !isDesc);
+                        descEl.required = isDesc;
+
+                        vlanEl.classList.toggle('hidden', !isVlan);
+                        vlanEl.required = isVlan;
+
+                        poePortEl.classList.toggle('hidden', !isPoe);
+                        poePortEl.required = isPoe;
+                    }
+
+                    async function snmpSet(ip, oid, type, value) {
+                        const url = `/devices/${encodeURIComponent(ip)}/snmp/set`;
+                        const body = JSON.stringify({ oid, type, value });
+                        const res = await fetch(url, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+                            body
+                        });
+                        const text = await res.text();
+                        if (!res.ok) throw new Error(text || ('HTTP ' + res.status));
+                        return text;
+                    }
+
+                    async function onSend() {
+                        const ip = deviceSel.value;
+                        const ifIndex = (ifIndexEl.value || '').trim();
+                        if (!ip) { showResult(false, 'Выбери устройство'); return; }
+
+                        sendBtn.disabled = true;
+                        const prev = sendBtn.textContent;
+                        sendBtn.textContent = '⏳ Выполняю...';
+
+                        try {
+                            const action = actionSel.value;
+
+                            if (action === 'port_up' || action === 'port_down') {
+                                if (!ifIndex || !/^\d+$/.test(ifIndex)) { showResult(false, 'ifIndex должен быть числом'); return; }
+                                const oid = `1.3.6.1.2.1.2.2.1.7.${ifIndex}`; // ifAdminStatus.ifIndex
+                                const value = action === 'port_up' ? 1 : 2; // up(1), down(2)
+                                await snmpSet(ip, oid, 'Integer', value);
+                                showResult(true, `OK: ${ip} ifIndex=${ifIndex} admin=${value === 1 ? 'up' : 'down'}`);
+                            } else if (action === 'set_desc') {
+                                if (!ifIndex || !/^\d+$/.test(ifIndex)) { showResult(false, 'ifIndex должен быть числом'); return; }
+                                const desc = (descEl.value || '').trim();
+                                if (!desc) { showResult(false, 'Введите описание'); return; }
+                                const oid = `1.3.6.1.2.1.31.1.1.1.18.${ifIndex}`; // ifAlias.ifIndex
+                                await snmpSet(ip, oid, 'OctetString', desc);
+                                showResult(true, `OK: ${ip} ifIndex=${ifIndex} description updated`);
+                            } else if (action === 'set_vlan_access') {
+                                if (!ifIndex || !/^\d+$/.test(ifIndex)) { showResult(false, 'ifIndex должен быть числом'); return; }
+                                const vlan = (vlanEl.value || '').trim();
+                                if (!vlan || !/^\d+$/.test(vlan)) { showResult(false, 'VLAN ID должен быть числом'); return; }
+                                // Q-BRIDGE-MIB::dot1qPvid.ifIndex
+                                const oid = `1.3.6.1.2.1.17.7.1.4.5.1.1.${ifIndex}`;
+                                await snmpSet(ip, oid, 'Integer', parseInt(vlan, 10));
+                                showResult(true, `OK: ${ip} ifIndex=${ifIndex} PVID=${vlan}`);
+                            } else if (action === 'poe_enable' || action === 'poe_disable') {
+                                const poePort = (poePortEl.value || '').trim();
+                                if (!poePort || !/^\d+$/.test(poePort)) { showResult(false, 'PoE portIndex должен быть числом'); return; }
+                                // POWER-ETHERNET-MIB::pethPsePortAdminEnable.* (индексация зависит от устройства!)
+                                // По умолчанию используем шаблон ...1.1.{portIndex} — при необходимости подстроим под vendor-profile.
+                                const oid = `1.3.6.1.2.1.105.1.1.1.3.1.1.${poePort}`;
+                                const value = action === 'poe_enable' ? 1 : 2; // enable(1), disable(2) — часто так, но бывает иначе у вендоров
+                                await snmpSet(ip, oid, 'Integer', value);
+                                showResult(true, `OK: ${ip} poePort=${poePort} ${value === 1 ? 'enabled' : 'disabled'}`);
+                            } else {
+                                showResult(false, 'Неизвестная операция');
+                            }
+                        } catch (e) {
+                            showResult(false, 'Ошибка SNMP SET: ' + (e && e.message ? e.message : e));
+                        } finally {
+                            sendBtn.disabled = false;
+                            sendBtn.textContent = prev;
+                        }
+                    }
+
+                    syncAction();
+                    actionSel.addEventListener('change', syncAction);
+                    sendBtn.addEventListener('click', onSend);
+
+                    loadDevices();
+                    // если список устройств обновится через htmx, дадим кнопку/ручной способ позже; пока - периодический refresh
+                    setInterval(loadDevices, 30000);
+                })();
+            </script>
+        </div>
+        <!-- Navigation -->
+        <div class="bg-gray-800 p-6 rounded-xl shadow-2xl">
+            <h2 class="text-2xl font-semibold mb-6 flex items-center">
+                <span class="w-2 h-2 bg-green-400 rounded-full mr-3"></span>
+                🔗 Навигация
+            </h2>
+            <div class="space-y-3">
+                <a href="/devices/table" class="block p-4 bg-blue-600 hover:bg-blue-700 rounded-lg transition-all flex items-center hover:scale-[1.02]">
+                    📋 Полная таблица устройств
+                </a>
+                <a href="/health" class="block p-4 bg-green-600 hover:bg-green-700 rounded-lg transition-all flex items-center hover:scale-[1.02]">
+                    ✅ Health Check NMS1
+                </a>
+                <a href="/metrics" class="block p-4 bg-purple-600 hover:bg-purple-700 rounded-lg transition-all flex items-center hover:scale-[1.02]">
+                    📈 Метрики Prometheus
+                </a>
+                <a href="/traps" class="block p-4 bg-orange-600 hover:bg-orange-700 rounded-lg transition-all flex items-center hover:scale-[1.02]">
+                    🔔 SNMP Traps
+                </a>
+            </div>
+        </div>
+    </div>
+    
+    <p class="text-center text-gray-500 mt-12 text-sm">
+        NMS1 v1.0 • Go 1.25 • PostgreSQL 16 • SNMPv2c/v3 • Docker • HTMX
+    </p>
+</div>
+</body></html>

@@ -1,0 +1,9 @@
+# Секреты (пароли и токены из .env не коммитить)
+.env
+
+# Docker logs
+logs/*.log
+*.log
+
+# Docker
+.dockerenv

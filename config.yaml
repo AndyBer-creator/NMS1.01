@@ -1,0 +1,10 @@
+# Секреты (DB_DSN, TELEGRAM_TOKEN и т.д.) задаются через переменные окружения (.env)
+# См. .env.example
+
+http:
+  addr: ":8080"
+
+snmp:
+  port: 161
+  timeout: 10
+  retries: 5
