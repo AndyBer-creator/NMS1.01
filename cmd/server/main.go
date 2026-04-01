@@ -2,7 +2,7 @@ package main
 
 import (
 	"NMS1/internal/config"
-	h "NMS1/internal/delivery/http" // 🎯 АЛИАС 'h' для  пакета!
+	h "NMS1/internal/delivery/http" // АЛИАС 'h' для  пакета!
 	"NMS1/internal/infrastructure/postgres"
 	"NMS1/internal/infrastructure/snmp"
 	"NMS1/internal/repository"
