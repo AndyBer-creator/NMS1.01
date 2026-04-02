@@ -45,6 +45,22 @@ func (c *Client) GetDevice(device *domain.Device, oids []string) (map[string]str
 	}
 }
 
+// WalkDevice делает SNMP WALK/BULKWALK по базовому OID и возвращает map[fullOID]value.
+// Нужен для LLDP (lldpLocPortTable/lldpRemTable).
+func (c *Client) WalkDevice(device *domain.Device, baseOID string) (map[string]string, error) {
+	switch strings.ToLower(device.SNMPVersion) {
+	case "v3":
+		return c.walkV3(device, baseOID)
+	case "v1":
+		// LLDP обычно на v2c/v3; v1 пока не поддерживаем в WALK (fallback на v2c).
+		return c.walkV2c(device.IP, device.Community, baseOID)
+	case "", "v2c":
+		fallthrough
+	default:
+		return c.walkV2c(device.IP, device.Community, baseOID)
+	}
+}
+
 func (c *Client) SetDevice(device *domain.Device, oid string, pduType gosnmp.Asn1BER, value interface{}) error {
 	switch strings.ToLower(device.SNMPVersion) {
 	case "v3":
@@ -111,6 +127,65 @@ func (c *Client) getV3(device *domain.Device, oids []string) (map[string]string,
 
 	result := make(map[string]string)
 	for _, v := range pdu.Variables {
+		result[v.Name] = fmt.Sprintf("%v", v.Value)
+	}
+	return result, nil
+}
+
+func (c *Client) walkV2c(ip string, community string, baseOID string) (map[string]string, error) {
+	conn := &gosnmp.GoSNMP{
+		Target:         ip,
+		Port:           uint16(c.Port),
+		Community:      community,
+		Timeout:        c.Timeout,
+		Version:        gosnmp.Version2c,
+		Retries:        c.Retries,
+		MaxRepetitions: 25,
+	}
+
+	if err := conn.Connect(); err != nil {
+		return nil, fmt.Errorf("connect: %w", err)
+	}
+	defer conn.Conn.Close()
+
+	pdus, err := conn.BulkWalkAll(baseOID)
+	if err != nil {
+		// fallback на обычный Walk, если Bulk не поддерживается/не сработал
+		pdus2, err2 := conn.WalkAll(baseOID)
+		if err2 != nil {
+			return nil, fmt.Errorf("bulkwalk: %w (fallback walk: %v)", err, err2)
+		}
+		pdus = pdus2
+	}
+
+	result := make(map[string]string)
+	for _, v := range pdus {
+		result[v.Name] = fmt.Sprintf("%v", v.Value)
+	}
+	return result, nil
+}
+
+func (c *Client) walkV3(device *domain.Device, baseOID string) (map[string]string, error) {
+	conn, err := c.newV3Conn(device)
+	if err != nil {
+		return nil, err
+	}
+	defer conn.Conn.Close()
+
+	conn.MaxRepetitions = 25
+
+	pdus, err := conn.BulkWalkAll(baseOID)
+	if err != nil {
+		// fallback на обычный Walk
+		pdus2, err2 := conn.WalkAll(baseOID)
+		if err2 != nil {
+			return nil, fmt.Errorf("bulkwalk: %w (fallback walk: %v)", err, err2)
+		}
+		pdus = pdus2
+	}
+
+	result := make(map[string]string)
+	for _, v := range pdus {
 		result[v.Name] = fmt.Sprintf("%v", v.Value)
 	}
 	return result, nil

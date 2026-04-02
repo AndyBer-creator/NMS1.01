@@ -10,6 +10,7 @@ import (
 	"NMS1/internal/config"
 	"NMS1/internal/infrastructure/postgres"
 	"NMS1/internal/infrastructure/snmp"
+	"NMS1/internal/usecases/lldp"
 
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
@@ -36,9 +37,11 @@ func main() {
 	)
 
 	ticker := time.NewTicker(1 * time.Minute)
+	lldpTicker := time.NewTicker(5 * time.Minute)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	defer ticker.Stop()
+	defer lldpTicker.Stop()
 
 	logger.Info("🚀 NMS Worker v3 started (prod logging)")
 
@@ -57,6 +60,13 @@ func main() {
 
 			logger.Info("=== Cycle complete ===",
 				zap.Duration("duration", time.Since(start)))
+		case <-lldpTicker.C:
+			logger.Info("=== LLDP topology cycle ===", zap.String("interval", "5m"))
+			start := time.Now()
+			if _, err := lldp.ScanAllDevicesLLDP(ctx, repo, snmpClient, logger, lldp.ScanParams{}); err != nil {
+				logger.Error("LLDP scan failed", zap.Error(err))
+			}
+			logger.Info("=== LLDP cycle complete ===", zap.Duration("duration", time.Since(start)))
 		}
 	}
 }
