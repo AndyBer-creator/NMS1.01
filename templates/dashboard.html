@@ -29,6 +29,117 @@
             <div id="devices-preview">⟳ Загрузка...</div>
             <div id="loading" class="htmx-indicator text-sm text-blue-400 hidden">⟳ Обновление...</div>
         </div>
+
+        <!-- 🔎 ПОИСК SNMP В ПОДСЕТИ -->
+        <div class="bg-gradient-to-br from-amber-900/40 to-orange-950/40 border border-amber-600/40 p-6 rounded-xl shadow-2xl col-span-1 lg:col-span-2">
+            <h2 class="text-2xl font-semibold mb-4 flex items-center">
+                <span class="w-3 h-3 bg-amber-400 rounded-full mr-3 animate-pulse"></span>
+                🔎 Поиск SNMP в подсети
+            </h2>
+            <p class="text-sm text-gray-400 mb-4">Запрос <code class="text-amber-200/90">sysDescr</code> (1.3.6.1.2.1.1.1.0) по каждому адресу. По умолчанию без TCP-фильтра — находятся агенты только на UDP/161.</p>
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
+                <input id="disc-cidr" placeholder="192.168.1.0/24" value="192.168.1.0/24"
+                       class="w-full p-3 bg-gray-800/50 border border-gray-600 rounded-lg focus:border-amber-400 focus:outline-none focus:ring-2 focus:ring-amber-400">
+                <input id="disc-community" type="password" placeholder="community / SNMPv3 user" value="public"
+                       class="w-full p-3 bg-gray-800/50 border border-gray-600 rounded-lg focus:border-amber-400 focus:outline-none focus:ring-2 focus:ring-amber-400">
+                <select id="disc-version" class="w-full p-3 bg-gray-800/50 border border-gray-600 rounded-lg focus:border-amber-400 focus:outline-none">
+                    <option value="v2c" selected>SNMPv2c</option>
+                    <option value="v3">SNMPv3</option>
+                </select>
+                <label class="flex items-center gap-2 text-sm text-gray-300 p-2">
+                    <input type="checkbox" id="disc-autoadd" class="rounded border-gray-600">
+                    Добавить в БД
+                </label>
+            </div>
+            <div id="disc-v3" class="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4 hidden">
+                <select id="disc-auth-proto" class="w-full p-3 bg-gray-800/50 border border-gray-600 rounded-lg">
+                    <option value="">auth_proto</option>
+                    <option value="MD5">MD5</option>
+                    <option value="SHA">SHA</option>
+                    <option value="SHA256">SHA256</option>
+                </select>
+                <input id="disc-auth-pass" type="password" placeholder="auth_pass" class="w-full p-3 bg-gray-800/50 border border-gray-600 rounded-lg">
+                <select id="disc-priv-proto" class="w-full p-3 bg-gray-800/50 border border-gray-600 rounded-lg">
+                    <option value="">noPriv</option>
+                    <option value="DES">DES</option>
+                    <option value="AES">AES</option>
+                </select>
+                <input id="disc-priv-pass" type="password" placeholder="priv_pass" class="w-full p-3 bg-gray-800/50 border border-gray-600 rounded-lg">
+            </div>
+            <div class="flex flex-wrap gap-4 items-center mb-4">
+                <label class="flex items-center gap-2 text-sm text-gray-300">
+                    <input type="checkbox" id="disc-tcp" class="rounded border-gray-600">
+                    Сначала TCP (80,443,22,21,161) — быстрее на «тихих» сетях, но можно пропустить чистый SNMP
+                </label>
+            </div>
+            <button type="button" id="disc-run"
+                    class="w-full md:w-auto px-6 py-3 bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-500 hover:to-orange-500 rounded-lg font-semibold shadow-lg">
+                ▶ Сканировать
+            </button>
+            <pre id="disc-out" class="mt-4 text-xs text-gray-300 bg-black/30 border border-gray-700 rounded-lg p-4 max-h-64 overflow-auto whitespace-pre-wrap hidden"></pre>
+            <script>
+                (function () {
+                    const ver = document.getElementById('disc-version');
+                    const v3 = document.getElementById('disc-v3');
+                    const btn = document.getElementById('disc-run');
+                    const out = document.getElementById('disc-out');
+                    function syncV3() {
+                        const on = ver && ver.value === 'v3';
+                        if (v3) v3.classList.toggle('hidden', !on);
+                    }
+                    if (ver) ver.addEventListener('change', syncV3);
+                    syncV3();
+                    btn.addEventListener('click', async function () {
+                        const cidr = (document.getElementById('disc-cidr').value || '').trim();
+                        if (!cidr) { alert('Укажите CIDR'); return; }
+                        const body = {
+                            cidr,
+                            community: (document.getElementById('disc-community').value || '').trim() || 'public',
+                            snmp_version: ver.value,
+                            auto_add: document.getElementById('disc-autoadd').checked,
+                            tcp_prefilter: document.getElementById('disc-tcp').checked
+                        };
+                        if (ver.value === 'v3') {
+                            body.auth_proto = (document.getElementById('disc-auth-proto').value || '').trim();
+                            body.auth_pass = document.getElementById('disc-auth-pass').value || '';
+                            body.priv_proto = (document.getElementById('disc-priv-proto').value || '').trim();
+                            body.priv_pass = document.getElementById('disc-priv-pass').value || '';
+                        }
+                        out.classList.remove('hidden');
+                        out.textContent = 'Сканирование… (для /24 это может занять минуты)';
+                        btn.disabled = true;
+                        const prev = btn.textContent;
+                        btn.textContent = '⏳ …';
+                        try {
+                            const res = await fetch('/discovery/scan', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+                                body: JSON.stringify(body)
+                            });
+                            const text = await res.text();
+                            if (!res.ok) {
+                                out.textContent = 'Ошибка ' + res.status + ': ' + text;
+                                return;
+                            }
+                            try {
+                                const j = JSON.parse(text);
+                                out.textContent = JSON.stringify(j, null, 2);
+                                if (window.htmx) {
+                                    htmx.ajax('GET', '/devices/table', { target: '#devices-preview', swap: 'innerHTML' });
+                                }
+                            } catch {
+                                out.textContent = text;
+                            }
+                        } catch (e) {
+                            out.textContent = 'Сеть: ' + (e && e.message ? e.message : e);
+                        } finally {
+                            btn.disabled = false;
+                            btn.textContent = prev;
+                        }
+                    });
+                })();
+            </script>
+        </div>
         
         <!-- 🔥 ФОРМА ДОБАВЛЕНИЯ УСТРОЙСТВ -->
         <div class="bg-gradient-to-br from-green-900/70 to-emerald-900/50 border-2 border-green-500/50 p-6 rounded-xl shadow-2xl">
