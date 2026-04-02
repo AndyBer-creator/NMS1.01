@@ -1,0 +1,157 @@
+{
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": "-- Grafana --",
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      }
+    ]
+  },
+  "editable": true,
+  "gnetId": null,
+  "graphTooltip": 0,
+  "id": null,
+  "links": [],
+  "panels": [
+    {
+      "datasource": "Prometheus",
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 12,
+        "x": 0,
+        "y": 0
+      },
+      "id": 1,
+      "legend": {
+        "show": true
+      },
+      "lines": true,
+      "linewidth": 1,
+      "nullPointMode": "null",
+      "options": {},
+      "percentage": false,
+      "renderer": "flot",
+      "targets": [
+        {
+          "expr": "sum(rate(nms_requests_total[5m])) by (endpoint)",
+          "legendFormat": "{{endpoint}}",
+          "refId": "A"
+        }
+      ],
+      "title": "RPS (5m) by endpoint",
+      "tooltip": {
+        "shared": true,
+        "sort": 0
+      },
+      "type": "graph",
+      "xaxis": {
+        "mode": "time"
+      },
+      "yaxes": [
+        {
+          "format": "short"
+        },
+        {
+          "format": "short"
+        }
+      ]
+    },
+    {
+      "datasource": "Prometheus",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 6,
+        "x": 12,
+        "y": 0
+      },
+      "id": 2,
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "orientation": "horizontal",
+        "showPercentChange": false,
+        "text": {},
+        "colorMode": "value"
+      },
+      "pluginVersion": "7.2.0",
+      "targets": [
+        {
+          "expr": "(sum(rate(nms_requests_total{status=~\"5..\"}[5m])) / sum(rate(nms_requests_total[5m]))) * 100",
+          "refId": "A"
+        }
+      ],
+      "title": "5xx error ratio (5m)",
+      "type": "stat"
+    },
+    {
+      "datasource": "Prometheus",
+      "gridPos": {
+        "h": 9,
+        "w": 12,
+        "x": 12,
+        "y": 9
+      },
+      "id": 3,
+      "options": {},
+      "targets": [
+        {
+          "expr": "topk(10, sum(rate(nms_requests_total{status=~\"5..\"}[5m])) by (endpoint))",
+          "legendFormat": "{{endpoint}}",
+          "refId": "A"
+        }
+      ],
+      "title": "Top 10 endpoints by 5xx (5m)",
+      "type": "graph",
+      "xaxis": {
+        "mode": "time"
+      },
+      "yaxes": [
+        {
+          "format": "short"
+        },
+        {
+          "format": "short"
+        }
+      ]
+    }
+  ],
+  "refresh": "",
+  "schemaVersion": 26,
+  "style": "dark",
+  "tags": [
+    "NMS"
+  ],
+  "templating": {
+    "list": []
+  },
+  "time": {
+    "from": "now-1h",
+    "to": "now"
+  },
+  "timepicker": {},
+  "timezone": "",
+  "title": "NMS API metrics",
+  "uid": "nms-api-metrics",
+  "version": 1
+}
+
