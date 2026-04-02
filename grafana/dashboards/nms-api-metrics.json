@@ -115,12 +115,12 @@
       "options": {},
       "targets": [
         {
-          "expr": "topk(10, sum(rate(nms_requests_total{status=~\"5..\"}[5m])) by (endpoint))",
+          "expr": "topk(10, (sum(rate(nms_requests_total{status=~\"5..\"}[5m])) by (endpoint)) / (sum(rate(nms_requests_total[5m])) by (endpoint)) * 100)",
           "legendFormat": "{{endpoint}}",
           "refId": "A"
         }
       ],
-      "title": "Top 10 endpoints by 5xx (5m)",
+      "title": "Top 10 endpoints by 5xx ratio (5m)",
       "type": "graph",
       "xaxis": {
         "mode": "time"
@@ -133,6 +133,114 @@
           "format": "short"
         }
       ]
+    }
+    ,
+    {
+      "datasource": "Prometheus",
+      "gridPos": {
+        "h": 9,
+        "w": 12,
+        "x": 0,
+        "y": 9
+      },
+      "id": 4,
+      "options": {},
+      "targets": [
+        {
+          "expr": "topk(10, histogram_quantile(0.95, sum by (le, endpoint) (rate(nms_request_duration_seconds_bucket[5m]))))",
+          "legendFormat": "{{endpoint}}",
+          "refId": "A"
+        }
+      ],
+      "title": "Top 10 endpoints p95 latency (5m)",
+      "type": "graph",
+      "xaxis": {
+        "mode": "time"
+      },
+      "yaxes": [
+        {
+          "format": "short"
+        },
+        {
+          "format": "short"
+        }
+      ]
+    },
+    {
+      "datasource": "Prometheus",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 6,
+        "x": 0,
+        "y": 18
+      },
+      "id": 5,
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "orientation": "horizontal",
+        "showPercentChange": false,
+        "text": {},
+        "colorMode": "value"
+      },
+      "pluginVersion": "7.2.0",
+      "targets": [
+        {
+          "expr": "(sum(rate(nms_requests_total{status=~\"4..\"}[5m])) / sum(rate(nms_requests_total[5m]))) * 100",
+          "refId": "A"
+        }
+      ],
+      "title": "4xx error ratio (5m)",
+      "type": "stat"
+    },
+    {
+      "datasource": "Prometheus",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 6,
+        "x": 6,
+        "y": 18
+      },
+      "id": 6,
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "orientation": "horizontal",
+        "showPercentChange": false,
+        "text": {},
+        "colorMode": "value"
+      },
+      "pluginVersion": "7.2.0",
+      "targets": [
+        {
+          "expr": "(sum(rate(nms_requests_total{status=~\"2..\"}[5m])) / sum(rate(nms_requests_total[5m]))) * 100",
+          "refId": "A"
+        }
+      ],
+      "title": "2xx success ratio (5m)",
+      "type": "stat"
     }
   ],
   "refresh": "",

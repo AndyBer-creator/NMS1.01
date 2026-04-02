@@ -32,6 +32,15 @@ var (
 		},
 		[]string{"method", "endpoint", "status"},
 	)
+
+	requestDurationSeconds = prometheus.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Name:    "nms_request_duration_seconds",
+			Help:    "HTTP request duration in seconds",
+			Buckets: prometheus.DefBuckets,
+		},
+		[]string{"method", "endpoint", "status"},
+	)
 )
 
 type Handlers struct {
@@ -62,6 +71,7 @@ func NewHandlers(repo *postgres.Repo, snmpClient *snmp.Client, scanner *discover
 
 func init() {
 	prometheus.MustRegister(requestsTotal)
+	prometheus.MustRegister(requestDurationSeconds)
 }
 
 type devicesTableRow struct {
