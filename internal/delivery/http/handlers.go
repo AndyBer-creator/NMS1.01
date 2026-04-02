@@ -38,25 +38,72 @@ type Handlers struct {
 	scanner          *discovery.Scanner
 	TrapsRepo        *repository.TrapsRepo
 	logger           *zap.Logger
-	devicesTableTmpl *template.Template
+	devicesTmpl      *template.Template // devicesTable + devicesPage
 }
 
 func NewHandlers(repo *postgres.Repo, snmpClient *snmp.Client, scanner *discovery.Scanner, trapsRepo *repository.TrapsRepo, logger *zap.Logger) *Handlers {
-	devicesTableTmpl := template.Must(template.ParseFiles("templates/devices_table.html"))
+	devicesTmpl := template.Must(template.ParseFiles(
+		"templates/devices_table.html",
+		"templates/devices_page.html",
+	))
 
 	h := &Handlers{
-		repo:             repo,
-		snmp:             snmpClient,
-		scanner:          scanner,
-		TrapsRepo:        trapsRepo,
-		logger:           logger,
-		devicesTableTmpl: devicesTableTmpl,
+		repo:        repo,
+		snmp:        snmpClient,
+		scanner:     scanner,
+		TrapsRepo:   trapsRepo,
+		logger:      logger,
+		devicesTmpl: devicesTmpl,
 	}
 	return h
 }
 
 func init() {
 	prometheus.MustRegister(requestsTotal)
+}
+
+type devicesTableRow struct {
+	IP          string
+	Name        string
+	Status      string
+	StatusClass string
+	StatusIcon  string
+	LastSeen    string
+}
+
+type devicesTableViewModel struct {
+	Devices []devicesTableRow
+	Total   int
+}
+
+func devicesTableViewModelFromDevices(devices []*domain.Device) devicesTableViewModel {
+	rows := make([]devicesTableRow, 0, len(devices))
+	for _, d := range devices {
+		if d == nil {
+			continue
+		}
+		statusClass := "bg-red-500/20 text-red-400 border-red-500/50"
+		statusIcon := "🔴"
+		if d.Status == "active" {
+			statusClass = "bg-green-500/20 text-green-400 border-green-500/50"
+			statusIcon = "🟢"
+		}
+
+		lastSeen := "Никогда"
+		if !d.LastSeen.IsZero() {
+			lastSeen = d.LastSeen.Format("15:04 02.01")
+		}
+
+		rows = append(rows, devicesTableRow{
+			IP:          d.IP,
+			Name:        d.Name,
+			Status:      d.Status,
+			StatusClass: statusClass,
+			StatusIcon:  statusIcon,
+			LastSeen:    lastSeen,
+		})
+	}
+	return devicesTableViewModel{Devices: rows, Total: len(rows)}
 }
 
 func (h *Handlers) Dashboard(w http.ResponseWriter, r *http.Request) {
@@ -93,47 +140,27 @@ func (h *Handlers) DevicesTable(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 
-	type deviceRow struct {
-		IP         string
-		Name       string
-		Status     string
-		StatusClass string
-		StatusIcon string
-		LastSeen   string
+	vm := devicesTableViewModelFromDevices(devices)
+	if err := h.devicesTmpl.ExecuteTemplate(w, "devicesTable", vm); err != nil {
+		http.Error(w, "Template render error", http.StatusInternalServerError)
+		return
 	}
-	type viewModel struct {
-		Devices []deviceRow
-		Total   int
-	}
+}
 
-	rows := make([]deviceRow, 0, len(devices))
-	for _, d := range devices {
-		statusClass := "bg-red-500/20 text-red-400 border-red-500/50"
-		statusIcon := "🔴"
-		if d.Status == "active" {
-			statusClass = "bg-green-500/20 text-green-400 border-green-500/50"
-			statusIcon = "🟢"
-		}
-
-		lastSeen := "Никогда"
-		if !d.LastSeen.IsZero() {
-			lastSeen = d.LastSeen.Format("15:04 02.01")
-		}
-
-		rows = append(rows, deviceRow{
-			IP:          d.IP,
-			Name:        d.Name,
-			Status:      d.Status,
-			StatusClass: statusClass,
-			StatusIcon:  statusIcon,
-			LastSeen:    lastSeen,
-		})
+// DevicesListPage — полная HTML-страница таблицы устройств (дизайн как у дашборда).
+func (h *Handlers) DevicesListPage(w http.ResponseWriter, r *http.Request) {
+	devices, err := h.repo.ListDevices()
+	if err != nil {
+		h.logger.Error("DevicesListPage failed", zap.Error(err))
+		http.Error(w, "Database error", http.StatusInternalServerError)
+		return
 	}
 
-	if err := h.devicesTableTmpl.Execute(w, viewModel{
-		Devices: rows,
-		Total:   len(rows),
-	}); err != nil {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+
+	vm := devicesTableViewModelFromDevices(devices)
+	if err := h.devicesTmpl.ExecuteTemplate(w, "devicesPage", vm); err != nil {
+		h.logger.Error("DevicesListPage template", zap.Error(err))
 		http.Error(w, "Template render error", http.StatusInternalServerError)
 		return
 	}
