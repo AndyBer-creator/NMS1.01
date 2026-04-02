@@ -22,6 +22,7 @@ func Router(handlers *Handlers) *chi.Mux {
 
 	// Devices
 	r.Get("/devices", handlers.ListDevices)
+	r.Get("/devices/list", handlers.DevicesListPage)
 	r.Get("/devices/table", handlers.DevicesTable)
 	r.Get("/devices/page", handlers.DevicesPage)
 	r.Get("/devices/{ip}/metric/{oid}", handlers.GetMetric)
