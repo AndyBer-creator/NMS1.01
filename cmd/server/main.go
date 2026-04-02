@@ -6,6 +6,7 @@ import (
 	"NMS1/internal/infrastructure/postgres"
 	"NMS1/internal/infrastructure/snmp"
 	"NMS1/internal/repository"
+	"NMS1/internal/usecases/discovery"
 	"context"
 	"database/sql"
 	"net/http" // стандартная библиотека
@@ -40,7 +41,8 @@ func main() {
 
 	trapsRepo := repository.NewTrapsRepo(db)
 	logger.Info("TrapsRepo initialized")
-	handlers := h.NewHandlers(repo, snmpClient, trapsRepo, logger)
+	scanner := discovery.NewScanner(snmpClient, repo, logger)
+	handlers := h.NewHandlers(repo, snmpClient, scanner, trapsRepo, logger)
 	router := h.Router(handlers)
 
 	srv := &http.Server{Addr: cfg.HTTP.Addr, Handler: router}

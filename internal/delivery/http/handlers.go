@@ -14,6 +14,7 @@ import (
 	"NMS1/internal/infrastructure/postgres"
 	"NMS1/internal/infrastructure/snmp"
 	"NMS1/internal/repository"
+	"NMS1/internal/usecases/discovery"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/gosnmp/gosnmp"
@@ -34,17 +35,19 @@ var (
 type Handlers struct {
 	repo             *postgres.Repo
 	snmp             *snmp.Client
+	scanner          *discovery.Scanner
 	TrapsRepo        *repository.TrapsRepo
 	logger           *zap.Logger
 	devicesTableTmpl *template.Template
 }
 
-func NewHandlers(repo *postgres.Repo, snmp *snmp.Client, trapsRepo *repository.TrapsRepo, logger *zap.Logger) *Handlers {
+func NewHandlers(repo *postgres.Repo, snmpClient *snmp.Client, scanner *discovery.Scanner, trapsRepo *repository.TrapsRepo, logger *zap.Logger) *Handlers {
 	devicesTableTmpl := template.Must(template.ParseFiles("templates/devices_table.html"))
 
 	h := &Handlers{
 		repo:             repo,
-		snmp:             snmp,
+		snmp:             snmpClient,
+		scanner:          scanner,
 		TrapsRepo:        trapsRepo,
 		logger:           logger,
 		devicesTableTmpl: devicesTableTmpl,
@@ -484,6 +487,75 @@ func (h *Handlers) DeleteDevice(w http.ResponseWriter, r *http.Request) {
 func (h *Handlers) Health(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte("OK"))
+}
+
+// DiscoverScan — POST /discovery/scan: поиск SNMP-агентов в подсети (Get sysDescr).
+func (h *Handlers) DiscoverScan(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		w.Header().Set("Allow", "POST")
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var body struct {
+		CIDR         string `json:"cidr"`
+		Community    string `json:"community"`
+		SNMPVersion  string `json:"snmp_version"`
+		AuthProto    string `json:"auth_proto"`
+		AuthPass     string `json:"auth_pass"`
+		PrivProto    string `json:"priv_proto"`
+		PrivPass     string `json:"priv_pass"`
+		AutoAdd      *bool  `json:"auto_add"`
+		TCPPrefilter *bool  `json:"tcp_prefilter"`
+		Concurrency  int    `json:"concurrency"`
+		MaxHosts     int    `json:"max_hosts"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		http.Error(w, "Invalid JSON", http.StatusBadRequest)
+		return
+	}
+	if strings.TrimSpace(body.CIDR) == "" {
+		http.Error(w, "cidr is required", http.StatusBadRequest)
+		return
+	}
+
+	autoAdd := false
+	if body.AutoAdd != nil {
+		autoAdd = *body.AutoAdd
+	}
+	tcpPref := false
+	if body.TCPPrefilter != nil {
+		tcpPref = *body.TCPPrefilter
+	}
+
+	params := discovery.ScanParams{
+		CIDR:         body.CIDR,
+		Community:    body.Community,
+		SNMPVersion:  body.SNMPVersion,
+		AuthProto:    body.AuthProto,
+		AuthPass:     body.AuthPass,
+		PrivProto:    body.PrivProto,
+		PrivPass:     body.PrivPass,
+		AutoAdd:      autoAdd,
+		TCPPrefilter: tcpPref,
+		Concurrency:  body.Concurrency,
+		MaxHosts:     body.MaxHosts,
+	}
+
+	res, err := h.scanner.ScanNetwork(r.Context(), params)
+	if err != nil {
+		var se *discovery.ScanError
+		if errors.As(err, &se) {
+			http.Error(w, se.Error(), http.StatusBadRequest)
+			return
+		}
+		h.logger.Error("DiscoverScan failed", zap.Error(err))
+		http.Error(w, "Scan failed: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(res)
 }
 
 // ✅ Demo данные для тестов

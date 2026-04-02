@@ -29,6 +29,8 @@ func Router(handlers *Handlers) *chi.Mux {
 	r.Delete("/devices/{ip}", handlers.DeleteDevice)
 	r.Post("/devices/{ip}/snmp/set", handlers.SetSNMP)
 
+	r.Post("/discovery/scan", handlers.DiscoverScan)
+
 	// Prometheus metrics endpoint
 	r.Handle("/metrics", promhttp.Handler())
 
