@@ -32,6 +32,10 @@ func Router(handlers *Handlers) *chi.Mux {
 
 	r.Post("/discovery/scan", handlers.DiscoverScan)
 
+	// LLDP topology
+	r.Get("/topology/lldp", handlers.LldpTopologyPage)
+	r.Get("/topology/lldp/data", handlers.LldpTopologyData)
+
 	// Prometheus metrics endpoint
 	r.Handle("/metrics", promhttp.Handler())
 
