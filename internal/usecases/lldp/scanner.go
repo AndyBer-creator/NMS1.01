@@ -37,6 +37,13 @@ type ScanParams struct {
 	// Оставим структуру на будущее.
 }
 
+type ScanSummary struct {
+	ScanID        int64
+	DevicesScanned int
+	LinksFound    int
+	LinksInserted int
+}
+
 func normalizeKey(s string) string {
 	return strings.ToLower(strings.TrimSpace(s))
 }
@@ -79,12 +86,12 @@ func parseRemoteIndexes(fullOID, baseOID string) (localPortNum int, remIndex int
 	return localPortNum, remIndex, true
 }
 
-// ScanAllDevicesLLDP делает один снимок topологии и пишет links в БД.
-func ScanAllDevicesLLDP(ctx context.Context, repo *postgres.Repo, client *snmp.Client, logger *zap.Logger, _ ScanParams) (int64, error) {
+// ScanAllDevicesLLDP делает один снимок топологии и пишет links в БД.
+func ScanAllDevicesLLDP(ctx context.Context, repo *postgres.Repo, client *snmp.Client, logger *zap.Logger, _ ScanParams) (*ScanSummary, error) {
 	// Статусы/версии в LLDP обычно важны только для credentials.
 	devices, err := repo.ListDevices()
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
 
 	// Мапа name -> ip для лучшего сопоставления remote sysName с inventory.
@@ -101,16 +108,18 @@ func ScanAllDevicesLLDP(ctx context.Context, repo *postgres.Repo, client *snmp.C
 
 	scanID, err := repo.CreateLldpScan()
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
 
 	logger.Info("LLDP scan started", zap.Int("devices", len(devices)), zap.Int64("scan_id", scanID))
+
+	summary := &ScanSummary{ScanID: scanID}
 
 	// Walk по каждой таблице — это несколько запросов, но делаем раз в 5 минут.
 	for _, device := range devices {
 		select {
 		case <-ctx.Done():
-			return scanID, ctx.Err()
+			return summary, ctx.Err()
 		default:
 		}
 		if device == nil {
@@ -222,7 +231,8 @@ func ScanAllDevicesLLDP(ctx context.Context, repo *postgres.Repo, client *snmp.C
 		}
 
 		// Сохраняем links
-		added := 0
+		linksFound := 0
+		linksInserted := 0
 		for _, entry := range remoteEntries {
 			if entry == nil {
 				continue
@@ -230,6 +240,7 @@ func ScanAllDevicesLLDP(ctx context.Context, repo *postgres.Repo, client *snmp.C
 			if entry.SysName == "" && entry.SysDesc == "" {
 				continue
 			}
+			linksFound++
 
 			localPortDesc := locPortDescMap[entry.LocalPortNum]
 			if strings.TrimSpace(localPortDesc) == "" {
@@ -257,17 +268,27 @@ func ScanAllDevicesLLDP(ctx context.Context, repo *postgres.Repo, client *snmp.C
 				RemotePortDesc: entry.PortDesc,
 			}
 
-			if err := repo.InsertLldpLink(scanID, link); err != nil {
+			inserted, err := repo.InsertLldpLink(scanID, link)
+			if err != nil {
 				logger.Warn("LLDP: insert link failed", zap.String("local_ip", d.IP), zap.Error(err))
 				continue
 			}
-			added++
+			linksInserted += int(inserted)
 		}
 
-		logger.Info("LLDP device scanned", zap.String("ip", d.IP), zap.Int("links_added_attempt", added), zap.Int("remote_entries", len(remoteEntries)))
+		summary.DevicesScanned++
+		summary.LinksFound += linksFound
+		summary.LinksInserted += linksInserted
+
+		logger.Info("LLDP device scanned",
+			zap.String("ip", d.IP),
+			zap.Int("links_found", linksFound),
+			zap.Int("links_inserted", linksInserted),
+			zap.Int("remote_entries", len(remoteEntries)),
+		)
 	}
 
 	logger.Info("LLDP scan finished", zap.Int64("scan_id", scanID))
-	return scanID, nil
+	return summary, nil
 }
 

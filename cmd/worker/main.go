@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"os"
 	"path/filepath"
 	"time"
@@ -12,10 +13,54 @@ import (
 	"NMS1/internal/infrastructure/snmp"
 	"NMS1/internal/usecases/lldp"
 
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 	"gopkg.in/natefinch/lumberjack.v2"
 )
+
+var (
+	workerPollDurationSeconds = prometheus.NewHistogram(prometheus.HistogramOpts{
+		Name:    "nms_worker_poll_duration_seconds",
+		Help:    "Duration of worker SNMP polling cycle in seconds",
+		Buckets: prometheus.DefBuckets,
+	})
+	workerPollDevicesTotal = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "nms_worker_poll_devices_total",
+			Help: "Total devices processed by worker SNMP polling",
+		},
+		[]string{"status"},
+	)
+
+	lldpScanDurationSeconds = prometheus.NewHistogram(prometheus.HistogramOpts{
+		Name:    "nms_lldp_scan_duration_seconds",
+		Help:    "Duration of LLDP scan in seconds",
+		Buckets: prometheus.DefBuckets,
+	})
+	lldpLinksFoundGauge = prometheus.NewGauge(prometheus.GaugeOpts{
+		Name: "nms_lldp_links_found",
+		Help: "Links found by the last LLDP scan (best-effort)",
+	})
+	lldpLinksInsertedGauge = prometheus.NewGauge(prometheus.GaugeOpts{
+		Name: "nms_lldp_links_inserted",
+		Help: "Links inserted into DB by the last LLDP scan",
+	})
+	lldpLinksInsertedTotal = prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "nms_lldp_links_inserted_total",
+		Help: "Total links inserted into DB by worker LLDP scans",
+	})
+)
+
+func init() {
+	prometheus.MustRegister(workerPollDurationSeconds)
+	prometheus.MustRegister(workerPollDevicesTotal)
+	prometheus.MustRegister(lldpScanDurationSeconds)
+	prometheus.MustRegister(lldpLinksFoundGauge)
+	prometheus.MustRegister(lldpLinksInsertedGauge)
+	prometheus.MustRegister(lldpLinksInsertedTotal)
+}
 
 func main() {
 	cfg := config.Load()
@@ -23,6 +68,10 @@ func main() {
 	// ПРОДАКШЕН logger с ротацией
 	logger := setupLogger("nms-worker")
 	defer logger.Sync()
+
+	if err := startMetricsServer(":8081", logger); err != nil {
+		logger.Warn("Metrics server failed to start", zap.Error(err))
+	}
 
 	repo, err := postgres.New(cfg.DB.DSN)
 	if err != nil {
@@ -54,7 +103,15 @@ func main() {
 			logger.Info("=== Polling cycle ===", zap.Int("interval_sec", 60))
 
 			start := time.Now()
-			if err := pollAllDevices(ctx, repo, snmpClient, logger); err != nil {
+			success, failed, err := pollAllDevices(ctx, repo, snmpClient, logger)
+			workerPollDurationSeconds.Observe(time.Since(start).Seconds())
+			if success > 0 {
+				workerPollDevicesTotal.WithLabelValues("active").Add(float64(success))
+			}
+			if failed > 0 {
+				workerPollDevicesTotal.WithLabelValues("failed").Add(float64(failed))
+			}
+			if err != nil {
 				logger.Error("Polling failed", zap.Error(err))
 			}
 
@@ -63,7 +120,14 @@ func main() {
 		case <-lldpTicker.C:
 			logger.Info("=== LLDP topology cycle ===", zap.String("interval", "5m"))
 			start := time.Now()
-			if _, err := lldp.ScanAllDevicesLLDP(ctx, repo, snmpClient, logger, lldp.ScanParams{}); err != nil {
+			summary, err := lldp.ScanAllDevicesLLDP(ctx, repo, snmpClient, logger, lldp.ScanParams{})
+			lldpScanDurationSeconds.Observe(time.Since(start).Seconds())
+			if summary != nil {
+				lldpLinksFoundGauge.Set(float64(summary.LinksFound))
+				lldpLinksInsertedGauge.Set(float64(summary.LinksInserted))
+				lldpLinksInsertedTotal.Add(float64(summary.LinksInserted))
+			}
+			if err != nil {
 				logger.Error("LLDP scan failed", zap.Error(err))
 			}
 			logger.Info("=== LLDP cycle complete ===", zap.Duration("duration", time.Since(start)))
@@ -102,18 +166,36 @@ func setupLogger(serviceName string) *zap.Logger {
 	return logger
 }
 
-func pollAllDevices(ctx context.Context, repo *postgres.Repo, snmpClient *snmp.Client, logger *zap.Logger) error {
+func startMetricsServer(addr string, logger *zap.Logger) error {
+	mux := http.NewServeMux()
+	mux.Handle("/metrics", promhttp.Handler())
+
+	srv := &http.Server{
+		Addr:    addr,
+		Handler: mux,
+	}
+
+	go func() {
+		logger.Info("Worker metrics server started", zap.String("addr", addr))
+		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			logger.Error("Worker metrics server error", zap.Error(err))
+		}
+	}()
+	return nil
+}
+
+func pollAllDevices(ctx context.Context, repo *postgres.Repo, snmpClient *snmp.Client, logger *zap.Logger) (success int, failed int, err error) {
 	select {
 	case <-ctx.Done():
 		logger.Info("Polling cancelled")
-		return ctx.Err()
+		return 0, 0, ctx.Err()
 	default:
 	}
 
 	devices, err := repo.ListDevices()
 	if err != nil {
 		logger.Error("Failed to list devices", zap.Error(err))
-		return err
+		return 0, 0, err
 	}
 
 	baseOids := config.StandardOIDs()
@@ -121,14 +203,15 @@ func pollAllDevices(ctx context.Context, repo *postgres.Repo, snmpClient *snmp.C
 		zap.Int("devices", len(devices)),
 		zap.Int("oids", len(baseOids)))
 
-	failed, success := 0, 0
+	success = 0
+	failed = 0
 
 	for _, device := range devices {
 		select {
 		case <-ctx.Done():
 			logger.Info("Polling interrupted",
 				zap.Int("processed", success+failed))
-			return ctx.Err()
+			return success, failed, ctx.Err()
 		default:
 		}
 
@@ -182,7 +265,7 @@ func pollAllDevices(ctx context.Context, repo *postgres.Repo, snmpClient *snmp.C
 		zap.Int("failed", failed),
 		zap.Int("total", len(devices)))
 
-	return nil
+	return success, failed, nil
 }
 
 func getValue(result map[string]string, oid string) string {
