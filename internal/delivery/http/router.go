@@ -12,6 +12,8 @@ func Router(handlers *Handlers) *chi.Mux {
 	r := chi.NewRouter()
 	// Metrics + logging + panic recovery
 	r.Use(PrometheusMetrics, middleware.Logger, middleware.Recoverer)
+	// Auth (Basic): viewer/admin. If creds are not set -> open access.
+	r.Use(RequireAuth)
 
 	// Static assets served from the container image.
 	r.Handle("/static/*", http.StripPrefix("/static/", http.FileServer(http.Dir("./static"))))
@@ -26,11 +28,11 @@ func Router(handlers *Handlers) *chi.Mux {
 	r.Get("/devices/table", handlers.DevicesTable)
 	r.Get("/devices/page", handlers.DevicesPage)
 	r.Get("/devices/{ip}/metric/{oid}", handlers.GetMetric)
-	r.Post("/devices", handlers.CreateDevice)
-	r.Delete("/devices/{ip}", handlers.DeleteDevice)
-	r.Post("/devices/{ip}/snmp/set", handlers.SetSNMP)
+	r.With(RequireAdmin).Post("/devices", handlers.CreateDevice)
+	r.With(RequireAdmin).Delete("/devices/{ip}", handlers.DeleteDevice)
+	r.With(RequireAdmin).Post("/devices/{ip}/snmp/set", handlers.SetSNMP)
 
-	r.Post("/discovery/scan", handlers.DiscoverScan)
+	r.With(RequireAdmin).Post("/discovery/scan", handlers.DiscoverScan)
 
 	// LLDP topology
 	r.Get("/topology/lldp", handlers.LldpTopologyPage)
@@ -44,7 +46,7 @@ func Router(handlers *Handlers) *chi.Mux {
 		r.Get("/{ip}", handlers.TrapsByDevice)
 	})
 
-	r.Post("/test-alert", handlers.testAlert)
+	r.With(RequireAdmin).Post("/test-alert", handlers.testAlert)
 
 	return r
 }
