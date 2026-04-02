@@ -39,9 +39,10 @@ func (r *Repo) CreateLldpScan() (int64, error) {
 	return id, err
 }
 
-func (r *Repo) InsertLldpLink(scanID int64, link LldpLink) error {
+// InsertLldpLink возвращает число реально вставленных строк (0 если конфликт по UNIQUE).
+func (r *Repo) InsertLldpLink(scanID int64, link LldpLink) (int64, error) {
 	// remote_device_ip может быть NULL — для этого используем *string.
-	_, err := r.db.ExecContext(context.Background(),
+	res, err := r.db.ExecContext(context.Background(),
 		`INSERT INTO lldp_links
 			(scan_id, local_device_ip, local_port_num, local_port_desc,
 			 remote_device_ip, remote_sys_name, remote_sys_desc,
@@ -58,7 +59,14 @@ func (r *Repo) InsertLldpLink(scanID int64, link LldpLink) error {
 		link.RemotePortID,
 		link.RemotePortDesc,
 	)
-	return err
+	if err != nil {
+		return 0, err
+	}
+	affected, err := res.RowsAffected()
+	if err != nil {
+		return 0, err
+	}
+	return affected, nil
 }
 
 func (r *Repo) GetLatestLldpLinks() ([]LldpLinkView, error) {
