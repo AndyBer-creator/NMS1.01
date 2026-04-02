@@ -4,6 +4,7 @@ import (
 	"NMS1/internal/domain"
 	"context"
 	"database/sql"
+	"fmt"
 	"strings"
 	"time"
 
@@ -143,10 +144,11 @@ func (r *Repo) SaveMetric(deviceID int, oid, value string) error {
 }
 
 func (r *Repo) CreateDevice(device *domain.Device) error {
-	snmpVer := device.SNMPVersion
-	if snmpVer == "" {
-		snmpVer = "v2c"
+	snmpVer, err := normalizeSNMPVersion(device.SNMPVersion)
+	if err != nil {
+		return err
 	}
+	device.SNMPVersion = snmpVer
 
 	// Для v3 credentials храним NULL вместо пустых строк.
 	authProto := sql.NullString{Valid: strings.TrimSpace(device.AuthProto) != ""}
@@ -174,6 +176,20 @@ func (r *Repo) CreateDevice(device *domain.Device) error {
 	return r.db.QueryRowContext(context.Background(), query,
 		device.IP, device.Name, device.Community, snmpVer, authProto, authPass, privProto, privPass).
 		Scan(&device.ID, &device.CreatedAt)
+}
+
+// normalizeSNMPVersion приводит значение к допустимым для chk_snmp_version: v1, v2c, v3.
+func normalizeSNMPVersion(v string) (string, error) {
+	switch strings.ToLower(strings.TrimSpace(v)) {
+	case "v1":
+		return "v1", nil
+	case "v3":
+		return "v3", nil
+	case "2c", "v2c", "":
+		return "v2c", nil
+	default:
+		return "", fmt.Errorf("invalid snmp_version %q (allowed: v1, v2c, v3)", v)
+	}
 }
 
 func (r *Repo) UpdateDeviceLastSeen(deviceID int) error {
