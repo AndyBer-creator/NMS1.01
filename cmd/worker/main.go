@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"sync/atomic"
 	"time"
 
 	"NMS1/internal/config"
@@ -51,6 +52,9 @@ var (
 		Name: "nms_lldp_links_inserted_total",
 		Help: "Total links inserted into DB by worker LLDP scans",
 	})
+
+	// LLDP может идти минутами; без этого блокировался главный select и пропускались циклы SNMP-опроса (1 мин).
+	lldpBusy atomic.Bool
 )
 
 func init() {
@@ -118,19 +122,26 @@ func main() {
 			logger.Info("=== Cycle complete ===",
 				zap.Duration("duration", time.Since(start)))
 		case <-lldpTicker.C:
-			logger.Info("=== LLDP topology cycle ===", zap.String("interval", "5m"))
-			start := time.Now()
-			summary, err := lldp.ScanAllDevicesLLDP(ctx, repo, snmpClient, logger, lldp.ScanParams{})
-			lldpScanDurationSeconds.Observe(time.Since(start).Seconds())
-			if summary != nil {
-				lldpLinksFoundGauge.Set(float64(summary.LinksFound))
-				lldpLinksInsertedGauge.Set(float64(summary.LinksInserted))
-				lldpLinksInsertedTotal.Add(float64(summary.LinksInserted))
+			if !lldpBusy.CompareAndSwap(false, true) {
+				logger.Warn("LLDP scan skipped: previous run still in progress")
+			} else {
+				go func() {
+					defer lldpBusy.Store(false)
+					logger.Info("=== LLDP topology cycle ===", zap.String("interval", "5m"))
+					start := time.Now()
+					summary, err := lldp.ScanAllDevicesLLDP(ctx, repo, snmpClient, logger, lldp.ScanParams{})
+					lldpScanDurationSeconds.Observe(time.Since(start).Seconds())
+					if summary != nil {
+						lldpLinksFoundGauge.Set(float64(summary.LinksFound))
+						lldpLinksInsertedGauge.Set(float64(summary.LinksInserted))
+						lldpLinksInsertedTotal.Add(float64(summary.LinksInserted))
+					}
+					if err != nil {
+						logger.Error("LLDP scan failed", zap.Error(err))
+					}
+					logger.Info("=== LLDP cycle complete ===", zap.Duration("duration", time.Since(start)))
+				}()
 			}
-			if err != nil {
-				logger.Error("LLDP scan failed", zap.Error(err))
-			}
-			logger.Info("=== LLDP cycle complete ===", zap.Duration("duration", time.Since(start)))
 		}
 	}
 }
