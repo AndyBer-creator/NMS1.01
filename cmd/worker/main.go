@@ -203,9 +203,6 @@ func pollAllDevices(ctx context.Context, repo *postgres.Repo, snmpClient *snmp.C
 		zap.Int("devices", len(devices)),
 		zap.Int("oids", len(baseOids)))
 
-	success = 0
-	failed = 0
-
 	for _, device := range devices {
 		select {
 		case <-ctx.Done():
