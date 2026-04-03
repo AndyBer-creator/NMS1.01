@@ -49,6 +49,7 @@ type ScanResult struct {
 	CIDR       string      `json:"cidr"`
 	HostCount  int         `json:"host_count"`
 	Found      []FoundHost `json:"found"`
+	Hints      []string    `json:"hints,omitempty"`
 	DurationMs int64       `json:"duration_ms"`
 }
 
@@ -130,10 +131,10 @@ func (s *Scanner) ScanNetwork(ctx context.Context, p ScanParams) (*ScanResult, e
 		zap.Bool("auto_add", p.AutoAdd),
 	)
 
+	found := make([]FoundHost, 0)
 	var (
-		found []FoundHost
-		mu    sync.Mutex
-		wg    sync.WaitGroup
+		mu sync.Mutex
+		wg sync.WaitGroup
 	)
 	sem := make(chan struct{}, workers)
 
@@ -199,12 +200,32 @@ func (s *Scanner) ScanNetwork(ctx context.Context, p ScanParams) (*ScanResult, e
 		zap.Int64("ms", time.Since(start).Milliseconds()),
 	)
 
-	return &ScanResult{
+	res := &ScanResult{
 		CIDR:       p.CIDR,
 		HostCount:  len(ips),
 		Found:      found,
 		DurationMs: time.Since(start).Milliseconds(),
-	}, nil
+	}
+	if len(found) == 0 && len(ips) > 0 {
+		res.Hints = emptyScanHints(p)
+	}
+	return res, nil
+}
+
+func emptyScanHints(p ScanParams) []string {
+	ver := normalizeSNMPVersion(p.SNMPVersion)
+	h := []string{
+		"Проверьте community и snmp_version: по умолчанию v2c и community \"public\"; при другом community или только SNMPv3 укажите их в теле запроса.",
+		"Если NMS (api) запущен в Docker, контейнер должен иметь сетевой доступ к этой подсети (часто нужен host network, macvlan или маршрут; иначе UDP/SNMP до коммутаторов не доходит).",
+		"Убедитесь, что на коммутаторах и на пути к ним не блокируется UDP/161 к SNMP-агенту от IP хоста NMS.",
+	}
+	if p.TCPPrefilter {
+		h = append(h, "tcp_prefilter включён: устройства без открытых TCP-портов (80/443/22/21/161) не проверяются по SNMP — отключите tcp_prefilter для «чистого» SNMP.")
+	}
+	if ver == "v2c" {
+		h = append(h, "Если коммутаторы только SNMPv3, запросите snmp_version \"v3\" и заполните auth_proto/auth_pass (и priv при необходимости).")
+	}
+	return h
 }
 
 // ScanError — ошибка валидации параметров сканирования (4xx).
