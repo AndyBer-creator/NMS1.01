@@ -22,8 +22,8 @@ func main() {
 
 	logger.Info("🚀 SNMP Trap Receiver v1 started")
 
-	// UDP :1162 (стандартный SNMP trap порт)
-	addr, err := net.ResolveUDPAddr("udp", ":1162")
+	// UDP 162 — стандартный порт SNMP traps (должен совпадать с портом в docker-compose 162:162/udp)
+	addr, err := net.ResolveUDPAddr("udp", ":162")
 	if err != nil {
 		logger.Fatal("Resolve UDP failed", zap.Error(err))
 	}
@@ -34,7 +34,7 @@ func main() {
 	}
 	defer conn.Close()
 
-	logger.Info("Listening SNMP traps", zap.String("addr", "0.0.0.0:1162"))
+	logger.Info("Listening SNMP traps", zap.String("addr", "0.0.0.0:162"))
 
 	buf := make([]byte, 65535)
 	for {
