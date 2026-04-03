@@ -1,7 +1,10 @@
-# По умолчанию api и worker в network_mode: host — весь стек в Docker, SNMP/UDP до LAN как с хоста
-# (Linux, Docker в WSL2). DB_DSN в .env: host=127.0.0.1 (postgres публикует 5432 на хост).
-# Docker Desktop для Windows часто не поддерживает host-сеть: тогда docker compose -f docker-compose.bridge.yml up -d
-# и DB_DSN с host=postgres; см. README.
+# Полный стек в bridge-сети (как раньше). Используйте, если основной docker-compose.yml
+# с network_mode: host для api/worker не поднимается (часто Docker Desktop для Windows).
+# Запуск: docker compose -f docker-compose.bridge.yml up -d
+# Для SNMP до LAN в этом режиме на Windows включите в Docker Desktop mirrored networking
+# (Settings → Resources → Network) и задайте DB_DSN с host=postgres как в .env.example.
+#
+# Сеть по умолчанию: bridge (nms-network). Контейнеры получают отдельную подсеть Docker и NAT.
 services:
   traefik:
     image: traefik:v3.0
@@ -84,9 +87,12 @@ services:
   api:
     build: .
     container_name: nms1-api-1
-    network_mode: host
+    expose:
+      - "8080"
+    ports:
+     - "8080:8080"
     environment:
-      DB_DSN: "host=127.0.0.1 port=5432 user=nms-user password=${POSTGRES_PASSWORD} dbname=NMS sslmode=disable"
+      DB_DSN: "${DB_DSN}"
       TELEGRAM_TOKEN: "${TELEGRAM_TOKEN}"
       TELEGRAM_CHAT_ID: "${TELEGRAM_CHAT_ID}"
     volumes:
@@ -97,6 +103,13 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.nms.rule=Host(`nms.test.com`)"
+      - "traefik.http.routers.nms.entrypoints=websecure"
+      - "traefik.http.routers.nms.tls=true"
+      - "traefik.http.routers.nms.tls.certresolver=le"
+      - "traefik.http.services.nms.loadbalancer.server.port=8080"
     healthcheck:
       disable: true
     deploy:
@@ -105,6 +118,8 @@ services:
           memory: 256M
         reservations:
           memory: 128M
+    networks:
+      - nms-network
     restart: unless-stopped
 
   prometheus:
@@ -115,7 +130,7 @@ services:
     expose:
       - "9090"
     volumes:
-      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+      - ./prometheus.bridge.yml:/etc/prometheus/prometheus.yml
       - prometheus_data:/prometheus
     command:
       - '--config.file=/etc/prometheus/prometheus.yml'
@@ -158,13 +173,13 @@ services:
       - nms-network
     restart: unless-stopped
 
-  
   worker:
     build: .
     container_name: nms1-worker-1
-    network_mode: host
+    expose:
+      - "8081"
     environment:
-      DB_DSN: "host=127.0.0.1 port=5432 user=nms-user password=${POSTGRES_PASSWORD} dbname=NMS sslmode=disable"
+      DB_DSN: ${DB_DSN}
     volumes:
       - ./logs:/app/logs:delegated
       - ./config.yaml:/app/config.yaml
@@ -181,10 +196,12 @@ services:
           memory: 128M
         reservations:
           memory: 64M
+    networks:
+      - nms-network
     restart: unless-stopped
 
   trap-receiver:
-    build: 
+    build:
       context: .
       dockerfile: cmd/trap-receiver/Dockerfile
     container_name: nms1-trap-receiver
