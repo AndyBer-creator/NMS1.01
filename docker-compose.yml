@@ -1,3 +1,7 @@
+# Сеть по умолчанию: bridge (nms-network). Контейнеры получают отдельную подсеть Docker и NAT.
+# SNMP/UDP до устройств в вашей LAN (например 192.168.0.100) из контейнера часто НЕ работает так же,
+# как с хоста — особенно на Docker Desktop для Windows. Worker (опрос) и api (discovery) тогда
+# показывают failed / пустой поиск. Варианты: см. README «Docker и SNMP (LAN)» и docker-compose.snmp.yml.
 services:
   traefik:
     image: traefik:v3.0
@@ -84,6 +88,7 @@ services:
       - "8080"
     ports:
      - "8080:8080" 
+    # Для доступа SNMP к LAN на Linux см. docker-compose.snmp.yml (network_mode: host + DB_DSN на localhost).
     environment:
       DB_DSN: "${DB_DSN}"
       TELEGRAM_TOKEN: "${TELEGRAM_TOKEN}"
@@ -118,6 +123,8 @@ services:
   prometheus:
     image: prom/prometheus:latest
     container_name: nms-prometheus
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     expose:
       - "9090"
     volumes:
@@ -170,6 +177,7 @@ services:
     container_name: nms1-worker-1
     expose:
       - "8081"
+    # Метрики :8081; при network_mode: host см. prometheus.yml (job nms-worker).
     environment:
       DB_DSN: ${DB_DSN}
     volumes:

@@ -1,0 +1,26 @@
+# Дополнение к docker-compose.yml: api и worker в сетевом namespace хоста (Linux).
+# Тогда UDP/SNMP до устройств в вашей LAN (например 192.168.0.100) ведёт себя как с машины-хоста.
+#
+# Запуск:
+#   docker compose -f docker-compose.yml -f docker-compose.snmp.yml up -d
+#
+# В .env задайте подключение к Postgres через порт хоста (сервис postgres публикует 5432:5432):
+#   DB_DSN=host=127.0.0.1 port=5432 user=nms-user password=ВАШ_ПАРОЛЬ dbname=NMS sslmode=disable
+#
+# Prometheus: при таком режиме worker и api слушают порты на хосте — в prometheus.yml для job
+# nms-api и nms-worker укажите targets host.docker.internal:8080 и host.docker.internal:8081
+# (на Linux у контейнера prometheus уже есть extra_hosts host.docker.internal в docker-compose.yml).
+#
+# Docker Desktop для Windows: network_mode: host обычно не поддерживается. Запускайте на хосте:
+#   go run ./cmd/server   и   go run ./cmd/worker
+# с DB_DSN=host=localhost port=5432 ...
+services:
+  api:
+    network_mode: host
+    networks: []
+    ports: []
+    labels: []
+  worker:
+    network_mode: host
+    networks: []
+    expose: []
