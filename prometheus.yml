@@ -4,6 +4,8 @@ scrape_configs:
   - job_name: 'prometheus'
     static_configs:
       - targets: ['localhost:9090']
+  # По умолчанию api/worker в bridge-сети Docker. Если используете docker-compose.snmp.yml
+  # (network_mode: host), замените targets на host.docker.internal:8080 и :8081.
   - job_name: 'nms-api'
     static_configs:
       - targets: ['api:8080']
