@@ -34,6 +34,12 @@ func Router(handlers *Handlers) *chi.Mux {
 
 	r.With(RequireAdmin).Post("/discovery/scan", handlers.DiscoverScan)
 
+	// MIB: панель доступна всем с ролью (viewer видит сообщение), загрузка/удаление — только admin
+	r.Get("/mibs/panel", handlers.MibPanel)
+	r.Post("/mibs/resolve", handlers.MibResolve)
+	r.With(RequireAdmin).Post("/mibs/upload", handlers.MibUpload)
+	r.With(RequireAdmin).Post("/mibs/delete", handlers.MibDelete)
+
 	// LLDP topology
 	r.Get("/topology/lldp", handlers.LldpTopologyPage)
 	r.Get("/topology/lldp/data", handlers.LldpTopologyData)

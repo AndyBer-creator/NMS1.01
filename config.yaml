@@ -8,3 +8,8 @@ snmp:
   port: 161
   timeout: 10
   retries: 5
+
+# Каталог загрузки MIB через веб (можно переопределить MIB_UPLOAD_DIR).
+paths:
+  mib_upload_dir: "./mibs/uploads"
+  mib_search_dirs: []

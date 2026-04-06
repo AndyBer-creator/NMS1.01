@@ -142,6 +142,15 @@
                 })();
             </script>
         </div>
+
+        <!-- MIB: загрузка файлов (admin) -->
+        <div class="bg-gradient-to-br from-violet-950/50 to-purple-950/40 border border-violet-500/40 p-6 rounded-xl shadow-2xl col-span-1 lg:col-span-2">
+            <h2 class="text-2xl font-semibold mb-4 flex items-center">
+                <span class="w-3 h-3 bg-violet-400 rounded-full mr-3 animate-pulse"></span>
+                📚 MIB-файлы
+            </h2>
+            <div id="mibs-panel-wrap" hx-get="/mibs/panel" hx-trigger="load" hx-swap="innerHTML"></div>
+        </div>
         
         <!-- 🔥 ФОРМА ДОБАВЛЕНИЯ УСТРОЙСТВ -->
         <div class="bg-gradient-to-br from-green-900/70 to-emerald-900/50 border-2 border-green-500/50 p-6 rounded-xl shadow-2xl">
