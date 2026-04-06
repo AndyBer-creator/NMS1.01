@@ -15,6 +15,7 @@ import (
 	"NMS1/internal/domain"
 	"NMS1/internal/infrastructure/postgres"
 	"NMS1/internal/infrastructure/snmp"
+	"NMS1/internal/mibresolver"
 	"NMS1/internal/repository"
 	"NMS1/internal/usecases/discovery"
 
@@ -50,23 +51,39 @@ type Handlers struct {
 	TrapsRepo        *repository.TrapsRepo
 	logger           *zap.Logger
 	devicesTmpl      *template.Template // devicesTable + devicesPage
+	mibPanelTmpl     *template.Template
+	mibUploadDir     string
+	mib              *mibresolver.Resolver
 }
 
-func NewHandlers(repo *postgres.Repo, snmpClient *snmp.Client, scanner *discovery.Scanner, trapsRepo *repository.TrapsRepo, logger *zap.Logger) *Handlers {
+func NewHandlers(repo *postgres.Repo, snmpClient *snmp.Client, scanner *discovery.Scanner, trapsRepo *repository.TrapsRepo, logger *zap.Logger, mibUploadDir string, mib *mibresolver.Resolver) *Handlers {
 	devicesTmpl := template.Must(template.ParseFiles(
 		"templates/devices_table.html",
 		"templates/devices_page.html",
 	))
+	mibPanelTmpl := template.Must(template.ParseFiles("templates/mibs_panel.html"))
 
 	h := &Handlers{
-		repo:        repo,
-		snmp:        snmpClient,
-		scanner:     scanner,
-		TrapsRepo:   trapsRepo,
-		logger:      logger,
-		devicesTmpl: devicesTmpl,
+		repo:         repo,
+		snmp:         snmpClient,
+		scanner:      scanner,
+		TrapsRepo:    trapsRepo,
+		logger:       logger,
+		devicesTmpl:  devicesTmpl,
+		mibPanelTmpl: mibPanelTmpl,
+		mibUploadDir: mibUploadDir,
+		mib:          mib,
 	}
 	return h
+}
+
+// resolveOIDInput: числовой OID как есть; иначе snmptranslate (net-snmp-tools, MIBDIRS из конфига).
+func (h *Handlers) resolveOIDInput(raw string) (string, error) {
+	s := strings.TrimSpace(raw)
+	if s == "" {
+		return "", fmt.Errorf("пустой OID")
+	}
+	return h.mib.ResolveToNumeric(s)
 }
 
 func init() {
@@ -203,6 +220,12 @@ func (h *Handlers) GetMetric(w http.ResponseWriter, r *http.Request) {
 	ip := chi.URLParam(r, "ip")
 	oid := chi.URLParam(r, "oid")
 
+	numericOID, err := h.resolveOIDInput(oid)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
 	device, err := h.repo.GetDeviceByIP(ip)
 	if err != nil {
 		h.logger.Error("GetDeviceByIP failed", zap.String("ip", ip), zap.Error(err))
@@ -211,7 +234,7 @@ func (h *Handlers) GetMetric(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if device == nil {
-		if demo := h.demoData(ip, oid); demo != nil {
+		if demo := h.demoData(ip, numericOID); demo != nil {
 			w.Header().Set("Content-Type", "application/json")
 			json.NewEncoder(w).Encode(demo)
 			return
@@ -220,16 +243,21 @@ func (h *Handlers) GetMetric(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	result, err := h.snmp.GetDevice(device, []string{oid})
+	result, err := h.snmp.GetDevice(device, []string{numericOID})
 	if err != nil {
-		h.logger.Error("SNMP Get failed", zap.String("ip", ip), zap.String("oid", oid), zap.Error(err))
+		h.logger.Error("SNMP Get failed", zap.String("ip", ip), zap.String("oid", numericOID), zap.Error(err))
 		http.Error(w, "SNMP failed: "+err.Error(), http.StatusServiceUnavailable)
 		return
 	}
 
-	h.repo.SaveMetric(device.ID, oid, result[oid])
+	val := mibresolver.PickSNMPValue(result, numericOID)
+	if err := h.repo.SaveMetric(device.ID, numericOID, val); err != nil {
+		h.logger.Warn("SaveMetric", zap.Error(err))
+	}
+
+	out := map[string]string{numericOID: val}
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(result)
+	json.NewEncoder(w).Encode(out)
 }
 
 // ✅ POST /devices/{ip}/snmp/set → SNMP SET (v2c/v3) для одного OID
@@ -254,6 +282,12 @@ func (h *Handlers) SetSNMP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	numericOID, err := h.resolveOIDInput(input.OID)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
 	pduType, value, err := parseSNMPSetRequest(input.Type, input.Value)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
@@ -271,8 +305,8 @@ func (h *Handlers) SetSNMP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.snmp.SetDevice(device, input.OID, pduType, value); err != nil {
-		h.logger.Error("SNMP SET failed", zap.String("ip", ip), zap.String("oid", input.OID), zap.String("type", input.Type), zap.Error(err))
+	if err := h.snmp.SetDevice(device, numericOID, pduType, value); err != nil {
+		h.logger.Error("SNMP SET failed", zap.String("ip", ip), zap.String("oid", numericOID), zap.String("type", input.Type), zap.Error(err))
 		http.Error(w, "SNMP SET failed: "+err.Error(), http.StatusServiceUnavailable)
 		return
 	}
@@ -281,7 +315,7 @@ func (h *Handlers) SetSNMP(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]string{
 		"status": "ok",
 		"ip":     ip,
-		"oid":    input.OID,
+		"oid":    numericOID,
 	})
 }
 

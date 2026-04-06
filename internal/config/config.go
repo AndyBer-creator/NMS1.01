@@ -2,6 +2,8 @@ package config
 
 import (
 	"os"
+	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/spf13/viper"
@@ -17,6 +19,13 @@ type Config struct {
 		Timeout int    `mapstructure:"timeout"` // секунды
 		Retries int    `mapstructure:"retries"`
 	} `mapstructure:"snmp"`
+
+	Paths struct {
+		// Каталог для MIB, загружаемых через веб (файлы на диске; NMS по-прежнему оперирует числовыми OID).
+		MibUploadDir string `mapstructure:"mib_upload_dir"`
+		// Дополнительные каталоги для snmptranslate (если пусто — добавляются ../public и ../vendor относительно uploads).
+		MibSearchDirs []string `mapstructure:"mib_search_dirs"`
+	} `mapstructure:"paths"`
 
 	DB struct {
 		DSN string `mapstructure:"dsn"`
@@ -53,7 +62,52 @@ func Load() *Config {
 	if cfg.SNMP.Retries == 0 {
 		cfg.SNMP.Retries = 5
 	}
+	if cfg.Paths.MibUploadDir == "" {
+		if os.Getenv("NMS_ENV") == "docker" {
+			cfg.Paths.MibUploadDir = "/app/mibs/uploads"
+		} else {
+			cfg.Paths.MibUploadDir = filepath.Join("mibs", "uploads")
+		}
+	}
+	if v := os.Getenv("MIB_UPLOAD_DIR"); v != "" {
+		cfg.Paths.MibUploadDir = v
+	}
 	return &cfg
+}
+
+// MIBSearchDirs — каталоги для MIBDIRS (snmptranslate): uploads, опционально из конфига, иначе public/vendor рядом с mibs/.
+func MIBSearchDirs(cfg *Config) []string {
+	var dirs []string
+	if cfg.Paths.MibUploadDir != "" {
+		dirs = append(dirs, filepath.Clean(cfg.Paths.MibUploadDir))
+	}
+	for _, d := range cfg.Paths.MibSearchDirs {
+		d = strings.TrimSpace(d)
+		if d != "" {
+			dirs = append(dirs, filepath.Clean(d))
+		}
+	}
+	if len(cfg.Paths.MibSearchDirs) > 0 {
+		return dedupeDirList(dirs)
+	}
+	base := filepath.Dir(cfg.Paths.MibUploadDir)
+	for _, sub := range []string{"public", "vendor"} {
+		dirs = append(dirs, filepath.Join(base, sub))
+	}
+	return dedupeDirList(dirs)
+}
+
+func dedupeDirList(dirs []string) []string {
+	seen := make(map[string]bool)
+	var out []string
+	for _, d := range dirs {
+		if d == "" || seen[d] {
+			continue
+		}
+		seen[d] = true
+		out = append(out, d)
+	}
+	return out
 }
 
 // ✅ НОВЫЙ МЕТОД для SNMP Worker

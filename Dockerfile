@@ -16,7 +16,7 @@ RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /app/nms-worker ./cmd/
 RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /app/trap-receiver ./cmd/trap-receiver
 
 FROM alpine:latest
-RUN apk --no-cache add tzdata ca-certificates && \
+RUN apk --no-cache add tzdata ca-certificates net-snmp-tools && \
     mkdir -p /app/logs /app/static /app/templates /app/mibs && \
     chmod 755 /app/logs /app/static /app/templates /app/mibs
 

@@ -2,6 +2,18 @@
 
 Эта папка предназначена для **public** и **vendor-private** MIB’ов и связанных mapping-файлов, чтобы UI мог предлагать “готовые операции” (port up/down, description, VLAN, PoE и т.д.) без ручного ввода OID.
 
+Файлы, загруженные через веб-дашборд (роль admin), сохраняются в **`mibs/uploads/`** (в контейнере: `/app/mibs/uploads`). Переменная окружения **`MIB_UPLOAD_DIR`** переопределяет каталог.
+
+### Использование в работе NMS
+
+Сервис **api** вызывает **`snmptranslate`** (пакет **net-snmp-tools** в Docker-образе) с **`MIBDIRS`** из каталогов: uploads, `mibs/public`, `mibs/vendor` (и при наличии — системные `/usr/share/snmp/mibs`). Таким образом в запросах можно указывать **символьные OID** (например `IF-MIB::sysDescr.0`), они переводятся в числовые перед SNMP GET/SET.
+
+- **`POST /mibs/resolve`** — JSON `{"symbol":"MY-MIB::myNode.0"}` → `{"oid":"1.3.6....","symbol":"..."}`.
+- **`GET /devices/{ip}/metric/{oid}`** — в `{oid}` допускается числовой OID или символьное имя (в URL нужно кодировать спецсимволы, например `::`).
+- **`POST /devices/{ip}/snmp/set`** — поле `oid` в JSON может быть символьным или числовым.
+
+Периодический опрос **worker** по-прежнему использует **числовые OID** из `internal/config/oids.go`.
+
 ### Структура (рекомендуемая)
 
 - `mibs/public/` — стандартные MIB’ы (IF-MIB, SNMPv2-MIB, ...), опционально

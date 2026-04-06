@@ -98,7 +98,7 @@ services:
     volumes:
       - ./logs:/app/logs:delegated
       - ./config.yaml:/app/config.yaml
-      - ./mibs:/app/mibs:ro
+      - ./mibs:/app/mibs
     command: ["./nms-api"]
     depends_on:
       postgres:

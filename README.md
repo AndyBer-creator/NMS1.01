@@ -179,40 +179,17 @@ docker compose -f docker-compose.bridge.yml up -d
 1. **Проверка с хоста:** `snmpget -v2c -c … 192.168.0.100 1.3.6.1.2.1.1.1.0`.
 2. **Если с хоста OK, а из NMS нет** — сравните режим compose (host vs bridge) и настройки Docker Desktop выше.
 
-## Private MIBs (как добавить свои `.mib` файлы)
+## Private MIBs (`.mib` файлы)
 
-Важно: текущий проект работает с **числовыми OID**. Private MIBs в основном нужны, чтобы:
-- именами OID пользоваться “человечески” при настройке устройств;
-- конвертировать `MY-MIB::myOid` в числовой `1.3.6...` до отправки в NMS (например, через `snmptranslate`/`snmpwalk` на вашей машине/в контейнере с SNMP утилитами).
+**API** переводит символьные имена в числовые OID через **`snmptranslate`** (в Docker-образе установлен **net-snmp-tools**). Каталоги поиска задаются в **`config.yaml`** (`paths.mib_upload_dir`, опционально `paths.mib_search_dirs`) и по умолчанию включают `mibs/uploads`, `mibs/public`, `mibs/vendor` (плюс системные MIB при наличии в образе).
 
-Ниже варианты, которые обычно используют.
+- Загрузка файлов через дашборд (блок «MIB-файлы», роль admin) → `mibs/uploads/`.
+- **`POST /mibs/resolve`** — тело JSON `{"symbol":"IF-MIB::sysDescr.0"}` → ответ с полем `oid`.
+- **`GET /devices/{ip}/metric/{oid}`** и **`POST /devices/{ip}/snmp/set`** принимают в `oid` **числовой OID** или **символьное имя** (в URL для GET символы вроде `::` нужно кодировать).
 
-### Способ 1: монтировать MIB-ы в контейнер и держать `MIBDIRS`
+Периодический опрос **worker** использует только **числовые OID** из `internal/config/oids.go` (без MIB-парсера на лету).
 
-1) Разместите свои файлы в папке, например: `./mibs/private/`
-2) Смонтируйте в контейнер путь, где ожидают mibs (примерно `/usr/share/snmp/mibs`) и задайте `MIBDIRS`.
-
-Пример для `docker-compose.yml` (кусок):
-
-```yaml
-services:
-  api:
-    volumes:
-      - ./mibs/private:/usr/share/snmp/mibs:ro
-    environment:
-      - MIBDIRS=/usr/share/snmp/mibs
-```
-
-### Способ 2: использовать SNMP-утилиты на хосте
-
-Если вы используете `snmptranslate/snmpwalk` на хосте, просто укажите `MIBDIRS`/`MIBS` в shell окружении:
-
-```bash
-export MIBDIRS=./mibs/private
-# иногда требуется: export MIBS=+ALL
-```
-
-После чего конвертируйте именованные OID в числовые и отправляйте в NMS.
+Локально без Docker: установите **net-snmp** (чтобы в `PATH` был `snmptranslate`) или ограничьтесь числовыми OID.
 
 ## Локальная разработка
 

@@ -5,11 +5,13 @@ import (
 	h "NMS1/internal/delivery/http" // АЛИАС 'h' для  пакета!
 	"NMS1/internal/infrastructure/postgres"
 	"NMS1/internal/infrastructure/snmp"
+	"NMS1/internal/mibresolver"
 	"NMS1/internal/repository"
 	"NMS1/internal/usecases/discovery"
 	"context"
 	"database/sql"
 	"net/http" // стандартная библиотека
+	"os"
 	"os/signal"
 	"syscall"
 	"time"
@@ -41,8 +43,12 @@ func main() {
 
 	trapsRepo := repository.NewTrapsRepo(db)
 	logger.Info("TrapsRepo initialized")
+	if err := os.MkdirAll(cfg.Paths.MibUploadDir, 0755); err != nil {
+		logger.Fatal("MIB upload dir", zap.String("path", cfg.Paths.MibUploadDir), zap.Error(err))
+	}
 	scanner := discovery.NewScanner(snmpClient, repo, logger)
-	handlers := h.NewHandlers(repo, snmpClient, scanner, trapsRepo, logger)
+	mib := mibresolver.New(config.MIBSearchDirs(cfg), logger)
+	handlers := h.NewHandlers(repo, snmpClient, scanner, trapsRepo, logger, cfg.Paths.MibUploadDir, mib)
 	router := h.Router(handlers)
 
 	srv := &http.Server{Addr: cfg.HTTP.Addr, Handler: router}
