@@ -12,6 +12,7 @@ import (
 	"NMS1/internal/domain"
 	"NMS1/internal/infrastructure/postgres"
 	"NMS1/internal/infrastructure/snmp"
+	"NMS1/internal/mibresolver"
 
 	"go.uber.org/zap"
 )
@@ -169,7 +170,8 @@ func (s *Scanner) ScanNetwork(ctx context.Context, p ScanParams) (*ScanResult, e
 			if err != nil || len(result) == 0 {
 				return
 			}
-			desc := strings.TrimSpace(result[sysDescrOID])
+			// gosnmp может вернуть OID-ключ с ведущей точкой. Берем значение устойчиво.
+			desc := strings.TrimSpace(mibresolver.PickSNMPValue(result, sysDescrOID))
 			if desc == "" {
 				return
 			}
