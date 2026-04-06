@@ -1,0 +1,30 @@
+<div id="mibs-panel-root" class="rounded-lg border border-violet-500/30 bg-violet-950/30 p-4 text-sm">
+    {{if .Error}}
+    <p class="mb-2 text-red-400">{{.Error}}</p>
+    {{end}}
+    {{if .OK}}
+    <p class="mb-2 text-green-400">{{.OK}}</p>
+    {{end}}
+    <p class="text-gray-400 mb-3">Файлы сохраняются в <code class="text-violet-200">{{.Dir}}</code> (в Docker монтируется <code class="text-violet-200">./mibs</code>).</p>
+    <form hx-post="/mibs/upload" hx-encoding="multipart/form-data" hx-target="#mibs-panel-root" hx-swap="outerHTML" class="flex flex-wrap gap-3 items-end mb-4">
+        <label class="block min-w-[200px]">
+            <span class="text-gray-400 text-xs">MIB-файл (.mib, .my, .txt)</span>
+            <input type="file" name="file" accept=".mib,.my,.txt,application/octet-stream" required class="block mt-1 w-full text-gray-200 text-xs"/>
+        </label>
+        <button type="submit" class="px-4 py-2 bg-violet-600 hover:bg-violet-500 rounded-lg font-medium">Загрузить</button>
+    </form>
+    <p class="text-xs text-gray-500 mb-2">API переводит символьные имена в числовые OID через <code>snmptranslate</code> (в образе — net-snmp-tools; каталоги из <code>paths</code> в config.yaml). Используйте в SNMP GET/SET и в <code>POST /mibs/resolve</code> тело <code>{"symbol":"IF-MIB::sysDescr.0"}</code>.</p>
+    <ul class="space-y-1 max-h-48 overflow-y-auto">
+        {{range .Files}}
+        <li class="flex justify-between items-center gap-2 bg-black/20 rounded px-2 py-1">
+            <span><code class="text-violet-200">{{.Name}}</code> <span class="text-gray-500">{{.SizeHuman}}</span></span>
+            <form hx-post="/mibs/delete" hx-target="#mibs-panel-root" hx-swap="outerHTML" class="inline">
+                <input type="hidden" name="name" value="{{.Name}}"/>
+                <button type="submit" class="text-xs text-red-400 hover:text-red-300">Удалить</button>
+            </form>
+        </li>
+        {{else}}
+        <li class="text-gray-500">Нет загруженных MIB</li>
+        {{end}}
+    </ul>
+</div>
