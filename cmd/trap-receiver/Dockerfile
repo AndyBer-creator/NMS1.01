@@ -7,6 +7,7 @@ RUN go mod download
 # ✅ Копируем код trap-receiver
 COPY cmd/trap-receiver/ ./cmd/trap-receiver/
 COPY cmd/**/*.go ./cmd/
+COPY internal/ ./internal/
 
 # Строим из cmd/trap-receiver
 WORKDIR /src/cmd/trap-receiver

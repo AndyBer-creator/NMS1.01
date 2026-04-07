@@ -4,6 +4,7 @@ import (
 	"NMS1/internal/domain"
 	"context"
 	"database/sql"
+	"encoding/json"
 )
 
 type TrapsRepo struct {
@@ -62,4 +63,22 @@ func (r *TrapsRepo) ByDevice(ctx context.Context, ip string, limit int) ([]domai
 		traps = append(traps, t)
 	}
 	return traps, nil
+}
+
+func (r *TrapsRepo) Insert(ctx context.Context, deviceIP, oid string, uptime int64, trapVars map[string]string, isCritical bool) error {
+	if oid == "" {
+		oid = "unknown"
+	}
+	varsJSON, err := json.Marshal(trapVars)
+	if err != nil {
+		return err
+	}
+
+	_, err = r.db.ExecContext(
+		ctx,
+		`INSERT INTO traps (device_ip, oid, uptime, trap_vars, is_critical)
+         VALUES ($1, $2, $3, $4::jsonb, $5)`,
+		deviceIP, oid, uptime, varsJSON, isCritical,
+	)
+	return err
 }
