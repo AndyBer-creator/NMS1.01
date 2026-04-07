@@ -27,7 +27,7 @@ func (r *TrapsRepo) List(ctx context.Context, limit int) ([]domain.Trap, error) 
 	}
 	defer rows.Close()
 
-	var traps []domain.Trap
+	traps := make([]domain.Trap, 0)
 	for rows.Next() {
 		var t domain.Trap
 		err := rows.Scan(&t.ID, &t.DeviceIP, &t.OID, &t.Uptime, &t.TrapVars, &t.ReceivedAt)
@@ -53,7 +53,7 @@ func (r *TrapsRepo) ByDevice(ctx context.Context, ip string, limit int) ([]domai
 	}
 	defer rows.Close()
 
-	var traps []domain.Trap
+	traps := make([]domain.Trap, 0)
 	for rows.Next() {
 		var t domain.Trap // ✅ ОДИНОЧНЫЙ Trap, НЕ слайс!
 		err := rows.Scan(&t.ID, &t.DeviceIP, &t.OID, &t.Uptime, &t.TrapVars, &t.ReceivedAt)
