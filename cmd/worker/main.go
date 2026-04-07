@@ -239,7 +239,7 @@ func pollAllDevices(ctx context.Context, repo *postgres.Repo, snmpClient *snmp.C
 				zap.String("version", device.SNMPVersion),
 				zap.Error(err))
 
-			repo.UpdateDeviceStatus(device.ID, "failed")
+			_ = repo.UpdateDeviceError(device.ID, "failed", err.Error())
 			failed++
 			continue
 		}
@@ -256,8 +256,7 @@ func pollAllDevices(ctx context.Context, repo *postgres.Repo, snmpClient *snmp.C
 			}
 		}
 
-		repo.UpdateDeviceLastSeen(device.ID)
-		repo.UpdateDeviceStatus(device.ID, "active")
+		_ = repo.MarkDevicePollSuccess(device.ID)
 		success++
 
 		sysDescr := getValue(result, "1.3.6.1.2.1.1.1.0")

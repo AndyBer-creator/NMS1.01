@@ -18,6 +18,16 @@ type Repo struct {
 	logger *zap.Logger
 }
 
+type SNMPSetAuditRecord struct {
+	UserName string
+	DeviceID sql.NullInt64
+	OID      string
+	OldValue string
+	NewValue string
+	Result   string
+	Error    string
+}
+
 func New(dsn string) (*Repo, error) {
 	db, err := sql.Open("pgx", dsn)
 	if err != nil {
@@ -199,5 +209,57 @@ func (r *Repo) UpdateDeviceLastSeen(deviceID int) error {
 
 func (r *Repo) UpdateDeviceStatus(deviceID int, status string) error {
 	_, err := r.db.Exec("UPDATE devices SET status = $1, last_seen = NOW() WHERE id = $2", status, deviceID)
+	return err
+}
+
+func (r *Repo) MarkDevicePollSuccess(deviceID int) error {
+	_, err := r.db.Exec(
+		`UPDATE devices
+         SET status = 'active',
+             last_seen = NOW(),
+             last_poll_ok_at = NOW(),
+             last_error = NULL,
+             last_error_at = NULL
+         WHERE id = $1`,
+		deviceID,
+	)
+	return err
+}
+
+func (r *Repo) UpdateDeviceError(deviceID int, status, errText string) error {
+	if strings.TrimSpace(status) == "" {
+		status = "failed"
+	}
+	_, err := r.db.Exec(
+		`UPDATE devices
+         SET status = $1,
+             last_seen = NOW(),
+             last_error = $2,
+             last_error_at = NOW()
+         WHERE id = $3`,
+		status, strings.TrimSpace(errText), deviceID,
+	)
+	return err
+}
+
+func (r *Repo) InsertSNMPSetAudit(a SNMPSetAuditRecord) error {
+	if strings.TrimSpace(a.OID) == "" {
+		return fmt.Errorf("snmp set audit: oid is required")
+	}
+	if strings.TrimSpace(a.Result) == "" {
+		a.Result = "unknown"
+	}
+	_, err := r.db.ExecContext(
+		context.Background(),
+		`INSERT INTO snmp_set_audit (user_name, device_id, oid, old_value, new_value, result, error)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+		strings.TrimSpace(a.UserName),
+		a.DeviceID,
+		strings.TrimSpace(a.OID),
+		a.OldValue,
+		a.NewValue,
+		strings.TrimSpace(a.Result),
+		strings.TrimSpace(a.Error),
+	)
 	return err
 }
