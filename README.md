@@ -197,6 +197,9 @@ docker compose -f docker-compose.bridge.yml up -d
 # БД (например только Postgres)
 docker compose up -d postgres
 
+# Локальное время в логах и UI (опционально)
+export TZ=Europe/Moscow
+
 export DB_DSN="host=localhost port=5432 user=nms-user password=YOUR_PASS dbname=NMS sslmode=disable"
 go run ./cmd/migration
 go run ./cmd/server    # API на :8080

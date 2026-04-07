@@ -2,6 +2,7 @@ package main
 
 import (
 	"NMS1/internal/repository"
+	"NMS1/internal/timezone"
 	"context"
 	"database/sql"
 	"encoding/json"
@@ -21,6 +22,7 @@ import (
 )
 
 func main() {
+	timezone.InitFromEnv()
 	// ✅ ТОТ ЖЕ logger что в worker!
 	logger := setupLogger("nms-trap-receiver")
 	defer logger.Sync()
