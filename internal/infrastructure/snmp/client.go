@@ -26,6 +26,22 @@ func New(port int, timeout time.Duration, retries int) *Client {
 	}
 }
 
+// pduValueString превращает значение PDU в строку для UI/API.
+// OCTET STRING приходит как []byte; fmt.Sprintf("%v", []byte) даёт "[83 121 ...]" вместо текста.
+func pduValueString(v interface{}) string {
+	if v == nil {
+		return ""
+	}
+	switch x := v.(type) {
+	case []byte:
+		return strings.TrimRight(string(x), "\x00")
+	case string:
+		return x
+	default:
+		return fmt.Sprintf("%v", x)
+	}
+}
+
 func (c *Client) Get(ip string, community string, oids []string) (map[string]string, error) {
 	return c.getV2c(ip, community, oids)
 }
@@ -97,7 +113,7 @@ func (c *Client) getV2c(ip string, community string, oids []string) (map[string]
 
 	result := make(map[string]string)
 	for _, v := range pdu.Variables {
-		result[v.Name] = fmt.Sprintf("%v", v.Value)
+		result[v.Name] = pduValueString(v.Value)
 	}
 	return result, nil
 }
@@ -127,7 +143,7 @@ func (c *Client) getV3(device *domain.Device, oids []string) (map[string]string,
 
 	result := make(map[string]string)
 	for _, v := range pdu.Variables {
-		result[v.Name] = fmt.Sprintf("%v", v.Value)
+		result[v.Name] = pduValueString(v.Value)
 	}
 	return result, nil
 }
@@ -160,7 +176,7 @@ func (c *Client) walkV2c(ip string, community string, baseOID string) (map[strin
 
 	result := make(map[string]string)
 	for _, v := range pdus {
-		result[v.Name] = fmt.Sprintf("%v", v.Value)
+		result[v.Name] = pduValueString(v.Value)
 	}
 	return result, nil
 }
@@ -186,7 +202,7 @@ func (c *Client) walkV3(device *domain.Device, baseOID string) (map[string]strin
 
 	result := make(map[string]string)
 	for _, v := range pdus {
-		result[v.Name] = fmt.Sprintf("%v", v.Value)
+		result[v.Name] = pduValueString(v.Value)
 	}
 	return result, nil
 }
