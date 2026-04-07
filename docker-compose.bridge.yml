@@ -33,6 +33,7 @@ services:
   postgres:
     image: postgres:16-alpine
     environment:
+      TZ: ${TZ:-UTC}
       POSTGRES_DB: NMS
       POSTGRES_USER: nms-user
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
@@ -73,6 +74,7 @@ services:
     volumes:
       - ./config.yaml:/app/config.yaml:ro
     environment:
+      TZ: ${TZ:-UTC}
       DB_DSN: "${DB_DSN}"
       POSTGRES_HOST: postgres
       POSTGRES_PORT: 5432
@@ -92,6 +94,7 @@ services:
     ports:
      - "8080:8080"
     environment:
+      TZ: ${TZ:-UTC}
       DB_DSN: "${DB_DSN}"
       TELEGRAM_TOKEN: "${TELEGRAM_TOKEN}"
       TELEGRAM_CHAT_ID: "${TELEGRAM_CHAT_ID}"
@@ -179,6 +182,7 @@ services:
     expose:
       - "8081"
     environment:
+      TZ: ${TZ:-UTC}
       DB_DSN: ${DB_DSN}
     volumes:
       - ./logs:/app/logs:delegated
@@ -209,6 +213,7 @@ services:
       - "162:162/udp"
     privileged: true
     environment:
+      TZ: ${TZ:-UTC}
       NMS_ENV: docker
       DB_DSN: "${DB_DSN}"
       TELEGRAM_TOKEN: "${TELEGRAM_TOKEN}"

@@ -5,11 +5,14 @@ import (
 	"log"
 	"os"
 
+	"NMS1/internal/timezone"
+
 	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/pressly/goose/v3"
 )
 
 func main() {
+	timezone.InitFromEnv()
 	dsn := os.Getenv("DB_DSN")
 	if dsn == "" {
 		log.Fatal("DB_DSN must be set (see .env)")

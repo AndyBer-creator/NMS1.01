@@ -7,6 +7,7 @@ import (
 	"NMS1/internal/infrastructure/snmp"
 	"NMS1/internal/mibresolver"
 	"NMS1/internal/repository"
+	"NMS1/internal/timezone"
 	"NMS1/internal/usecases/discovery"
 	"context"
 	"database/sql"
@@ -22,6 +23,7 @@ import (
 )
 
 func main() {
+	timezone.InitFromEnv()
 	cfg := config.Load()
 	logger, _ := zap.NewProduction()
 	defer logger.Sync()

@@ -13,6 +13,7 @@ import (
 	"NMS1/internal/config"
 	"NMS1/internal/infrastructure/postgres"
 	"NMS1/internal/infrastructure/snmp"
+	"NMS1/internal/timezone"
 	"NMS1/internal/usecases/lldp"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -123,6 +124,7 @@ func init() {
 }
 
 func main() {
+	timezone.InitFromEnv()
 	cfg := config.Load()
 
 	// ПРОДАКШЕН logger с ротацией
