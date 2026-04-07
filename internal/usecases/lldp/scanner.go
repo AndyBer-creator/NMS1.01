@@ -48,7 +48,13 @@ func normalizeKey(s string) string {
 	return strings.ToLower(strings.TrimSpace(s))
 }
 
+func normalizeOID(s string) string {
+	return strings.TrimPrefix(strings.TrimSpace(s), ".")
+}
+
 func parseSingleIndexFromWalk(fullOID, baseOID string) (int, bool) {
+	fullOID = normalizeOID(fullOID)
+	baseOID = normalizeOID(baseOID)
 	suffix := strings.TrimPrefix(fullOID, baseOID+".")
 	if suffix == fullOID {
 		return 0, false
@@ -66,6 +72,8 @@ func parseSingleIndexFromWalk(fullOID, baseOID string) (int, bool) {
 
 // LLDP remote entry индексируется (timeMark, localPortNum, remIndex).
 func parseRemoteIndexes(fullOID, baseOID string) (localPortNum int, remIndex int, ok bool) {
+	fullOID = normalizeOID(fullOID)
+	baseOID = normalizeOID(baseOID)
 	suffix := strings.TrimPrefix(fullOID, baseOID+".")
 	if suffix == fullOID {
 		return 0, 0, false
