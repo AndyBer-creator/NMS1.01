@@ -83,15 +83,15 @@ func (r *Repo) GetLatestLldpLinks() ([]LldpLinkView, error) {
 	rows, err := r.db.QueryContext(context.Background(), fmt.Sprintf(`
 		SELECT
 			l.local_device_ip::text AS local_ip,
-			ld.name AS local_name,
+			COALESCE(ld.name, '') AS local_name,
 			COALESCE(l.local_port_num, 0) AS local_port_num,
-			l.local_port_desc AS local_port_desc,
+			COALESCE(l.local_port_desc, '') AS local_port_desc,
 			l.remote_device_ip::text AS remote_ip,
-			rd.name AS remote_name,
-			l.remote_sys_name,
-			l.remote_sys_desc,
-			l.remote_port_id,
-			l.remote_port_desc
+			COALESCE(rd.name, '') AS remote_name,
+			COALESCE(l.remote_sys_name, '') AS remote_sys_name,
+			COALESCE(l.remote_sys_desc, '') AS remote_sys_desc,
+			COALESCE(l.remote_port_id, '') AS remote_port_id,
+			COALESCE(l.remote_port_desc, '') AS remote_port_desc
 		FROM lldp_links l
 		LEFT JOIN devices ld ON ld.ip = l.local_device_ip
 		LEFT JOIN devices rd ON rd.ip = l.remote_device_ip
