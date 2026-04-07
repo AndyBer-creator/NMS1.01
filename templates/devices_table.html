@@ -7,6 +7,8 @@
                 <th class="p-4 text-left font-semibold text-gray-200">Имя</th>
                 <th class="p-4 text-left font-semibold text-gray-200">Статус</th>
                 <th class="p-4 text-left font-semibold text-gray-200">Последняя активность</th>
+                <th class="p-4 text-left font-semibold text-gray-200">Последний успешный опрос</th>
+                <th class="p-4 text-left font-semibold text-gray-200">Последняя ошибка</th>
                 <th class="p-4 text-right font-semibold w-36 text-gray-200">Действия</th>
             </tr>
         </thead>
@@ -20,6 +22,8 @@
                         <span class="px-3 py-1 {{.StatusClass}} rounded-full text-sm border">{{.StatusIcon}} {{.Status}}</span>
                     </td>
                     <td class="p-4 text-sm text-gray-400">{{.LastSeen}}</td>
+                    <td class="p-4 text-sm text-emerald-300/90">{{.LastPollOK}}</td>
+                    <td class="p-4 text-xs text-amber-300/90 break-all max-w-md">{{.LastError}}</td>
                     <td class="p-4 text-right">
                         <button type="button"
                                 class="px-3 py-1.5 bg-red-500/90 hover:bg-red-600 text-white rounded-lg text-xs font-medium transition-all inline-flex items-center gap-1 shadow-sm hover:shadow-md"
@@ -36,7 +40,7 @@
                 {{end}}
             {{else}}
                 <tr>
-                    <td colspan="5" class="p-10 text-center text-gray-500">
+                    <td colspan="7" class="p-10 text-center text-gray-500">
                         📭 Нет устройств. Добавьте первое на <a href="/" class="text-blue-400 hover:underline">дашборде</a>.
                     </td>
                 </tr>

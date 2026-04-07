@@ -47,6 +47,8 @@ func (r *Repo) Close() error {
 func (r *Repo) GetDeviceByIP(ip string) (*domain.Device, error) {
 	device := &domain.Device{}
 	var lastSeenSql sql.NullTime
+	var lastErrorAt sql.NullTime
+	var lastPollOKAt sql.NullTime
 
 	query := `
         SELECT id, ip, name, community,
@@ -56,7 +58,12 @@ func (r *Repo) GetDeviceByIP(ip string) (*domain.Device, error) {
                COALESCE(auth_pass, ''),
                COALESCE(priv_proto, ''),
                COALESCE(priv_pass, ''),
-               COALESCE(status, 'active'), COALESCE(created_at, NOW()), COALESCE(last_seen, created_at)
+               COALESCE(status, 'active'),
+               COALESCE(created_at, NOW()),
+               COALESCE(last_seen, created_at),
+               COALESCE(last_error, ''),
+               last_error_at,
+               last_poll_ok_at
         FROM devices WHERE ip = $1`
 
 	err := r.db.QueryRowContext(context.Background(), query, ip).Scan(
@@ -72,13 +79,22 @@ func (r *Repo) GetDeviceByIP(ip string) (*domain.Device, error) {
 		&device.PrivPass,
 		&device.Status,
 		&device.CreatedAt,
-		&lastSeenSql)
+		&lastSeenSql,
+		&device.LastError,
+		&lastErrorAt,
+		&lastPollOKAt)
 
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
 	if lastSeenSql.Valid {
 		device.LastSeen = lastSeenSql.Time
+	}
+	if lastErrorAt.Valid {
+		device.LastErrorAt = lastErrorAt.Time
+	}
+	if lastPollOKAt.Valid {
+		device.LastPollOKAt = lastPollOKAt.Time
 	}
 	return device, err
 }
@@ -97,7 +113,10 @@ func (r *Repo) ListDevices() ([]*domain.Device, error) {
                  COALESCE(priv_pass, '') as priv_pass,
                  COALESCE(status, 'active') as status,
                  COALESCE(created_at, NOW()) as created_at,
-                 COALESCE(last_seen, created_at) as last_seen
+                 COALESCE(last_seen, created_at) as last_seen,
+                 COALESCE(last_error, '') as last_error,
+                 last_error_at,
+                 last_poll_ok_at
          FROM devices ORDER BY ip`)
 	if err != nil {
 		return nil, err
@@ -107,6 +126,8 @@ func (r *Repo) ListDevices() ([]*domain.Device, error) {
 	var devices []*domain.Device
 	for rows.Next() {
 		device := &domain.Device{}
+		var lastErrorAt sql.NullTime
+		var lastPollOKAt sql.NullTime
 		if err := rows.Scan(
 			&device.ID,
 			&device.IP,
@@ -121,8 +142,17 @@ func (r *Repo) ListDevices() ([]*domain.Device, error) {
 			&device.Status,
 			&device.CreatedAt,
 			&device.LastSeen,
+			&device.LastError,
+			&lastErrorAt,
+			&lastPollOKAt,
 		); err != nil {
 			return nil, err
+		}
+		if lastErrorAt.Valid {
+			device.LastErrorAt = lastErrorAt.Time
+		}
+		if lastPollOKAt.Valid {
+			device.LastPollOKAt = lastPollOKAt.Time
 		}
 		devices = append(devices, device)
 	}
