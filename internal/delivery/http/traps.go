@@ -122,6 +122,11 @@ func (h *Handlers) TrapsByDevice(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(traps)
 }
 
+func (h *Handlers) TrapsPage(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	http.ServeFile(w, r, "templates/traps_page.html")
+}
+
 func (h *Handlers) testAlert(w http.ResponseWriter, r *http.Request) {
 	type testAlertRequest struct {
 		DeviceIP  string `json:"device_ip"`
