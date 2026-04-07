@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -55,7 +56,62 @@ var (
 
 	// LLDP может идти минутами; без этого блокировался главный select и пропускались циклы SNMP-опроса (1 мин).
 	lldpBusy atomic.Bool
+
+	pollBackoff = newDeviceBackoff()
 )
+
+type backoffState struct {
+	failures int
+	nextTry  time.Time
+	lastErr  string
+}
+
+type deviceBackoff struct {
+	mu     sync.Mutex
+	byIP   map[string]backoffState
+	maxGap time.Duration
+}
+
+func newDeviceBackoff() *deviceBackoff {
+	return &deviceBackoff{
+		byIP:   make(map[string]backoffState),
+		maxGap: 15 * time.Minute,
+	}
+}
+
+func (b *deviceBackoff) shouldSkip(ip string, now time.Time) (bool, time.Duration) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	st, ok := b.byIP[ip]
+	if !ok || st.nextTry.IsZero() || !now.Before(st.nextTry) {
+		return false, 0
+	}
+	return true, st.nextTry.Sub(now)
+}
+
+func (b *deviceBackoff) onFailure(ip, errText string, now time.Time) time.Duration {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	st := b.byIP[ip]
+	st.failures++
+	if st.failures > 5 {
+		st.failures = 5
+	}
+	delay := time.Minute * time.Duration(1<<uint(st.failures-1))
+	if delay > b.maxGap {
+		delay = b.maxGap
+	}
+	st.nextTry = now.Add(delay)
+	st.lastErr = errText
+	b.byIP[ip] = st
+	return delay
+}
+
+func (b *deviceBackoff) onSuccess(ip string) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	delete(b.byIP, ip)
+}
 
 func init() {
 	prometheus.MustRegister(workerPollDurationSeconds)
@@ -214,6 +270,7 @@ func pollAllDevices(ctx context.Context, repo *postgres.Repo, snmpClient *snmp.C
 		zap.Int("devices", len(devices)),
 		zap.Int("oids", len(baseOids)))
 
+	skipped := 0
 	for _, device := range devices {
 		select {
 		case <-ctx.Done():
@@ -223,7 +280,16 @@ func pollAllDevices(ctx context.Context, repo *postgres.Repo, snmpClient *snmp.C
 		default:
 		}
 
-		// ✅ ИСПРАВЛЕНО: правильный синтаксис zap
+		now := time.Now()
+		if skip, wait := pollBackoff.shouldSkip(device.IP, now); skip {
+			skipped++
+			logger.Info("Polling skipped by backoff",
+				zap.Int("id", device.ID),
+				zap.String("ip", device.IP),
+				zap.Duration("retry_in", wait))
+			continue
+		}
+
 		logger.Info("Polling device",
 			zap.Int("id", device.ID),
 			zap.String("ip", device.IP),
@@ -251,7 +317,11 @@ func pollAllDevices(ctx context.Context, repo *postgres.Repo, snmpClient *snmp.C
 				zap.String("error_kind", status),
 				zap.Error(err))
 
+			retryAfter := pollBackoff.onFailure(device.IP, err.Error(), time.Now())
 			_ = repo.UpdateDeviceError(device.ID, status, err.Error())
+			logger.Warn("Backoff scheduled",
+				zap.String("ip", device.IP),
+				zap.Duration("retry_after", retryAfter))
 			failed++
 			continue
 		}
@@ -269,6 +339,7 @@ func pollAllDevices(ctx context.Context, repo *postgres.Repo, snmpClient *snmp.C
 		}
 
 		_ = repo.MarkDevicePollSuccess(device.ID)
+		pollBackoff.onSuccess(device.IP)
 		success++
 
 		sysDescr := getValue(result, "1.3.6.1.2.1.1.1.0")
@@ -282,6 +353,7 @@ func pollAllDevices(ctx context.Context, repo *postgres.Repo, snmpClient *snmp.C
 	logger.Info("Polling stats",
 		zap.Int("success", success),
 		zap.Int("failed", failed),
+		zap.Int("skipped_backoff", skipped),
 		zap.Int("total", len(devices)))
 
 	return success, failed, nil

@@ -99,11 +99,29 @@ type devicesTableRow struct {
 	StatusClass string
 	StatusIcon  string
 	LastSeen    string
+	LastPollOK  string
+	LastError   string
 }
 
 type devicesTableViewModel struct {
 	Devices []devicesTableRow
 	Total   int
+}
+
+var allowedSNMPSetOIDs = map[string]struct{}{
+	"1.3.6.1.2.1.2.2.1.7":  {}, // ifAdminStatus
+	"1.3.6.1.2.1.2.2.1.5":  {}, // ifSpeed (device support dependent)
+	"1.3.6.1.2.1.31.1.1.1.18": {}, // ifAlias
+}
+
+func isAllowedSetOID(numericOID string) bool {
+	numericOID = strings.TrimPrefix(strings.TrimSpace(numericOID), ".")
+	for prefix := range allowedSNMPSetOIDs {
+		if numericOID == prefix || strings.HasPrefix(numericOID, prefix+".") {
+			return true
+		}
+	}
+	return false
 }
 
 func devicesTableViewModelFromDevices(devices []*domain.Device) devicesTableViewModel {
@@ -123,6 +141,17 @@ func devicesTableViewModelFromDevices(devices []*domain.Device) devicesTableView
 		if !d.LastSeen.IsZero() {
 			lastSeen = d.LastSeen.Format("15:04 02.01")
 		}
+		lastPollOK := "Нет успешного опроса"
+		if !d.LastPollOKAt.IsZero() {
+			lastPollOK = d.LastPollOKAt.Format("15:04 02.01")
+		}
+		lastError := "—"
+		if strings.TrimSpace(d.LastError) != "" {
+			lastError = d.LastError
+			if !d.LastErrorAt.IsZero() {
+				lastError = d.LastErrorAt.Format("15:04 02.01") + " — " + lastError
+			}
+		}
 
 		rows = append(rows, devicesTableRow{
 			IP:          d.IP,
@@ -131,6 +160,8 @@ func devicesTableViewModelFromDevices(devices []*domain.Device) devicesTableView
 			StatusClass: statusClass,
 			StatusIcon:  statusIcon,
 			LastSeen:    lastSeen,
+			LastPollOK:  lastPollOK,
+			LastError:   lastError,
 		})
 	}
 	return devicesTableViewModel{Devices: rows, Total: len(rows)}
@@ -265,55 +296,108 @@ func (h *Handlers) GetMetric(w http.ResponseWriter, r *http.Request) {
 func (h *Handlers) SetSNMP(w http.ResponseWriter, r *http.Request) {
 	ip := chi.URLParam(r, "ip")
 	if ip == "" {
-		http.Error(w, "IP required", http.StatusBadRequest)
+		h.writeAPIError(w, http.StatusBadRequest, "validation_error", "ip is required")
 		return
 	}
 
 	var input struct {
-		OID   string          `json:"oid"`
-		Type  string          `json:"type"`  // Integer/OctetString/Counter64/...
-		Value json.RawMessage `json:"value"` // тип зависит от Type
+		OID          string          `json:"oid"`
+		Type         string          `json:"type"`          // Integer/OctetString/Counter64/...
+		Value        json.RawMessage `json:"value"`         // тип зависит от Type
+		ValidateOnly bool            `json:"validate_only"` // только валидация, без SNMP SET
 	}
 	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
-		http.Error(w, "Invalid JSON", http.StatusBadRequest)
+		h.writeAPIError(w, http.StatusBadRequest, "invalid_json", "Invalid JSON")
 		return
 	}
 	if input.OID == "" || input.Type == "" {
-		http.Error(w, "oid and type are required", http.StatusBadRequest)
+		h.writeAPIError(w, http.StatusBadRequest, "validation_error", "oid and type are required")
 		return
 	}
 
 	numericOID, err := h.resolveOIDInput(input.OID)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		h.writeAPIError(w, http.StatusBadRequest, "invalid_oid", err.Error())
+		return
+	}
+	if !isAllowedSetOID(numericOID) {
+		h.writeAPIError(w, http.StatusForbidden, "oid_not_allowed", "OID is not allowed for SNMP SET")
 		return
 	}
 
 	pduType, value, err := parseSNMPSetRequest(input.Type, input.Value)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		h.writeAPIError(w, http.StatusBadRequest, "invalid_value", err.Error())
 		return
 	}
 
 	device, err := h.repo.GetDeviceByIP(ip)
 	if err != nil {
 		h.logger.Error("GetDeviceByIP failed", zap.String("ip", ip), zap.Error(err))
-		http.Error(w, "Database error", http.StatusInternalServerError)
+		h.writeAPIError(w, http.StatusInternalServerError, "db_error", "Database error")
 		return
 	}
 	if device == nil {
-		http.Error(w, "Device not found", http.StatusNotFound)
+		h.writeAPIError(w, http.StatusNotFound, "not_found", "Device not found")
+		return
+	}
+
+	oldValue := ""
+	if current, getErr := h.snmp.GetDevice(device, []string{numericOID}); getErr == nil {
+		oldValue = mibresolver.PickSNMPValue(current, numericOID)
+	}
+	newValue := fmt.Sprintf("%v", value)
+	username := "system"
+	if u := userFromContext(r.Context()); u != nil && strings.TrimSpace(u.username) != "" {
+		username = strings.TrimSpace(u.username)
+	}
+
+	if input.ValidateOnly {
+		_ = h.repo.InsertSNMPSetAudit(postgres.SNMPSetAuditRecord{
+			UserName: username,
+			DeviceID: sql.NullInt64{Int64: int64(device.ID), Valid: true},
+			OID:      numericOID,
+			OldValue: oldValue,
+			NewValue: newValue,
+			Result:   "validated",
+		})
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
+			"status":        "validated",
+			"ip":            ip,
+			"oid":           numericOID,
+			"type":          input.Type,
+			"validate_only": true,
+		})
 		return
 	}
 
 	if err := h.snmp.SetDevice(device, numericOID, pduType, value); err != nil {
 		h.logger.Error("SNMP SET failed", zap.String("ip", ip), zap.String("oid", numericOID), zap.String("type", input.Type), zap.Error(err))
-		http.Error(w, "SNMP SET failed: "+err.Error(), http.StatusServiceUnavailable)
+		_ = h.repo.InsertSNMPSetAudit(postgres.SNMPSetAuditRecord{
+			UserName: username,
+			DeviceID: sql.NullInt64{Int64: int64(device.ID), Valid: true},
+			OID:      numericOID,
+			OldValue: oldValue,
+			NewValue: newValue,
+			Result:   "failed",
+			Error:    err.Error(),
+		})
+		h.writeAPIError(w, http.StatusServiceUnavailable, "snmp_set_failed", "SNMP SET failed: "+err.Error())
 		return
 	}
 
+	_ = h.repo.InsertSNMPSetAudit(postgres.SNMPSetAuditRecord{
+		UserName: username,
+		DeviceID: sql.NullInt64{Int64: int64(device.ID), Valid: true},
+		OID:      numericOID,
+		OldValue: oldValue,
+		NewValue: newValue,
+		Result:   "ok",
+	})
+
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{
+	_ = json.NewEncoder(w).Encode(map[string]string{
 		"status": "ok",
 		"ip":     ip,
 		"oid":    numericOID,

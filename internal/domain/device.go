@@ -16,6 +16,9 @@ type Device struct {
 	Status      string    `json:"status" db:"status"`
 	CreatedAt   time.Time `json:"created_at" db:"created_at"`
 	LastSeen    time.Time `json:"last_seen" db:"last_seen"`
+	LastError   string    `json:"last_error,omitempty" db:"last_error"`
+	LastErrorAt time.Time `json:"last_error_at,omitempty" db:"last_error_at"`
+	LastPollOKAt time.Time `json:"last_poll_ok_at,omitempty" db:"last_poll_ok_at"`
 }
 
 type Metric struct {
