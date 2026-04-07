@@ -48,6 +48,7 @@ func Router(handlers *Handlers) *chi.Mux {
 	r.Handle("/metrics", promhttp.Handler())
 
 	r.Route("/traps", func(r chi.Router) {
+		r.Get("/page", handlers.TrapsPage)
 		r.Get("/", handlers.ListTraps)
 		r.Get("/{ip}", handlers.TrapsByDevice)
 	})
