@@ -167,7 +167,14 @@ func (s *Scanner) ScanNetwork(ctx context.Context, p ScanParams) (*ScanResult, e
 			probe := base
 			probe.IP = ipStr
 			result, err := s.snmpClient.GetDevice(&probe, []string{sysDescrOID})
-			if err != nil || len(result) == 0 {
+			if err != nil {
+				s.logger.Debug("scan probe failed",
+					zap.String("ip", ipStr),
+					zap.String("kind", string(snmp.GetErrorKind(err))),
+					zap.Error(err))
+				return
+			}
+			if len(result) == 0 {
 				return
 			}
 			// gosnmp может вернуть OID-ключ с ведущей точкой. Берем значение устойчиво.

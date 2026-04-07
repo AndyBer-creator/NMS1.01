@@ -1,6 +1,7 @@
 package snmp
 
 import (
+	"errors"
 	"fmt"
 	"NMS1/internal/domain"
 	"strings"
@@ -15,6 +16,73 @@ type Client struct {
 	Timeout time.Duration
 	Retries int
 	logger  *zap.Logger
+}
+
+type ErrorKind string
+
+const (
+	ErrorKindTimeout   ErrorKind = "timeout"
+	ErrorKindAuth      ErrorKind = "auth"
+	ErrorKindNoSuch    ErrorKind = "no_such_name"
+	ErrorKindTransport ErrorKind = "transport"
+)
+
+type SNMPError struct {
+	Op   string
+	Kind ErrorKind
+	Err  error
+}
+
+func (e *SNMPError) Error() string {
+	if e == nil {
+		return ""
+	}
+	return fmt.Sprintf("%s (%s): %v", e.Op, e.Kind, e.Err)
+}
+
+func (e *SNMPError) Unwrap() error { return e.Err }
+
+func GetErrorKind(err error) ErrorKind {
+	var se *SNMPError
+	if errors.As(err, &se) {
+		return se.Kind
+	}
+	return ErrorKindTransport
+}
+
+func classifyErrorKind(err error) ErrorKind {
+	s := strings.ToLower(strings.TrimSpace(err.Error()))
+	switch {
+	case strings.Contains(s, "timeout"),
+		strings.Contains(s, "i/o timeout"),
+		strings.Contains(s, "request timeout"),
+		strings.Contains(s, "no response"):
+		return ErrorKindTimeout
+	case strings.Contains(s, "authentication"),
+		strings.Contains(s, "authorization"),
+		strings.Contains(s, "unknown user"),
+		strings.Contains(s, "usm"),
+		strings.Contains(s, "decryption"),
+		strings.Contains(s, "wrong digest"):
+		return ErrorKindAuth
+	case strings.Contains(s, "no such name"),
+		strings.Contains(s, "no such object"),
+		strings.Contains(s, "no such instance"):
+		return ErrorKindNoSuch
+	default:
+		return ErrorKindTransport
+	}
+}
+
+func wrapSNMPError(op string, err error) error {
+	if err == nil {
+		return nil
+	}
+	return &SNMPError{
+		Op:   op,
+		Kind: classifyErrorKind(err),
+		Err:  err,
+	}
 }
 
 func New(port int, timeout time.Duration, retries int) *Client {
@@ -102,13 +170,13 @@ func (c *Client) getV2c(ip string, community string, oids []string) (map[string]
 	}
 
 	if err := conn.Connect(); err != nil {
-		return nil, fmt.Errorf("connect: %w", err)
+		return nil, wrapSNMPError("connect", err)
 	}
 	defer conn.Conn.Close()
 
 	pdu, err := conn.Get(oids)
 	if err != nil {
-		return nil, fmt.Errorf("get: %w", err)
+		return nil, wrapSNMPError("get", err)
 	}
 
 	result := make(map[string]string)
@@ -138,7 +206,7 @@ func (c *Client) getV3(device *domain.Device, oids []string) (map[string]string,
 
 	pdu, err := conn.Get(oids)
 	if err != nil {
-		return nil, fmt.Errorf("get: %w", err)
+		return nil, wrapSNMPError("get", err)
 	}
 
 	result := make(map[string]string)
@@ -160,7 +228,7 @@ func (c *Client) walkV2c(ip string, community string, baseOID string) (map[strin
 	}
 
 	if err := conn.Connect(); err != nil {
-		return nil, fmt.Errorf("connect: %w", err)
+		return nil, wrapSNMPError("connect", err)
 	}
 	defer conn.Conn.Close()
 
@@ -169,7 +237,7 @@ func (c *Client) walkV2c(ip string, community string, baseOID string) (map[strin
 		// fallback на обычный Walk, если Bulk не поддерживается/не сработал
 		pdus2, err2 := conn.WalkAll(baseOID)
 		if err2 != nil {
-			return nil, fmt.Errorf("bulkwalk: %w (fallback walk: %v)", err, err2)
+			return nil, wrapSNMPError("bulkwalk", fmt.Errorf("%w (fallback walk: %v)", err, err2))
 		}
 		pdus = pdus2
 	}
@@ -195,7 +263,7 @@ func (c *Client) walkV3(device *domain.Device, baseOID string) (map[string]strin
 		// fallback на обычный Walk
 		pdus2, err2 := conn.WalkAll(baseOID)
 		if err2 != nil {
-			return nil, fmt.Errorf("bulkwalk: %w (fallback walk: %v)", err, err2)
+			return nil, wrapSNMPError("bulkwalk", fmt.Errorf("%w (fallback walk: %v)", err, err2))
 		}
 		pdus = pdus2
 	}
@@ -218,7 +286,7 @@ func (c *Client) setV2c(ip, community, oid string, pduType gosnmp.Asn1BER, value
 	}
 
 	if err := conn.Connect(); err != nil {
-		return fmt.Errorf("connect: %w", err)
+		return wrapSNMPError("connect", err)
 	}
 	defer conn.Conn.Close()
 
@@ -231,7 +299,7 @@ func (c *Client) setV2c(ip, community, oid string, pduType gosnmp.Asn1BER, value
 	}
 
 	if _, err := conn.Set(pdus); err != nil {
-		return fmt.Errorf("set: %w", err)
+		return wrapSNMPError("set", err)
 	}
 	return nil
 }
@@ -251,7 +319,7 @@ func (c *Client) setV3(device *domain.Device, oid string, pduType gosnmp.Asn1BER
 		},
 	}
 	if _, err := conn.Set(pdus); err != nil {
-		return fmt.Errorf("set: %w", err)
+		return wrapSNMPError("set", err)
 	}
 	return nil
 }
@@ -307,7 +375,7 @@ func (c *Client) newV3Conn(device *domain.Device) (*gosnmp.GoSNMP, error) {
 
 	// Connect() сам выполнит engine discovery, если AuthoritativeEngineID пустой.
 	if err := conn.Connect(); err != nil {
-		return nil, fmt.Errorf("connect: %w", err)
+		return nil, wrapSNMPError("connect", err)
 	}
 	return conn, nil
 }

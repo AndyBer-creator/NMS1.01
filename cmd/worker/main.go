@@ -232,14 +232,26 @@ func pollAllDevices(ctx context.Context, repo *postgres.Repo, snmpClient *snmp.C
 
 		result, err := snmpClient.GetDevice(device, baseOids)
 		if err != nil {
+			status := "failed_transport"
+			switch snmp.GetErrorKind(err) {
+			case snmp.ErrorKindTimeout:
+				status = "failed_timeout"
+			case snmp.ErrorKindAuth:
+				status = "failed_auth"
+			case snmp.ErrorKindNoSuch:
+				status = "failed_no_such_name"
+			case snmp.ErrorKindTransport:
+				status = "failed_transport"
+			}
 			// ✅ ИСПРАВЛЕНО: НЕ append, а отдельные поля
 			logger.Warn("SNMP failed",
 				zap.Int("id", device.ID),
 				zap.String("ip", device.IP),
 				zap.String("version", device.SNMPVersion),
+				zap.String("error_kind", status),
 				zap.Error(err))
 
-			_ = repo.UpdateDeviceError(device.ID, "failed", err.Error())
+			_ = repo.UpdateDeviceError(device.ID, status, err.Error())
 			failed++
 			continue
 		}
