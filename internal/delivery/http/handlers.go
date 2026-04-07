@@ -2,12 +2,13 @@ package http
 
 import (
 	"crypto/sha1"
+	"database/sql"
 	"encoding/hex"
 	"encoding/json"
-	"database/sql"
 	"errors"
 	"fmt"
 	"html/template"
+	"net"
 	"net/http"
 	"strconv"
 	"strings"
@@ -701,7 +702,7 @@ func (h *Handlers) LldpTopologyData(w http.ResponseWriter, r *http.Request) {
 func (h *Handlers) DiscoverScan(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		w.Header().Set("Allow", "POST")
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		h.writeAPIError(w, http.StatusMethodNotAllowed, "method_not_allowed", "Method not allowed")
 		return
 	}
 
@@ -719,11 +720,24 @@ func (h *Handlers) DiscoverScan(w http.ResponseWriter, r *http.Request) {
 		MaxHosts     int    `json:"max_hosts"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		http.Error(w, "Invalid JSON", http.StatusBadRequest)
+		h.writeAPIError(w, http.StatusBadRequest, "invalid_json", "Invalid JSON")
 		return
 	}
-	if strings.TrimSpace(body.CIDR) == "" {
-		http.Error(w, "cidr is required", http.StatusBadRequest)
+	cidr := strings.TrimSpace(body.CIDR)
+	if cidr == "" {
+		h.writeAPIError(w, http.StatusBadRequest, "validation_error", "cidr is required")
+		return
+	}
+	if _, _, err := net.ParseCIDR(cidr); err != nil {
+		h.writeAPIError(w, http.StatusBadRequest, "validation_error", "invalid cidr format")
+		return
+	}
+	if body.Concurrency < 0 || body.Concurrency > 512 {
+		h.writeAPIError(w, http.StatusBadRequest, "validation_error", "concurrency must be in range 0..512")
+		return
+	}
+	if body.MaxHosts < 0 || body.MaxHosts > 65536 {
+		h.writeAPIError(w, http.StatusBadRequest, "validation_error", "max_hosts must be in range 0..65536")
 		return
 	}
 
@@ -737,7 +751,7 @@ func (h *Handlers) DiscoverScan(w http.ResponseWriter, r *http.Request) {
 	}
 
 	params := discovery.ScanParams{
-		CIDR:         body.CIDR,
+		CIDR:         cidr,
 		Community:    body.Community,
 		SNMPVersion:  body.SNMPVersion,
 		AuthProto:    body.AuthProto,
@@ -754,16 +768,36 @@ func (h *Handlers) DiscoverScan(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		var se *discovery.ScanError
 		if errors.As(err, &se) {
-			http.Error(w, se.Error(), http.StatusBadRequest)
+			h.writeAPIError(w, http.StatusBadRequest, "scan_validation_error", se.Error())
 			return
 		}
 		h.logger.Error("DiscoverScan failed", zap.Error(err))
-		http.Error(w, "Scan failed: "+err.Error(), http.StatusInternalServerError)
+		h.writeAPIError(w, http.StatusInternalServerError, "scan_failed", "Scan failed: "+err.Error())
 		return
 	}
 
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(res)
+}
+
+type apiErrorResponse struct {
+	Error   string `json:"error"`
+	Code    string `json:"code"`
+	Status  int    `json:"status"`
+	Details string `json:"details,omitempty"`
+}
+
+func (h *Handlers) writeAPIError(w http.ResponseWriter, status int, code, msg string) {
+	if strings.TrimSpace(code) == "" {
+		code = "unknown_error"
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(apiErrorResponse{
+		Error:  msg,
+		Code:   code,
+		Status: status,
+	})
 }
 
 // ✅ Demo данные для тестов
