@@ -125,6 +125,20 @@ func isAllowedSetOID(numericOID string) bool {
 	return false
 }
 
+// normalizeSNMPVersionInput совпадает с логикой postgres.normalizeSNMPVersion (v1 / v2c / v3).
+func normalizeSNMPVersionInput(v string) (string, error) {
+	switch strings.ToLower(strings.TrimSpace(v)) {
+	case "v1":
+		return "v1", nil
+	case "v3":
+		return "v3", nil
+	case "2c", "v2c", "":
+		return "v2c", nil
+	default:
+		return "", fmt.Errorf("invalid snmp_version %q (allowed: v1, v2c, v3)", v)
+	}
+}
+
 func devicesTableViewModelFromDevices(devices []*domain.Device) devicesTableViewModel {
 	rows := make([]devicesTableRow, 0, len(devices))
 	for _, d := range devices {
@@ -235,6 +249,15 @@ func (h *Handlers) UpdateDevice(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "IP required", http.StatusBadRequest)
 		return
 	}
+	existing, err := h.repo.GetDeviceByIP(ip)
+	if err != nil {
+		http.Error(w, "Database error", http.StatusInternalServerError)
+		return
+	}
+	if existing == nil {
+		http.Error(w, "Device not found", http.StatusNotFound)
+		return
+	}
 	if err := r.ParseForm(); err != nil {
 		http.Error(w, "Cannot parse form", http.StatusBadRequest)
 		return
@@ -242,25 +265,57 @@ func (h *Handlers) UpdateDevice(w http.ResponseWriter, r *http.Request) {
 
 	patch := &domain.Device{
 		IP:          ip,
-		Name:        r.FormValue("name"),
-		Community:   r.FormValue("community"),
+		Name:        strings.TrimSpace(r.FormValue("name")),
+		Community:   strings.TrimSpace(r.FormValue("community")),
 		SNMPVersion: r.FormValue("snmp_version"),
-		AuthProto:   r.FormValue("auth_proto"),
+		AuthProto:   strings.TrimSpace(r.FormValue("auth_proto")),
 		AuthPass:    r.FormValue("auth_pass"),
-		PrivProto:   r.FormValue("priv_proto"),
+		PrivProto:   strings.TrimSpace(r.FormValue("priv_proto")),
 		PrivPass:    r.FormValue("priv_pass"),
 	}
-	if strings.TrimSpace(patch.Name) == "" || strings.TrimSpace(patch.Community) == "" {
-		http.Error(w, "Name and Community required", http.StatusBadRequest)
+	// Поля password часто приходят пустыми, если пользователь их не менял — не затираем БД.
+	if strings.TrimSpace(r.FormValue("community")) == "" {
+		patch.Community = existing.Community
+	}
+	if r.FormValue("auth_pass") == "" {
+		patch.AuthPass = existing.AuthPass
+	}
+	if r.FormValue("priv_pass") == "" {
+		patch.PrivPass = existing.PrivPass
+	}
+	if strings.TrimSpace(r.FormValue("auth_proto")) == "" {
+		patch.AuthProto = existing.AuthProto
+	}
+	if strings.TrimSpace(r.FormValue("priv_proto")) == "" {
+		patch.PrivProto = existing.PrivProto
+	}
+
+	snmpVer, verr := normalizeSNMPVersionInput(patch.SNMPVersion)
+	if verr != nil {
+		http.Error(w, verr.Error(), http.StatusBadRequest)
 		return
 	}
-	if strings.EqualFold(patch.SNMPVersion, "v3") {
-		if strings.TrimSpace(patch.AuthProto) == "" || patch.AuthPass == "" {
-			http.Error(w, "For snmp_version=v3 require auth_proto and auth_pass", http.StatusBadRequest)
+	patch.SNMPVersion = snmpVer
+
+	if patch.Name == "" {
+		http.Error(w, "Name required", http.StatusBadRequest)
+		return
+	}
+	switch snmpVer {
+	case "v1", "v2c":
+		if strings.TrimSpace(patch.Community) == "" {
+			http.Error(w, "Community required for SNMP v1/v2c", http.StatusBadRequest)
 			return
 		}
-		if (strings.TrimSpace(patch.PrivProto) == "") != (patch.PrivPass == "") {
-			http.Error(w, "For snmp_version=v3 require both priv_proto and priv_pass (or neither)", http.StatusBadRequest)
+	case "v3":
+		if strings.TrimSpace(patch.AuthProto) == "" || patch.AuthPass == "" {
+			http.Error(w, "For SNMPv3 require auth_proto and auth_pass (или оставьте пустыми пароли, чтобы не менять)", http.StatusBadRequest)
+			return
+		}
+		pp := strings.TrimSpace(patch.PrivProto)
+		ppp := patch.PrivPass
+		if (pp == "") != (ppp == "") {
+			http.Error(w, "For SNMPv3 require both priv_proto and priv_pass (or neither)", http.StatusBadRequest)
 			return
 		}
 	}
