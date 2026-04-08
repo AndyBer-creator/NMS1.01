@@ -15,28 +15,7 @@
         <tbody id="devices-list">
             {{if .Devices}}
                 {{range .Devices}}
-                <tr class="border-b border-gray-700/80 hover:bg-gray-700/40 transition-colors">
-                    <td class="p-4 font-mono text-sm text-cyan-300/90">{{.IP}}</td>
-                    <td class="p-4 font-medium text-white">{{.Name}}</td>
-                    <td class="p-4">
-                        <span class="px-3 py-1 {{.StatusClass}} rounded-full text-sm border">{{.StatusIcon}} {{.Status}}</span>
-                    </td>
-                    <td class="p-4 text-sm text-gray-400">{{.LastSeen}}</td>
-                    <td class="p-4 text-sm text-emerald-300/90">{{.LastPollOK}}</td>
-                    <td class="p-4 text-xs text-amber-300/90 break-all max-w-md">{{.LastError}}</td>
-                    <td class="p-4 text-right">
-                        <button type="button"
-                                class="px-3 py-1.5 bg-red-500/90 hover:bg-red-600 text-white rounded-lg text-xs font-medium transition-all inline-flex items-center gap-1 shadow-sm hover:shadow-md"
-                                hx-delete="/devices/{{.IP}}"
-                                hx-target="#devices-table-root"
-                                hx-swap="outerHTML"
-                                hx-confirm="Удалить {{.Name}} ({{.IP}})?&#10;Действие нельзя отменить."
-                                hx-on:htmx:before-request="this.innerHTML='⏳'"
-                                hx-on:htmx:after-request="this.innerHTML='🗑️'">
-                            🗑️ удалить
-                        </button>
-                    </td>
-                </tr>
+                {{template "deviceRow" .}}
                 {{end}}
             {{else}}
                 <tr>
@@ -49,4 +28,85 @@
     </table>
     <div class="mt-4 text-sm text-gray-400 text-center">Всего: <span class="text-gray-200 font-medium">{{.Total}}</span> устройств</div>
 </div>
+{{end}}
+
+{{define "deviceRow"}}
+<tr id="dev-row-{{.IP}}" class="border-b border-gray-700/80 hover:bg-gray-700/40 transition-colors">
+    <td class="p-4 font-mono text-sm text-cyan-300/90">{{.IP}}</td>
+    <td class="p-4 font-medium text-white">{{.Name}}</td>
+    <td class="p-4">
+        <span class="px-3 py-1 {{.StatusClass}} rounded-full text-sm border">{{.StatusIcon}} {{.Status}}</span>
+    </td>
+    <td class="p-4 text-sm text-gray-400">{{.LastSeen}}</td>
+    <td class="p-4 text-sm text-emerald-300/90">{{.LastPollOK}}</td>
+    <td class="p-4 text-xs text-amber-300/90 break-all max-w-md">{{.LastError}}</td>
+    <td class="p-4 text-right space-x-2">
+        <button type="button"
+                class="px-3 py-1.5 bg-slate-600/90 hover:bg-slate-700 text-white rounded-lg text-xs font-medium transition-all inline-flex items-center gap-1 shadow-sm hover:shadow-md"
+                hx-get="/devices/{{.IP}}/edit"
+                hx-target="#dev-row-{{.IP}}"
+                hx-swap="outerHTML">
+            ✏️ ред.
+        </button>
+        <button type="button"
+                class="px-3 py-1.5 bg-red-500/90 hover:bg-red-600 text-white rounded-lg text-xs font-medium transition-all inline-flex items-center gap-1 shadow-sm hover:shadow-md"
+                hx-delete="/devices/{{.IP}}"
+                hx-target="#devices-table-root"
+                hx-swap="outerHTML"
+                hx-confirm="Удалить {{.Name}} ({{.IP}})?&#10;Действие нельзя отменить."
+                hx-on:htmx:before-request="this.innerHTML='⏳'"
+                hx-on:htmx:after-request="this.innerHTML='🗑️'">
+            🗑️ удалить
+        </button>
+    </td>
+</tr>
+{{end}}
+
+{{define "deviceRowEdit"}}
+<tr id="dev-row-{{.IP}}" class="border-b border-gray-700/80 bg-gray-900/40">
+    <td class="p-4 font-mono text-sm text-cyan-300/90">{{.IP}}</td>
+    <td class="p-4" colspan="5">
+        <form class="grid grid-cols-1 md:grid-cols-6 gap-2 items-center"
+              hx-post="/devices/{{.IP}}"
+              hx-target="#dev-row-{{.IP}}"
+              hx-swap="outerHTML">
+            <input name="name" value="{{.Name}}" placeholder="name"
+                   class="md:col-span-2 w-full p-2 bg-gray-800/70 border border-gray-600 rounded-lg focus:outline-none focus:border-blue-400">
+            <input name="community" type="password" value="{{.Community}}" placeholder="community"
+                   class="md:col-span-1 w-full p-2 bg-gray-800/70 border border-gray-600 rounded-lg focus:outline-none focus:border-blue-400">
+            <select name="snmp_version"
+                    class="md:col-span-1 w-full p-2 bg-gray-800/70 border border-gray-600 rounded-lg focus:outline-none focus:border-blue-400">
+                <option value="v2c" {{if eq .SNMPVersion "v2c"}}selected{{end}}>v2c</option>
+                <option value="v3" {{if eq .SNMPVersion "v3"}}selected{{end}}>v3</option>
+            </select>
+            <input name="auth_proto" value="{{.AuthProto}}" placeholder="auth_proto"
+                   class="md:col-span-1 w-full p-2 bg-gray-800/70 border border-gray-600 rounded-lg focus:outline-none focus:border-blue-400">
+            <input name="auth_pass" type="password" placeholder="auth_pass (оставьте пустым если не менять)"
+                   class="md:col-span-1 w-full p-2 bg-gray-800/70 border border-gray-600 rounded-lg focus:outline-none focus:border-blue-400">
+
+            <input name="priv_proto" value="{{.PrivProto}}" placeholder="priv_proto"
+                   class="md:col-span-1 w-full p-2 bg-gray-800/70 border border-gray-600 rounded-lg focus:outline-none focus:border-blue-400">
+            <input name="priv_pass" type="password" placeholder="priv_pass (оставьте пустым если не менять)"
+                   class="md:col-span-1 w-full p-2 bg-gray-800/70 border border-gray-600 rounded-lg focus:outline-none focus:border-blue-400">
+
+            <div class="md:col-span-2 flex gap-2 justify-end">
+                <button type="button"
+                        class="px-3 py-2 bg-gray-700 hover:bg-gray-600 rounded-lg text-xs font-medium"
+                        hx-get="/devices/table"
+                        hx-target="#devices-table-root"
+                        hx-swap="outerHTML">
+                    Отмена
+                </button>
+                <button type="submit"
+                        class="px-3 py-2 bg-blue-600 hover:bg-blue-500 rounded-lg text-xs font-semibold">
+                    Сохранить
+                </button>
+            </div>
+        </form>
+        <p class="mt-2 text-xs text-gray-500">Для SNMPv3: заполните auth_proto/auth_pass; priv_* опционально. Пустые пароли в форме означают «не менять».</p>
+    </td>
+    <td class="p-4 text-right">
+        <!-- пусто: кнопки в форме -->
+    </td>
+</tr>
 {{end}}

@@ -17,21 +17,6 @@
     </div>
 
     <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <!-- Devices Preview (HTMX auto-refresh каждые 30s) -->
-        <div class="bg-gray-800 p-6 rounded-xl shadow-2xl col-span-1 lg:col-span-2" 
-             hx-get="/devices/table" 
-             hx-target="#devices-preview"
-             hx-swap="innerHTML"
-             hx-trigger="load, every 30s" 
-             hx-indicator="#loading">
-            <h2 class="text-2xl font-semibold mb-4 flex items-center">
-                <span class="w-2 h-2 bg-blue-400 rounded-full mr-3 animate-pulse"></span>
-                📊 Устройства (<span id="devices-count">0</span>)
-            </h2>
-            <div id="devices-preview">⟳ Загрузка...</div>
-            <div id="loading" class="htmx-indicator text-sm text-blue-400 hidden">⟳ Обновление...</div>
-        </div>
-
         <!-- 🔎 ПОИСК SNMP В ПОДСЕТИ -->
         <div class="bg-gradient-to-br from-amber-900/40 to-orange-950/40 border border-amber-600/40 p-6 rounded-xl shadow-2xl col-span-1 lg:col-span-2">
             <h2 class="text-2xl font-semibold mb-4 flex items-center">
@@ -126,9 +111,7 @@
                             try {
                                 const j = JSON.parse(text);
                                 out.textContent = JSON.stringify(j, null, 2);
-                                if (window.htmx) {
-                                    htmx.ajax('GET', '/devices/table', { target: '#devices-preview', swap: 'innerHTML' });
-                                }
+                                // таблица устройств убрана с главного дашборда
                             } catch {
                                 out.textContent = text;
                             }
@@ -162,12 +145,10 @@
           action="/devices"
           method="post"
           hx-post="/devices"
-          hx-target="#devices-preview" 
+          hx-target="this"
           hx-swap="beforeend"
           hx-on:after-request="
             this.reset(); 
-            document.getElementById('devices-count').textContent = 
-            (parseInt(document.getElementById('devices-count').textContent) || 0) + 1;
             this.querySelector('button').textContent = '✅ Добавлено!'; 
             setTimeout(() => this.querySelector('button').textContent = '🚀 Добавить', 2000)
           ">

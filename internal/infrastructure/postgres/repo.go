@@ -176,6 +176,62 @@ func (r *Repo) DeleteByIP(ip string) error {
 	return nil
 }
 
+func (r *Repo) UpdateDeviceByIP(ip string, patch *domain.Device) (*domain.Device, error) {
+	if strings.TrimSpace(ip) == "" {
+		return nil, fmt.Errorf("ip is required")
+	}
+	if patch == nil {
+		return nil, fmt.Errorf("patch is required")
+	}
+
+	// Нормализуем snmp_version как в CreateDevice.
+	snmpVer, err := normalizeSNMPVersion(patch.SNMPVersion)
+	if err != nil {
+		return nil, err
+	}
+
+	authProto := sql.NullString{Valid: strings.TrimSpace(patch.AuthProto) != ""}
+	if authProto.Valid {
+		authProto.String = strings.TrimSpace(patch.AuthProto)
+	}
+	authPass := sql.NullString{Valid: patch.AuthPass != ""}
+	if authPass.Valid {
+		authPass.String = patch.AuthPass
+	}
+	privProto := sql.NullString{Valid: strings.TrimSpace(patch.PrivProto) != ""}
+	if privProto.Valid {
+		privProto.String = strings.TrimSpace(patch.PrivProto)
+	}
+	privPass := sql.NullString{Valid: patch.PrivPass != ""}
+	if privPass.Valid {
+		privPass.String = patch.PrivPass
+	}
+
+	_, err = r.db.ExecContext(context.Background(), `
+		UPDATE devices
+		SET name = $1,
+		    community = $2,
+		    snmp_version = $3,
+		    auth_proto = $4,
+		    auth_pass = $5,
+		    priv_proto = $6,
+		    priv_pass = $7
+		WHERE ip = $8`,
+		strings.TrimSpace(patch.Name),
+		strings.TrimSpace(patch.Community),
+		snmpVer,
+		authProto,
+		authPass,
+		privProto,
+		privPass,
+		ip,
+	)
+	if err != nil {
+		return nil, err
+	}
+	return r.GetDeviceByIP(ip)
+}
+
 func (r *Repo) SaveMetric(deviceID int, oid, value string) error {
 	_, err := r.db.ExecContext(context.Background(),
 		`INSERT INTO metrics (device_id, oid, value) VALUES ($1, $2, $3)`,
