@@ -1,15 +1,15 @@
 {{define "devicesTable"}}
 <div class="overflow-x-auto" id="devices-table-root">
-    <table class="w-full table-auto bg-gray-800/80 rounded-lg shadow-xl border border-gray-700/50">
+    <table class="w-full min-w-[960px] table-auto bg-gray-800/80 rounded-lg shadow-xl border border-gray-700/50 text-[15px] sm:text-base leading-snug">
         <thead>
             <tr class="bg-gray-700/50 border-b border-gray-600">
-                <th class="p-4 text-left font-semibold text-gray-200">IP</th>
-                <th class="p-4 text-left font-semibold text-gray-200">Имя</th>
-                <th class="p-4 text-left font-semibold text-gray-200">Статус</th>
-                <th class="p-4 text-left font-semibold text-gray-200">Последняя активность</th>
-                <th class="p-4 text-left font-semibold text-gray-200">Последний успешный опрос</th>
-                <th class="p-4 text-left font-semibold text-gray-200">Последняя ошибка</th>
-                <th class="p-4 text-right font-semibold w-36 text-gray-200">Действия</th>
+                <th class="px-4 py-3 sm:px-5 sm:py-4 text-left font-semibold text-gray-200 whitespace-nowrap">IP</th>
+                <th class="px-4 py-3 sm:px-5 sm:py-4 text-left font-semibold text-gray-200 min-w-[10rem]">Имя</th>
+                <th class="px-4 py-3 sm:px-5 sm:py-4 text-left font-semibold text-gray-200 whitespace-nowrap">Статус</th>
+                <th class="px-4 py-3 sm:px-5 sm:py-4 text-left font-semibold text-gray-200 whitespace-nowrap">Последняя активность</th>
+                <th class="px-4 py-3 sm:px-5 sm:py-4 text-left font-semibold text-gray-200 whitespace-nowrap">Последний успешный опрос</th>
+                <th class="px-4 py-3 sm:px-5 sm:py-4 text-left font-semibold text-gray-200 min-w-[14rem]">Последняя ошибка</th>
+                <th class="px-4 py-3 sm:px-5 sm:py-4 text-right font-semibold w-40 text-gray-200 whitespace-nowrap">Действия</th>
             </tr>
         </thead>
         <tbody id="devices-list">
@@ -19,7 +19,7 @@
                 {{end}}
             {{else}}
                 <tr>
-                    <td colspan="7" class="p-10 text-center text-gray-500">
+                    <td colspan="7" class="px-6 py-10 text-center text-gray-500">
                         📭 Нет устройств. Добавьте первое на <a href="/" class="text-blue-400 hover:underline">дашборде</a>.
                     </td>
                 </tr>
@@ -31,20 +31,20 @@
 {{end}}
 
 {{define "deviceRow"}}
-<tr id="dev-row-{{.IP}}" class="border-b border-gray-700/80 hover:bg-gray-700/40 transition-colors">
-    <td class="p-4 font-mono text-sm text-cyan-300/90">{{.IP}}</td>
-    <td class="p-4 font-medium text-white">{{.Name}}</td>
-    <td class="p-4">
+<tr id="dev-row-{{.ID}}" class="border-b border-gray-700/80 hover:bg-gray-700/40 transition-colors">
+    <td class="px-4 py-3 sm:px-5 sm:py-4 font-mono text-sm text-cyan-300/90 whitespace-nowrap">{{.IP}}</td>
+    <td class="px-4 py-3 sm:px-5 sm:py-4 font-medium text-white">{{.Name}}</td>
+    <td class="px-4 py-3 sm:px-5 sm:py-4">
         <span class="px-3 py-1 {{.StatusClass}} rounded-full text-sm border">{{.StatusIcon}} {{.Status}}</span>
     </td>
-    <td class="p-4 text-sm text-gray-400">{{.LastSeen}}</td>
-    <td class="p-4 text-sm text-emerald-300/90">{{.LastPollOK}}</td>
-    <td class="p-4 text-xs text-amber-300/90 break-all max-w-md">{{.LastError}}</td>
-    <td class="p-4 text-right space-x-2">
+    <td class="px-4 py-3 sm:px-5 sm:py-4 text-gray-400">{{.LastSeen}}</td>
+    <td class="px-4 py-3 sm:px-5 sm:py-4 text-emerald-300/90">{{.LastPollOK}}</td>
+    <td class="px-4 py-3 sm:px-5 sm:py-4 text-amber-300/90 break-words">{{.LastError}}</td>
+    <td class="px-4 py-3 sm:px-5 sm:py-4 text-right space-x-2 whitespace-nowrap">
         <button type="button"
                 class="px-3 py-1.5 bg-slate-600/90 hover:bg-slate-700 text-white rounded-lg text-xs font-medium transition-all inline-flex items-center gap-1 shadow-sm hover:shadow-md"
                 hx-get="/devices/{{.IP}}/edit"
-                hx-target="#dev-row-{{.IP}}"
+                hx-target="#dev-row-{{.ID}}"
                 hx-swap="outerHTML">
             ✏️ ред.
         </button>
@@ -63,12 +63,12 @@
 {{end}}
 
 {{define "deviceRowEdit"}}
-<tr id="dev-row-{{.IP}}" class="border-b border-gray-700/80 bg-gray-900/40">
-    <td class="p-4 font-mono text-sm text-cyan-300/90">{{.IP}}</td>
-    <td class="p-4" colspan="5">
+<tr id="dev-row-{{.ID}}" class="border-b border-gray-700/80 bg-gray-900/40">
+    <td class="px-4 py-3 sm:px-5 sm:py-4 font-mono text-sm text-cyan-300/90 whitespace-nowrap">{{.IP}}</td>
+    <td class="px-4 py-3 sm:px-5 sm:py-4" colspan="5">
         <form class="grid grid-cols-1 md:grid-cols-6 gap-2 items-center"
               hx-post="/devices/{{.IP}}"
-              hx-target="#dev-row-{{.IP}}"
+              hx-target="#dev-row-{{.ID}}"
               hx-swap="outerHTML">
             <input name="name" value="{{.Name}}" placeholder="name"
                    class="md:col-span-2 w-full p-2 bg-gray-800/70 border border-gray-600 rounded-lg focus:outline-none focus:border-blue-400">
@@ -105,7 +105,7 @@
         </form>
         <p class="mt-2 text-xs text-gray-500">Для SNMPv3: заполните auth_proto/auth_pass; priv_* опционально. Пустые пароли в форме означают «не менять».</p>
     </td>
-    <td class="p-4 text-right">
+    <td class="px-4 py-3 sm:px-5 sm:py-4 text-right">
         <!-- пусто: кнопки в форме -->
     </td>
 </tr>
