@@ -53,6 +53,9 @@ func Router(handlers *Handlers) *chi.Mux {
 		r.Get("/{ip}", handlers.TrapsByDevice)
 	})
 
+	r.Get("/events/availability/page", handlers.AvailabilityEventsPage)
+	r.Get("/events/availability", handlers.ListAvailabilityEvents)
+
 	r.With(RequireAdmin).Post("/test-alert", handlers.testAlert)
 
 	return r

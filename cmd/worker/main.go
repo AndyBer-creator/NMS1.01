@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -311,6 +312,12 @@ func pollAllDevices(ctx context.Context, repo *postgres.Repo, snmpClient *snmp.C
 			case snmp.ErrorKindTransport:
 				status = "failed_transport"
 			}
+			if snmpPollWasOK(device.Status) {
+				detail := status + ": " + err.Error()
+				if errEv := repo.InsertAvailabilityEvent(device.ID, "unavailable", detail); errEv != nil {
+					logger.Warn("availability event insert failed", zap.Int("device_id", device.ID), zap.Error(errEv))
+				}
+			}
 			// ✅ ИСПРАВЛЕНО: НЕ append, а отдельные поля
 			logger.Warn("SNMP failed",
 				zap.Int("id", device.ID),
@@ -326,6 +333,12 @@ func pollAllDevices(ctx context.Context, repo *postgres.Repo, snmpClient *snmp.C
 				zap.Duration("retry_after", retryAfter))
 			failed++
 			continue
+		}
+
+		if snmpPollWasFailure(device.Status) {
+			if errEv := repo.InsertAvailabilityEvent(device.ID, "available", "SNMP опрос восстановлен"); errEv != nil {
+				logger.Warn("availability event insert failed", zap.Int("device_id", device.ID), zap.Error(errEv))
+			}
 		}
 
 		metricsSaved := 0
@@ -366,4 +379,14 @@ func getValue(result map[string]string, oid string) string {
 		return val
 	}
 	return "N/A"
+}
+
+func snmpPollWasOK(status string) bool {
+	s := strings.TrimSpace(strings.ToLower(status))
+	return s == "" || s == "active"
+}
+
+func snmpPollWasFailure(status string) bool {
+	s := strings.TrimSpace(status)
+	return strings.HasPrefix(s, "failed")
 }
