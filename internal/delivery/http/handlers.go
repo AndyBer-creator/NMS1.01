@@ -93,6 +93,7 @@ func init() {
 }
 
 type devicesTableRow struct {
+	ID          int
 	IP          string
 	Name        string
 	Status      string
@@ -154,6 +155,7 @@ func devicesTableViewModelFromDevices(devices []*domain.Device) devicesTableView
 		}
 
 		rows = append(rows, devicesTableRow{
+			ID:          d.ID,
 			IP:          d.IP,
 			Name:        d.Name,
 			Status:      d.Status,
