@@ -29,6 +29,8 @@ func Router(handlers *Handlers) *chi.Mux {
 	r.Get("/devices/page", handlers.DevicesPage)
 	r.Get("/devices/{ip}/metric/{oid}", handlers.GetMetric)
 	r.With(RequireAdmin).Post("/devices", handlers.CreateDevice)
+	r.With(RequireAdmin).Get("/devices/{ip}/edit", handlers.EditDeviceRow)
+	r.With(RequireAdmin).Post("/devices/{ip}", handlers.UpdateDevice)
 	r.With(RequireAdmin).Delete("/devices/{ip}", handlers.DeleteDevice)
 	r.With(RequireAdmin).Post("/devices/{ip}/snmp/set", handlers.SetSNMP)
 

@@ -208,6 +208,71 @@ func (h *Handlers) DevicesTable(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func (h *Handlers) EditDeviceRow(w http.ResponseWriter, r *http.Request) {
+	ip := chi.URLParam(r, "ip")
+	if strings.TrimSpace(ip) == "" {
+		http.Error(w, "IP required", http.StatusBadRequest)
+		return
+	}
+	device, err := h.repo.GetDeviceByIP(ip)
+	if err != nil {
+		http.Error(w, "Database error", http.StatusInternalServerError)
+		return
+	}
+	if device == nil {
+		http.Error(w, "Device not found", http.StatusNotFound)
+		return
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	_ = h.devicesTmpl.ExecuteTemplate(w, "deviceRowEdit", device)
+}
+
+func (h *Handlers) UpdateDevice(w http.ResponseWriter, r *http.Request) {
+	ip := chi.URLParam(r, "ip")
+	if strings.TrimSpace(ip) == "" {
+		http.Error(w, "IP required", http.StatusBadRequest)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "Cannot parse form", http.StatusBadRequest)
+		return
+	}
+
+	patch := &domain.Device{
+		IP:          ip,
+		Name:        r.FormValue("name"),
+		Community:   r.FormValue("community"),
+		SNMPVersion: r.FormValue("snmp_version"),
+		AuthProto:   r.FormValue("auth_proto"),
+		AuthPass:    r.FormValue("auth_pass"),
+		PrivProto:   r.FormValue("priv_proto"),
+		PrivPass:    r.FormValue("priv_pass"),
+	}
+	if strings.TrimSpace(patch.Name) == "" || strings.TrimSpace(patch.Community) == "" {
+		http.Error(w, "Name and Community required", http.StatusBadRequest)
+		return
+	}
+	if strings.EqualFold(patch.SNMPVersion, "v3") {
+		if strings.TrimSpace(patch.AuthProto) == "" || patch.AuthPass == "" {
+			http.Error(w, "For snmp_version=v3 require auth_proto and auth_pass", http.StatusBadRequest)
+			return
+		}
+		if (strings.TrimSpace(patch.PrivProto) == "") != (patch.PrivPass == "") {
+			http.Error(w, "For snmp_version=v3 require both priv_proto and priv_pass (or neither)", http.StatusBadRequest)
+			return
+		}
+	}
+
+	updated, err := h.repo.UpdateDeviceByIP(ip, patch)
+	if err != nil {
+		http.Error(w, "Update failed: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	devicesVM := devicesTableViewModelFromDevices([]*domain.Device{updated})
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	_ = h.devicesTmpl.ExecuteTemplate(w, "deviceRow", devicesVM.Devices[0])
+}
+
 // DevicesListPage — полная HTML-страница таблицы устройств (дизайн как у дашборда).
 func (h *Handlers) DevicesListPage(w http.ResponseWriter, r *http.Request) {
 	devices, err := h.repo.ListDevices()
