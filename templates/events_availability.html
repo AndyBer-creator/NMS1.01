@@ -49,6 +49,8 @@
             <table class="w-full table-auto bg-gray-900/50 rounded-lg border border-gray-700/60 text-sm">
                 <thead>
                 <tr class="bg-gray-700/50 border-b border-gray-600">
+                    <th class="p-3 text-left text-gray-200 whitespace-nowrap w-20" title="ID записи в device_availability_events">ID</th>
+                    <th class="p-3 text-left text-gray-200 whitespace-nowrap w-20" title="devices.id">Устр.</th>
                     <th class="p-3 text-left text-gray-200">Время</th>
                     <th class="p-3 text-left text-gray-200">Событие</th>
                     <th class="p-3 text-left text-gray-200">Устройство</th>
@@ -56,7 +58,7 @@
                 </tr>
                 </thead>
                 <tbody id="ev-body">
-                <tr><td colspan="4" class="p-6 text-center text-gray-500">Загрузка…</td></tr>
+                <tr><td colspan="6" class="p-6 text-center text-gray-500">Загрузка…</td></tr>
                 </tbody>
             </table>
         </div>
@@ -91,21 +93,25 @@
             const res = await fetch(url, { headers: { 'Accept': 'application/json' } });
             const text = await res.text();
             if (!res.ok) {
-                body.innerHTML = '<tr><td colspan="4" class="p-6 text-center text-red-400">Ошибка ' + res.status + ': ' + esc(text) + '</td></tr>';
+                body.innerHTML = '<tr><td colspan="6" class="p-6 text-center text-red-400">Ошибка ' + res.status + ': ' + esc(text) + '</td></tr>';
                 summary.textContent = 'Ошибка';
                 return;
             }
             const rows = JSON.parse(text);
             if (!Array.isArray(rows) || rows.length === 0) {
-                body.innerHTML = '<tr><td colspan="4" class="p-6 text-center text-gray-500">Событий пока нет (после миграции и циклов опроса появятся переходы)</td></tr>';
+                body.innerHTML = '<tr><td colspan="6" class="p-6 text-center text-gray-500">Событий пока нет (после миграции и циклов опроса появятся переходы)</td></tr>';
                 summary.textContent = '0 записей';
                 return;
             }
             let html = '';
             for (const e of rows) {
+                const evId = (e.id != null && e.id !== '') ? esc(String(e.id)) : '—';
+                const devId = (e.device_id != null && e.device_id !== '') ? esc(String(e.device_id)) : '—';
                 const t = e.occurred_at ? new Date(e.occurred_at).toLocaleString() : '—';
-                const devLabel = esc(e.name || '') + ' <span class="text-cyan-300/90 font-mono text-xs">' + esc(e.ip || '') + '</span> <span class="text-gray-500 text-xs">id=' + esc(String(e.device_id)) + '</span>';
+                const devLabel = esc(e.name || '') + ' <span class="text-cyan-300/90 font-mono text-xs">' + esc(e.ip || '') + '</span>';
                 html += '<tr class="border-b border-gray-700/70 hover:bg-gray-700/30 align-top">';
+                html += '<td class="p-3 text-gray-400 font-mono text-xs tabular-nums whitespace-nowrap">' + evId + '</td>';
+                html += '<td class="p-3 text-gray-400 font-mono text-xs tabular-nums whitespace-nowrap">' + devId + '</td>';
                 html += '<td class="p-3 text-gray-300 whitespace-nowrap">' + esc(t) + '</td>';
                 html += '<td class="p-3">' + kindLabel(e.kind) + '</td>';
                 html += '<td class="p-3">' + devLabel + '</td>';
@@ -115,7 +121,7 @@
             body.innerHTML = html;
             summary.textContent = 'Записей: ' + rows.length;
         } catch (e) {
-            body.innerHTML = '<tr><td colspan="4" class="p-6 text-center text-red-400">' + esc(e.message || e) + '</td></tr>';
+            body.innerHTML = '<tr><td colspan="6" class="p-6 text-center text-red-400">' + esc(e.message || e) + '</td></tr>';
             summary.textContent = 'Ошибка';
         } finally {
             btn.disabled = false;
