@@ -39,7 +39,7 @@
 
         <div id="devices-table-wrap"
              hx-get="/devices/table"
-             hx-trigger="load, every 30s"
+             hx-trigger="load, every 30s [!document.querySelector('[data-editing]')]"
              hx-swap="innerHTML"
              hx-indicator="#devices-page-loading">
             {{template "devicesTable" .}}
