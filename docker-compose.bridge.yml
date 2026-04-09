@@ -98,6 +98,11 @@ services:
       DB_DSN: "${DB_DSN}"
       TELEGRAM_TOKEN: "${TELEGRAM_TOKEN}"
       TELEGRAM_CHAT_ID: "${TELEGRAM_CHAT_ID}"
+      NMS_ADMIN_USER: "${NMS_ADMIN_USER}"
+      NMS_ADMIN_PASS: "${NMS_ADMIN_PASS}"
+      NMS_VIEWER_USER: "${NMS_VIEWER_USER}"
+      NMS_VIEWER_PASS: "${NMS_VIEWER_PASS}"
+      NMS_SESSION_SECRET: "${NMS_SESSION_SECRET}"
     volumes:
       - ./logs:/app/logs:delegated
       - ./config.yaml:/app/config.yaml
