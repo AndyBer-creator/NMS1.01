@@ -1,0 +1,41 @@
+groups:
+  - name: nms-availability
+    rules:
+      - alert: NMSApiDown
+        expr: up{job="nms-api"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "NMS API is down"
+          description: "Prometheus cannot scrape nms-api for more than 2 minutes."
+
+      - alert: NMSWorkerDown
+        expr: up{job="nms-worker"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "NMS worker is down"
+          description: "Prometheus cannot scrape nms-worker for more than 2 minutes."
+
+  - name: nms-quality
+    rules:
+      - alert: NMSHigh5xxRate
+        expr: sum(rate(nms_requests_total{status=~"5.."}[5m])) / clamp_min(sum(rate(nms_requests_total[5m])), 1) > 0.05
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High 5xx ratio on NMS API"
+          description: "5xx responses exceed 5% for 10 minutes."
+
+      - alert: NMSPollingFailuresSpike
+        expr: increase(nms_worker_poll_devices_total{status="failed"}[10m]) > 20
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Worker polling failures spike"
+          description: "Failed device polls increased by more than 20 during 10 minutes."
+

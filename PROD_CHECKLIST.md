@@ -58,8 +58,9 @@
   - Есть `/metrics`, `/health`, worker metrics.
   - Оговорка: нет полного набора прод-алертов и SLO-гейтов.
 
-- [ ] Алертинг (Alertmanager / Telegram route / и т.д.)
-  - Алерты минимум на: API 5xx, недоступность worker, DB ошибки, рост failed polling.
+- [~] Алертинг (Alertmanager / Telegram route / и т.д.)
+  - Добавлены базовые Prometheus rules: `alerts/nms-alerts.yml` (API down, worker down, high 5xx, polling failures spike).
+  - Оговорка: нужно подключить delivery-канал (Alertmanager/Telegram route) и проверить фактическую доставку.
 
 - [~] Логирование присутствует
   - Есть логи сервисов и ротация worker-логов.
@@ -95,7 +96,7 @@
 - [x] Rate-limit/lockout для `/login`
 - [~] Security headers + HTTPS-only политика
 - [x] Backup + проверенный restore
-- [ ] Базовый набор алертов
+- [~] Базовый набор алертов
 - [ ] Smoke-test после деплоя
 
 ---

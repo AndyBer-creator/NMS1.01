@@ -139,6 +139,7 @@ services:
       - "9090"
     volumes:
       - ./prometheus.bridge.yml:/etc/prometheus/prometheus.yml
+      - ./alerts:/etc/prometheus/alerts:ro
       - prometheus_data:/prometheus
     command:
       - '--config.file=/etc/prometheus/prometheus.yml'
