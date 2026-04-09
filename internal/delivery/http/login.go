@@ -113,6 +113,9 @@ func safeNext(raw string) string {
 	if err != nil || u.Path == "" {
 		return "/"
 	}
+	if u.IsAbs() || u.Host != "" {
+		return "/"
+	}
 	if !strings.HasPrefix(u.Path, "/") || strings.HasPrefix(u.Path, "//") {
 		return "/"
 	}
