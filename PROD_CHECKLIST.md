@@ -28,8 +28,9 @@
   - Добавлен throttling/lockout по IP и username.
   - Логируются события `login failed` и `login throttled`.
 
-- [ ] Security headers
-  - Добавить минимум: `X-Frame-Options`, `X-Content-Type-Options`, `Referrer-Policy`, CSP.
+- [x] Security headers
+  - Добавлены: `X-Frame-Options`, `X-Content-Type-Options`, `Referrer-Policy`, `Permissions-Policy`, `Content-Security-Policy`.
+  - `Strict-Transport-Security` выставляется для HTTPS/`X-Forwarded-Proto=https`.
 
 ## 2) Secrets & Configuration
 
@@ -43,11 +44,13 @@
 
 ## 3) Data Safety (PostgreSQL)
 
-- [ ] Регулярные backup’ы БД
-  - Нужен расписанный backup job + retention policy.
+- [x] Регулярные backup’ы БД
+  - Добавлены скрипты backup + retention: `scripts/backup_postgres.sh`.
+  - Проверен ручной backup: `2026-04-09` (`NMS_2026-04-09T16-05-48.dump` + checksum).
 
-- [ ] Проверка restore-процедуры
-  - Минимум 1 тестовое восстановление в отдельную БД/стенд.
+- [x] Проверка restore-процедуры
+  - Добавлен restore-runbook и скрипт: `scripts/restore_postgres.sh`, `BACKUP_RESTORE.md`.
+  - Выполнен restore drill: `2026-04-09` в БД `NMS_restore_test` (таблицы и данные проверены).
 
 ## 4) Observability & Operations
 
@@ -90,8 +93,8 @@
 
 - [x] CSRF для mutating-запросов
 - [x] Rate-limit/lockout для `/login`
-- [ ] Security headers + HTTPS-only политика
-- [ ] Backup + проверенный restore
+- [~] Security headers + HTTPS-only политика
+- [x] Backup + проверенный restore
 - [ ] Базовый набор алертов
 - [ ] Smoke-test после деплоя
 
