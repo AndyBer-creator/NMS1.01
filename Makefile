@@ -1,6 +1,6 @@
 SHELL := /bin/bash
 
-.PHONY: migrate server worker traps dev docker-up clean backup-db restore-db smoke-test rbac-smoke init-secrets log-secrets-check slo-gates https-policy-check
+.PHONY: migrate server worker traps dev docker-up clean backup-db restore-db smoke-test rbac-smoke init-secrets log-secrets-check slo-gates https-policy-check chaos-worker-check
 
 # Правильный способ: env файл для make
 include .env
@@ -54,3 +54,6 @@ slo-gates:
 
 https-policy-check:
 	./scripts/check_https_policy.sh
+
+chaos-worker-check:
+	./scripts/chaos_worker_check.sh

@@ -73,9 +73,9 @@
 
 ## 5) Reliability
 
-- [~] Worker устойчив к части ошибок
+- [x] Worker устойчив к части ошибок
   - Есть backoff, классификация ошибок опроса, события доступности.
-  - Оговорка: не выполнены fault-injection/chaos проверки.
+  - Добавлен fault-injection скрипт `scripts/chaos_worker_check.sh` (`make chaos-worker-check`) для проверки auto-restart worker и восстановления метрик.
 
 - [x] Runbook инцидентов
   - Добавлен `RUNBOOK.md` (API down, worker stalled, DB down, alert pipeline issues, smoke after incident).
