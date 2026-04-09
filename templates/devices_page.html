@@ -22,10 +22,17 @@
                 <p class="text-gray-400 mt-1 text-sm">SNMP-инвентарь · та же тема, что и на главном дашборде</p>
             </div>
         </div>
-        <a href="/"
-           class="inline-flex items-center justify-center gap-2 px-5 py-3 rounded-xl bg-gray-800 hover:bg-gray-700 border border-gray-600 text-sm font-medium transition-all hover:scale-[1.02] shadow-lg">
-            ← На дашборд
-        </a>
+        <div class="flex flex-wrap items-center gap-3 justify-end">
+            <form method="post" action="/logout" class="inline">
+                <button type="submit" class="text-sm px-4 py-3 rounded-xl bg-gray-800 hover:bg-gray-700 border border-gray-600 text-gray-300 transition-colors">
+                    Выйти
+                </button>
+            </form>
+            <a href="/"
+               class="inline-flex items-center justify-center gap-2 px-5 py-3 rounded-xl bg-gray-800 hover:bg-gray-700 border border-gray-600 text-sm font-medium transition-all hover:scale-[1.02] shadow-lg">
+                ← На дашборд
+            </a>
+        </div>
     </div>
 
     <div class="bg-gradient-to-br from-slate-900/80 to-cyan-950/40 border border-cyan-700/40 p-6 rounded-xl shadow-xl mb-8">

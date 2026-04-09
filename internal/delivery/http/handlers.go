@@ -46,15 +46,16 @@ var (
 )
 
 type Handlers struct {
-	repo             *postgres.Repo
-	snmp             *snmp.Client
-	scanner          *discovery.Scanner
-	TrapsRepo        *repository.TrapsRepo
-	logger           *zap.Logger
-	devicesTmpl      *template.Template // devicesTable + devicesPage
-	mibPanelTmpl     *template.Template
-	mibUploadDir     string
-	mib              *mibresolver.Resolver
+	repo         *postgres.Repo
+	snmp         *snmp.Client
+	scanner      *discovery.Scanner
+	TrapsRepo    *repository.TrapsRepo
+	logger       *zap.Logger
+	devicesTmpl  *template.Template // devicesTable + devicesPage
+	mibPanelTmpl *template.Template
+	loginTmpl    *template.Template
+	mibUploadDir string
+	mib          *mibresolver.Resolver
 }
 
 func NewHandlers(repo *postgres.Repo, snmpClient *snmp.Client, scanner *discovery.Scanner, trapsRepo *repository.TrapsRepo, logger *zap.Logger, mibUploadDir string, mib *mibresolver.Resolver) *Handlers {
@@ -64,6 +65,7 @@ func NewHandlers(repo *postgres.Repo, snmpClient *snmp.Client, scanner *discover
 		"templates/worker_poll_panel.html",
 	))
 	mibPanelTmpl := template.Must(template.ParseFiles("templates/mibs_panel.html"))
+	loginTmpl := template.Must(template.ParseFiles("templates/login.html"))
 
 	h := &Handlers{
 		repo:         repo,
@@ -73,6 +75,7 @@ func NewHandlers(repo *postgres.Repo, snmpClient *snmp.Client, scanner *discover
 		logger:       logger,
 		devicesTmpl:  devicesTmpl,
 		mibPanelTmpl: mibPanelTmpl,
+		loginTmpl:    loginTmpl,
 		mibUploadDir: mibUploadDir,
 		mib:          mib,
 	}
@@ -111,8 +114,8 @@ type devicesTableViewModel struct {
 }
 
 var allowedSNMPSetOIDs = map[string]struct{}{
-	"1.3.6.1.2.1.2.2.1.7":  {}, // ifAdminStatus
-	"1.3.6.1.2.1.2.2.1.5":  {}, // ifSpeed (device support dependent)
+	"1.3.6.1.2.1.2.2.1.7":     {}, // ifAdminStatus
+	"1.3.6.1.2.1.2.2.1.5":     {}, // ifSpeed (device support dependent)
 	"1.3.6.1.2.1.31.1.1.1.18": {}, // ifAlias
 }
 
@@ -793,9 +796,9 @@ type topologyEdge struct {
 }
 
 type topologyResponse struct {
-	ScanID int64            `json:"scan_id"`
-	Nodes  []topologyNode  `json:"nodes"`
-	Edges  []topologyEdge  `json:"edges"`
+	ScanID int64          `json:"scan_id"`
+	Nodes  []topologyNode `json:"nodes"`
+	Edges  []topologyEdge `json:"edges"`
 }
 
 func hashShort(s string) string {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/subtle"
 	"net/http"
+	"net/url"
 	"os"
 	"strings"
 )
@@ -71,12 +72,13 @@ func basicMatch(cred basicCred, user, pass string) bool {
 	return equalConstTime(cred.user, user) && equalConstTime(cred.pass, pass)
 }
 
-func challenge(w http.ResponseWriter, realm string) {
-	w.Header().Set("WWW-Authenticate", `Basic realm="`+realm+`", charset="UTF-8"`)
-	http.Error(w, "Unauthorized", http.StatusUnauthorized)
+func prefersJSONAPI(r *http.Request) bool {
+	accept := r.Header.Get("Accept")
+	return strings.Contains(accept, "application/json") &&
+		!strings.Contains(accept, "text/html")
 }
 
-// RequireAuth принимает либо admin, либо viewer. Если не настроены креды — доступ открыт (dev-friendly).
+// RequireAuth: cookie-сессия (форма /login) или HTTP Basic. Если креды не заданы — доступ открыт.
 func RequireAuth(next http.Handler) http.Handler {
 	admin, viewer := loadCreds()
 	if admin.user == "" && viewer.user == "" {
@@ -84,21 +86,37 @@ func RequireAuth(next http.Handler) http.Handler {
 	}
 
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		user, pass, ok := r.BasicAuth()
-		if !ok {
-			challenge(w, "NMS1")
+		if u := sessionUserFromCookie(r); u != nil {
+			next.ServeHTTP(w, withUser(r, u))
 			return
 		}
 
-		switch {
-		case basicMatch(admin, user, pass):
-			next.ServeHTTP(w, withUser(r, &authUser{username: user, role: roleAdmin}))
-		case basicMatch(viewer, user, pass):
-			next.ServeHTTP(w, withUser(r, &authUser{username: user, role: roleViewer}))
-		default:
-			challenge(w, "NMS1")
+		user, pass, ok := r.BasicAuth()
+		if ok {
+			switch {
+			case basicMatch(admin, user, pass):
+				next.ServeHTTP(w, withUser(r, &authUser{username: user, role: roleAdmin}))
+				return
+			case basicMatch(viewer, user, pass):
+				next.ServeHTTP(w, withUser(r, &authUser{username: user, role: roleViewer}))
+				return
+			}
+		}
+
+		nextURL := "/login?next=" + url.QueryEscape(safeNext(r.URL.RequestURI()))
+		if r.Header.Get("HX-Request") == "true" {
+			w.Header().Set("HX-Redirect", nextURL)
+			w.WriteHeader(http.StatusUnauthorized)
+			_, _ = w.Write([]byte("Unauthorized"))
 			return
 		}
+		if prefersJSONAPI(r) {
+			w.Header().Set("Content-Type", "application/json; charset=utf-8")
+			w.WriteHeader(http.StatusUnauthorized)
+			_, _ = w.Write([]byte(`{"error":"unauthorized","login":"/login"}`))
+			return
+		}
+		http.Redirect(w, r, nextURL, http.StatusFound)
 	})
 }
 
@@ -117,4 +135,3 @@ func RequireAdmin(next http.Handler) http.Handler {
 		next.ServeHTTP(w, r)
 	})
 }
-

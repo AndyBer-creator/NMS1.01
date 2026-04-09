@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Вход — NMS1</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-950 text-white min-h-screen flex flex-col items-center justify-center p-6">
+<div class="w-full max-w-md">
+    <div class="text-center mb-10">
+        <img src="/static/logo.svg" alt="NMS1" class="h-16 mx-auto mb-4 drop-shadow-xl">
+        <h1 class="text-3xl font-bold bg-gradient-to-r from-blue-400 to-purple-500 bg-clip-text text-transparent">
+            NMS1
+        </h1>
+        <p class="text-gray-500 text-sm mt-2">Войдите для доступа к панели</p>
+    </div>
+    <div class="bg-gray-900/80 border border-gray-700 rounded-2xl p-8 shadow-2xl">
+        {{if .Error}}
+        <div class="mb-4 p-3 rounded-lg bg-red-500/15 border border-red-500/40 text-red-300 text-sm">{{.Error}}</div>
+        {{end}}
+        <form method="post" action="/login" class="space-y-5">
+            <input type="hidden" name="next" value="{{.Next}}">
+            <div>
+                <label class="block text-sm text-gray-400 mb-2">Логин</label>
+                <input name="username" autocomplete="username" required
+                       class="w-full p-3 bg-gray-800/80 border border-gray-600 rounded-xl focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-400">
+            </div>
+            <div>
+                <label class="block text-sm text-gray-400 mb-2">Пароль</label>
+                <input name="password" type="password" autocomplete="current-password" required
+                       class="w-full p-3 bg-gray-800/80 border border-gray-600 rounded-xl focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-400">
+            </div>
+            <button type="submit"
+                    class="w-full py-3 rounded-xl bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 font-semibold shadow-lg transition-all">
+                Войти
+            </button>
+        </form>
+        <p class="text-xs text-gray-500 mt-6 text-center">
+            Учётные записи задаются переменными <code class="text-gray-400">NMS_ADMIN_*</code> и <code class="text-gray-400">NMS_VIEWER_*</code>.
+        </p>
+    </div>
+</div>
+</body>
+</html>
