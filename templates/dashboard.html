@@ -405,6 +405,21 @@
                 })();
             </script>
         </div>
+
+        <!-- Интервал опроса SNMP (worker) -->
+        <div class="bg-gradient-to-br from-slate-900/80 to-cyan-950/40 border border-cyan-700/40 p-6 rounded-xl shadow-2xl col-span-1 lg:col-span-2">
+            <h2 class="text-2xl font-semibold mb-4 flex items-center">
+                <span class="w-3 h-3 bg-cyan-400 rounded-full mr-3 animate-pulse"></span>
+                ⏱ Интервал опроса устройств (worker)
+            </h2>
+            <div id="worker-poll-panel-wrap"
+                 hx-get="/settings/worker-poll-panel"
+                 hx-trigger="load"
+                 hx-swap="innerHTML">
+                <p class="text-sm text-gray-500">Загрузка настроек…</p>
+            </div>
+        </div>
+
         <!-- Navigation -->
         <div class="bg-gray-800 p-6 rounded-xl shadow-2xl">
             <h2 class="text-2xl font-semibold mb-6 flex items-center">

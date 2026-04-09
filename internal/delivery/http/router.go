@@ -36,6 +36,9 @@ func Router(handlers *Handlers) *chi.Mux {
 
 	r.With(RequireAdmin).Post("/discovery/scan", handlers.DiscoverScan)
 
+	r.Get("/settings/worker-poll-panel", handlers.WorkerPollSettingsPanel)
+	r.With(RequireAdmin).Post("/settings/worker-poll-interval", handlers.SetWorkerPollInterval)
+
 	// MIB: панель доступна всем с ролью (viewer видит сообщение), загрузка/удаление — только admin
 	r.Get("/mibs/panel", handlers.MibPanel)
 	r.Post("/mibs/resolve", handlers.MibResolve)
