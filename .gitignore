@@ -17,6 +17,8 @@ logs/*.log
 *.dylib
 *.out
 *.test
+/trap-receiver
+/bin/
 
 # Coverage / profiling
 *.prof
@@ -33,14 +35,4 @@ coverage.out
 Thumbs.db
 desktop.ini
 acme.json
-# Known accidental artifacts
-Host:
-accept:
-user-agent:
-GET
-[api
-[api]
-=
-CACHED
-exporting
 go.work
