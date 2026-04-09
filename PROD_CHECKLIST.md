@@ -31,6 +31,7 @@
 - [x] Security headers
   - Добавлены: `X-Frame-Options`, `X-Content-Type-Options`, `Referrer-Policy`, `Permissions-Policy`, `Content-Security-Policy`.
   - `Strict-Transport-Security` выставляется для HTTPS/`X-Forwarded-Proto=https`.
+  - Введена HTTPS-only политика при `NMS_ENFORCE_HTTPS=true`: HTTP-запросы редиректятся на HTTPS (кроме `/health`, `/metrics`).
 
 ## 2) Secrets & Configuration
 
@@ -99,7 +100,7 @@
 
 - [x] CSRF для mutating-запросов
 - [x] Rate-limit/lockout для `/login`
-- [~] Security headers + HTTPS-only политика
+- [x] Security headers + HTTPS-only политика
 - [x] Backup + проверенный restore
 - [x] Базовый набор алертов
 - [x] Smoke-test после деплоя

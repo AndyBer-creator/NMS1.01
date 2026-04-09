@@ -122,6 +122,29 @@ SMTP env:
 
 - Запуск: `make slo-gates` или `./scripts/check_slo_gates.sh`
 - Документ порогов и выражений: `SLO_GATES.md`
+- По умолчанию в основном compose Prometheus не публикуется на хост (`expose`, без `ports`).
+- Рекомендуемо для production: запускать через ingress-домен:
+
+  ```bash
+  PROM_URL=https://prom.nms.test.com make slo-gates
+  ```
+
+- Для локальной отладки можно временно открыть `9090` через override:
+
+  ```bash
+  docker compose -f docker-compose.yml -f docker-compose.prom-host.yml up -d prometheus
+  make slo-gates
+  ```
+
+  `docker-compose.prom-host.yml` использовать только для dev/debug.
+
+## HTTPS-only policy
+
+- Включение (production): `NMS_ENFORCE_HTTPS=true`.
+- Поведение:
+  - plain HTTP перенаправляется на HTTPS (`308`);
+  - `/health` и `/metrics` остаются доступными по HTTP для probe/scrape совместимости.
+- Проверка: `make https-policy-check`.
 
 ## RBAC smoke test
 
