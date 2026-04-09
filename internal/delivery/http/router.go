@@ -19,12 +19,13 @@ func Router(handlers *Handlers) *chi.Mux {
 
 	r.Get("/login", handlers.LoginPage)
 	r.Post("/login", handlers.LoginPost)
-	r.Post("/logout", handlers.Logout)
 
 	r.Group(func(r chi.Router) {
 		r.Use(RequireAuth)
+		r.Use(RequireCSRF)
 
 		r.Get("/", handlers.Dashboard)
+		r.Post("/logout", handlers.Logout)
 
 		r.Get("/devices", handlers.ListDevices)
 		r.Get("/devices/list", handlers.DevicesListPage)

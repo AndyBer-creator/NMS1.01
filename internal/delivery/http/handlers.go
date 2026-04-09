@@ -113,9 +113,10 @@ type devicesTableRow struct {
 }
 
 type devicesTableViewModel struct {
-	Devices []devicesTableRow
-	Total   int
-	Admin   bool
+	Devices   []devicesTableRow
+	Total     int
+	Admin     bool
+	CSRFToken string
 }
 
 var allowedSNMPSetOIDs = map[string]struct{}{
@@ -197,7 +198,8 @@ func (h *Handlers) Dashboard(w http.ResponseWriter, r *http.Request) {
 	u := userFromContext(r.Context())
 	admin := u == nil || u.role == roleAdmin
 	_ = h.dashboardTmpl.Execute(w, map[string]any{
-		"Admin": admin,
+		"Admin":     admin,
+		"CSRFToken": csrfTokenFromContext(r),
 	})
 }
 
@@ -233,6 +235,7 @@ func (h *Handlers) DevicesTable(w http.ResponseWriter, r *http.Request) {
 	vm := devicesTableViewModelFromDevices(devices)
 	u := userFromContext(r.Context())
 	vm.Admin = u == nil || u.role == roleAdmin
+	vm.CSRFToken = csrfTokenFromContext(r)
 	for i := range vm.Devices {
 		vm.Devices[i].Admin = vm.Admin
 	}
