@@ -28,6 +28,20 @@
         </a>
     </div>
 
+    <div class="bg-gradient-to-br from-slate-900/80 to-cyan-950/40 border border-cyan-700/40 p-6 rounded-xl shadow-xl mb-8">
+        <h2 class="text-xl font-semibold mb-3 flex items-center">
+            <span class="w-2 h-2 bg-cyan-400 rounded-full mr-2"></span>
+            ⏱ Интервал опроса (worker)
+        </h2>
+        <p class="text-sm text-gray-400 mb-3">То же значение, что на <a href="/" class="text-cyan-400 hover:underline">главном дашборде</a>. Форма — у администратора.</p>
+        <div id="worker-poll-panel-wrap"
+             hx-get="/settings/worker-poll-panel"
+             hx-trigger="load"
+             hx-swap="innerHTML">
+            <p class="text-sm text-gray-500">Загрузка…</p>
+        </div>
+    </div>
+
     <div class="bg-gray-800 p-6 rounded-xl shadow-2xl border border-gray-700/50 mb-8">
         <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
             <h2 class="text-2xl font-semibold flex items-center">
