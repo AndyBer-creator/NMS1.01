@@ -129,10 +129,10 @@ func (h *Handlers) TrapsPage(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handlers) testAlert(w http.ResponseWriter, r *http.Request) {
 	type testAlertRequest struct {
-		DeviceIP  string `json:"device_ip"`
-		OID       string `json:"oid"`
-		TrapVars  string `json:"trap_vars,omitempty"`
-		Message   string `json:"message,omitempty"`
+		DeviceIP string `json:"device_ip"`
+		OID      string `json:"oid"`
+		TrapVars string `json:"trap_vars,omitempty"`
+		Message  string `json:"message,omitempty"`
 	}
 
 	var input testAlertRequest
@@ -170,8 +170,8 @@ func (h *Handlers) testAlert(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{
-		"status":   "ok",
+		"status":    "ok",
 		"device_ip": input.DeviceIP,
-		"oid":      input.OID,
+		"oid":       input.OID,
 	})
 }
