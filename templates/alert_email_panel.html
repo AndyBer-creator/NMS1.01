@@ -1,0 +1,34 @@
+{{define "alertEmailPanel"}}
+<div class="space-y-3">
+    {{if .Err}}
+    <p class="text-sm text-red-400">{{.Err}}</p>
+    {{end}}
+    {{if .Saved}}
+    <p class="text-sm text-emerald-400">Email для алертов сохранён.</p>
+    {{end}}
+    <p class="text-sm text-gray-300">
+        Получатель email-алертов от Alertmanager webhook.
+    </p>
+    {{if .Admin}}
+    <form class="flex flex-col sm:flex-row sm:items-end gap-3"
+          hx-post="/settings/alert-email"
+          hx-target="#alert-email-panel-wrap"
+          hx-swap="innerHTML">
+        <div class="w-full sm:w-96">
+            <label class="block text-xs text-gray-400 mb-1">Email получателя</label>
+            <input type="email" name="email" value="{{.Email}}" placeholder="noc@example.com"
+                   class="w-full p-3 bg-gray-900/60 border border-gray-600 rounded-lg focus:border-cyan-400 focus:outline-none">
+        </div>
+        <button type="submit"
+                class="px-6 py-3 rounded-lg bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 font-semibold shadow-lg">
+            Сохранить
+        </button>
+    </form>
+    {{else}}
+    <p class="text-sm text-gray-400">
+        Текущий email: <span class="text-white font-mono">{{if .Email}}{{.Email}}{{else}}не задан{{end}}</span>
+    </p>
+    {{end}}
+</div>
+{{end}}
+

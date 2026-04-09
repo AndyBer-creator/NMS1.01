@@ -60,7 +60,9 @@
 
 - [~] Алертинг (Alertmanager / Telegram route / и т.д.)
   - Добавлены базовые Prometheus rules: `alerts/nms-alerts.yml` (API down, worker down, high 5xx, polling failures spike).
-  - Оговорка: нужно подключить delivery-канал (Alertmanager/Telegram route) и проверить фактическую доставку.
+  - Добавлен Alertmanager в compose + webhook `POST /alerts/webhook` (Prometheus -> Alertmanager -> API).
+  - Реализована доставка в Telegram (best-effort) и Email через SMTP (получатель настраивается в admin UI).
+  - Оговорка: нужен end-to-end тест фактической доставки на рабочие каналы (Telegram + SMTP).
 
 - [~] Логирование присутствует
   - Есть логи сервисов и ротация worker-логов.
@@ -80,8 +82,9 @@
 - [ ] Интеграционные тесты критичных сценариев
   - auth/rbac/device mutate/viewer read-only/worker interval setting.
 
-- [ ] Деплойный smoke-test
-  - Авто-проверка после релиза (login, devices list, worker heartbeat, DB connectivity).
+- [x] Деплойный smoke-test
+  - Добавлен скрипт `scripts/smoke_test.sh` + цель `make smoke-test`.
+  - Проверен успешный прогон: `2026-04-09`.
 
 - [ ] Rollback-процедура
   - Шаги отката версии и согласованная политика миграций.
@@ -97,7 +100,7 @@
 - [~] Security headers + HTTPS-only политика
 - [x] Backup + проверенный restore
 - [~] Базовый набор алертов
-- [ ] Smoke-test после деплоя
+- [x] Smoke-test после деплоя
 
 ---
 

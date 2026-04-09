@@ -1,0 +1,16 @@
+global:
+  resolve_timeout: 5m
+
+route:
+  receiver: nms-api-webhook
+  group_by: ['alertname']
+  group_wait: 15s
+  group_interval: 1m
+  repeat_interval: 3h
+
+receivers:
+  - name: nms-api-webhook
+    webhook_configs:
+      - url: "http://api:8080/alerts/webhook"
+        send_resolved: true
+

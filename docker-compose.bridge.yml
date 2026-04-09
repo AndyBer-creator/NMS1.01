@@ -98,6 +98,11 @@ services:
       DB_DSN: "${DB_DSN}"
       TELEGRAM_TOKEN: "${TELEGRAM_TOKEN}"
       TELEGRAM_CHAT_ID: "${TELEGRAM_CHAT_ID}"
+      SMTP_HOST: "${SMTP_HOST}"
+      SMTP_PORT: "${SMTP_PORT}"
+      SMTP_USER: "${SMTP_USER}"
+      SMTP_PASS: "${SMTP_PASS}"
+      SMTP_FROM: "${SMTP_FROM}"
       NMS_ADMIN_USER: "${NMS_ADMIN_USER}"
       NMS_ADMIN_PASS: "${NMS_ADMIN_PASS}"
       NMS_VIEWER_USER: "${NMS_VIEWER_USER}"
@@ -153,6 +158,22 @@ services:
       - "traefik.http.routers.prom.tls=true"
       - "traefik.http.routers.prom.tls.certresolver=le"
       - "traefik.http.services.prom.loadbalancer.server.port=9090"
+    networks:
+      - nms-network
+    restart: unless-stopped
+
+  alertmanager:
+    image: prom/alertmanager:latest
+    container_name: nms-alertmanager
+    expose:
+      - "9093"
+    ports:
+      - "9093:9093"
+    volumes:
+      - ./alertmanager.bridge.yml:/etc/alertmanager/alertmanager.yml:ro
+    command:
+      - '--config.file=/etc/alertmanager/alertmanager.yml'
+      - '--storage.path=/alertmanager'
     networks:
       - nms-network
     restart: unless-stopped

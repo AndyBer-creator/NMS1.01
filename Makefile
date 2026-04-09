@@ -1,6 +1,6 @@
 SHELL := /bin/bash
 
-.PHONY: migrate server worker traps dev docker-up clean backup-db restore-db
+.PHONY: migrate server worker traps dev docker-up clean backup-db restore-db smoke-test
 
 # Правильный способ: env файл для make
 include .env
@@ -36,3 +36,6 @@ backup-db:
 restore-db:
 	@if [ -z "$(FILE)" ]; then echo "Usage: make restore-db FILE=./backups/postgres/<file.dump> [DB=NMS_restore_test]"; exit 1; fi
 	./scripts/restore_postgres.sh "$(FILE)" "$(or $(DB),)"
+
+smoke-test:
+	./scripts/smoke_test.sh

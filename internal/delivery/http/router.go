@@ -20,6 +20,7 @@ func Router(handlers *Handlers) *chi.Mux {
 
 	r.Get("/login", handlers.LoginPage)
 	r.Post("/login", handlers.LoginPost)
+	r.Post("/alerts/webhook", handlers.AlertWebhook)
 
 	r.Group(func(r chi.Router) {
 		r.Use(RequireAuth)
@@ -43,6 +44,8 @@ func Router(handlers *Handlers) *chi.Mux {
 
 		r.Get("/settings/worker-poll-panel", handlers.WorkerPollSettingsPanel)
 		r.With(RequireAdmin).Post("/settings/worker-poll-interval", handlers.SetWorkerPollInterval)
+		r.Get("/settings/alert-email-panel", handlers.AlertEmailPanel)
+		r.With(RequireAdmin).Post("/settings/alert-email", handlers.SetAlertEmail)
 
 		r.Get("/mibs/panel", handlers.MibPanel)
 		r.Post("/mibs/resolve", handlers.MibResolve)
