@@ -72,14 +72,18 @@ func (h *Handlers) AlertWebhook(w http.ResponseWriter, r *http.Request) {
 
 		// Telegram (best-effort).
 		if telegram.BotToken != "" && telegram.ChatID != "" {
-			if err := telegram.SendCriticalTrap("alertmanager", name, body); err != nil {
+			if err := runWithTimeout(5*time.Second, func() error {
+				return telegram.SendCriticalTrap("alertmanager", name, body)
+			}); err != nil {
 				h.logger.Warn("telegram alert send failed", zap.Error(err), zap.String("alert", name))
 			}
 		}
 
 		// Email (best-effort).
 		if emailTo != "" && smtpClient.Enabled() {
-			if err := smtpClient.Send(emailTo, "[NMS] "+summary, body); err != nil {
+			if err := runWithTimeout(6*time.Second, func() error {
+				return smtpClient.Send(emailTo, "[NMS] "+summary, body)
+			}); err != nil {
 				h.logger.Warn("email alert send failed", zap.Error(err), zap.String("alert", name), zap.String("to", emailTo))
 			} else {
 				sent++
@@ -101,6 +105,19 @@ func (h *Handlers) AlertWebhook(w http.ResponseWriter, r *http.Request) {
 		"email_sent":    sent,
 		"email_skipped": skipped,
 	})
+}
+
+func runWithTimeout(timeout time.Duration, fn func() error) error {
+	ch := make(chan error, 1)
+	go func() {
+		ch <- fn()
+	}()
+	select {
+	case err := <-ch:
+		return err
+	case <-time.After(timeout):
+		return fmt.Errorf("timeout after %s", timeout)
+	}
 }
 
 func defaultIfEmpty(v, def string) string {
