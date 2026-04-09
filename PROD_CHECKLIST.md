@@ -55,9 +55,9 @@
 
 ## 4) Observability & Operations
 
-- [~] Метрики и healthcheck присутствуют
+- [x] Метрики и healthcheck присутствуют
   - Есть `/metrics`, `/health`, worker metrics.
-  - Оговорка: нет полного набора прод-алертов и SLO-гейтов.
+  - Добавлены формальные SLO-gates и автоматическая проверка через Prometheus API: `SLO_GATES.md`, `scripts/check_slo_gates.sh` (`make slo-gates`).
 
 - [x] Алертинг (Alertmanager / Telegram route / и т.д.)
   - Добавлены базовые Prometheus rules: `alerts/nms-alerts.yml` (API down, worker down, high 5xx, polling failures spike).
@@ -66,9 +66,9 @@
   - Подтверждена фактическая email-доставка (`2026-04-09`: письмо получено на целевой адрес).
   - Подтверждён e2e через Alertmanager -> webhook API -> email (`2026-04-09`).
 
-- [~] Логирование присутствует
+- [x] Логирование присутствует
   - Есть логи сервисов и ротация worker-логов.
-  - Оговорка: нужно формально проверить, что секреты не пишутся в логи.
+  - Добавлена формальная проверка на утечку секретов в логах: `scripts/check_logs_no_secrets.sh` (`make log-secrets-check`).
 
 ## 5) Reliability
 

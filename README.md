@@ -111,6 +111,18 @@ SMTP env:
   - `/events/availability/page`
   - `http://localhost:8081/metrics` (worker)
 
+## Проверка логов на утечку секретов
+
+- Запуск: `make log-secrets-check` или `./scripts/check_logs_no_secrets.sh`
+- Проверяет:
+  - отсутствие в `logs/` ключевых названий чувствительных переменных;
+  - отсутствие точных значений секретов из текущего окружения.
+
+## SLO-gates (Prometheus)
+
+- Запуск: `make slo-gates` или `./scripts/check_slo_gates.sh`
+- Документ порогов и выражений: `SLO_GATES.md`
+
 ## RBAC smoke test
 
 - Запуск: `make rbac-smoke` или `./scripts/rbac_smoke_test.sh`
