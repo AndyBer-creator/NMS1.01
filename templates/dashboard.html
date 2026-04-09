@@ -191,6 +191,20 @@
                 <p class="text-sm text-gray-500">Загрузка настроек…</p>
             </div>
         </div>
+
+        <div class="bg-gradient-to-br from-slate-900/80 to-emerald-950/40 border border-emerald-700/40 p-6 rounded-xl shadow-2xl col-span-1 lg:col-span-2">
+            <h2 class="text-2xl font-semibold mb-4 flex items-center">
+                <span class="w-3 h-3 bg-emerald-400 rounded-full mr-3 animate-pulse"></span>
+                ✉️ Email для алертов
+            </h2>
+            <p class="text-sm text-gray-400 mb-3">Адрес получателя алертов от Alertmanager (через API webhook).</p>
+            <div id="alert-email-panel-wrap"
+                 hx-get="/settings/alert-email-panel"
+                 hx-trigger="load"
+                 hx-swap="innerHTML">
+                <p class="text-sm text-gray-500">Загрузка настроек…</p>
+            </div>
+        </div>
         
         {{if .Admin}}
         <!-- 🔥 ФОРМА ДОБАВЛЕНИЯ УСТРОЙСТВ -->

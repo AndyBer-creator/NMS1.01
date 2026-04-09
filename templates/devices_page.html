@@ -68,6 +68,20 @@
         </div>
     </div>
 
+    <div class="bg-gradient-to-br from-slate-900/80 to-emerald-950/40 border border-emerald-700/40 p-6 rounded-xl shadow-xl mb-8">
+        <h2 class="text-xl font-semibold mb-3 flex items-center">
+            <span class="w-2 h-2 bg-emerald-400 rounded-full mr-2"></span>
+            ✉️ Email для алертов
+        </h2>
+        <p class="text-sm text-gray-400 mb-3">Тот же параметр, что на главном дашборде.</p>
+        <div id="alert-email-panel-wrap"
+             hx-get="/settings/alert-email-panel"
+             hx-trigger="load"
+             hx-swap="innerHTML">
+            <p class="text-sm text-gray-500">Загрузка…</p>
+        </div>
+    </div>
+
     <div class="bg-gray-800 p-6 rounded-xl shadow-2xl border border-gray-700/50 mb-8">
         <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
             <h2 class="text-2xl font-semibold flex items-center">

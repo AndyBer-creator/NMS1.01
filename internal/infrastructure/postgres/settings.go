@@ -9,6 +9,7 @@ import (
 
 const (
 	SettingKeyWorkerPollIntervalSec = "worker_poll_interval_sec"
+	SettingKeyAlertEmailTo          = "alert_email_to"
 
 	DefaultWorkerPollIntervalSeconds = 60
 	MinWorkerPollIntervalSeconds     = 10
@@ -51,5 +52,25 @@ func (r *Repo) SetWorkerPollIntervalSeconds(sec int) error {
 		VALUES ($1, $2, NOW())
 		ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()`,
 		SettingKeyWorkerPollIntervalSec, strconv.Itoa(sec))
+	return err
+}
+
+func (r *Repo) GetAlertEmailTo() string {
+	var raw string
+	err := r.db.QueryRowContext(context.Background(),
+		`SELECT value FROM nms_settings WHERE key = $1`, SettingKeyAlertEmailTo).Scan(&raw)
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(raw)
+}
+
+func (r *Repo) SetAlertEmailTo(email string) error {
+	email = strings.TrimSpace(email)
+	_, err := r.db.ExecContext(context.Background(), `
+		INSERT INTO nms_settings (key, value, updated_at)
+		VALUES ($1, $2, NOW())
+		ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()`,
+		SettingKeyAlertEmailTo, email)
 	return err
 }
