@@ -146,6 +146,16 @@ SMTP env:
   - `/health` и `/metrics` остаются доступными по HTTP для probe/scrape совместимости.
 - Проверка: `make https-policy-check`.
 
+## Worker chaos check (fault-injection)
+
+- Безопасный сценарий (по умолчанию): `make chaos-worker-check`
+  - принудительно завершает процесс `worker` (`SIGKILL`) и проверяет восстановление сервиса + доступность worker metrics (с автоперезапуском или reconcile через `docker compose up -d worker`).
+- Расширенный сценарий с кратковременным outage БД:
+
+  ```bash
+  CHAOS_DB_OUTAGE=true CHAOS_DB_OUTAGE_SECONDS=20 make chaos-worker-check
+  ```
+
 ## RBAC smoke test
 
 - Запуск: `make rbac-smoke` или `./scripts/rbac_smoke_test.sh`
