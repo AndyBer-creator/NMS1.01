@@ -3,11 +3,31 @@
 <html><head><title>NMS1 Dashboard</title>
 <script src="https://unpkg.com/htmx.org@1.9.10"></script>
 <script src="https://cdn.tailwindcss.com"></script>
+<script>
+    (function () {
+        function readCookie(name) {
+            const prefix = name + "=";
+            const parts = (document.cookie || "").split("; ");
+            for (const p of parts) {
+                if (p.indexOf(prefix) === 0) return decodeURIComponent(p.slice(prefix.length));
+            }
+            return "";
+        }
+        window.nmsCsrfToken = function () { return readCookie("nms_csrf"); };
+        document.addEventListener("htmx:configRequest", function (e) {
+            const token = window.nmsCsrfToken ? window.nmsCsrfToken() : "";
+            if (token && e && e.detail && e.detail.headers) {
+                e.detail.headers["X-CSRF-Token"] = token;
+            }
+        });
+    })();
+</script>
 </head>
 <body class="bg-gray-900 text-white min-h-screen">
 <div class="container mx-auto px-4 py-8">
     <div class="flex justify-end mb-4">
         <form method="post" action="/logout" class="inline">
+            <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
             <button type="submit" class="text-sm px-4 py-2 rounded-lg bg-gray-800 hover:bg-gray-700 border border-gray-600 text-gray-300 transition-colors">
                 Выйти
             </button>
@@ -109,7 +129,11 @@
                         try {
                             const res = await fetch('/discovery/scan', {
                                 method: 'POST',
-                                headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+                                headers: {
+                                    'Content-Type': 'application/json',
+                                    'Accept': 'application/json',
+                                    'X-CSRF-Token': (window.nmsCsrfToken ? window.nmsCsrfToken() : '')
+                                },
                                 body: JSON.stringify(body)
                             });
                             const text = await res.text();
@@ -370,7 +394,11 @@
                         const body = JSON.stringify({ oid, type, value });
                         const res = await fetch(url, {
                             method: 'POST',
-                            headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'Accept': 'application/json',
+                                'X-CSRF-Token': (window.nmsCsrfToken ? window.nmsCsrfToken() : '')
+                            },
                             body
                         });
                         const text = await res.text();
