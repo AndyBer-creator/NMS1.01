@@ -94,6 +94,13 @@ SMTP env:
   - `/events/availability/page`
   - `http://localhost:8081/metrics` (worker)
 
+## RBAC smoke test
+
+- Запуск: `make rbac-smoke` или `./scripts/rbac_smoke_test.sh`
+- Проверяет:
+  - viewer получает `403` на admin-only POST роуты;
+  - admin не блокируется на тех же обработчиках.
+
 ## Права доступа (RBAC)
 
 Если задана хотя бы одна пара логин/пароль (`NMS_ADMIN_*` или `NMS_VIEWER_*`), включается вход:

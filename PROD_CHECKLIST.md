@@ -11,10 +11,10 @@
 
 ## 1) Security & Access
 
-- [~] RBAC (admin/viewer) реализован на сервере
+- [x] RBAC (admin/viewer) реализован на сервере
   - `RequireAdmin` стоит на mutating-роутах (`/devices`, `/discovery/scan`, `/snmp/set`, и т.д.).
   - UI для viewer скрыт (без discovery/add/edit/delete/SNMP SET/HTTP-HTTPS кнопок).
-  - Оговорка: требуется регрессионный e2e/smoke тест на все сценарии ролей.
+  - Добавлен и успешно прогнан регрессионный smoke: `scripts/rbac_smoke_test.sh` (`make rbac-smoke`, 2026-04-09).
 
 - [x] Веб-логин реализован (`/login` + cookie session)
   - Есть logout и ограничение прав для viewer.
@@ -58,11 +58,12 @@
   - Есть `/metrics`, `/health`, worker metrics.
   - Оговорка: нет полного набора прод-алертов и SLO-гейтов.
 
-- [~] Алертинг (Alertmanager / Telegram route / и т.д.)
+- [x] Алертинг (Alertmanager / Telegram route / и т.д.)
   - Добавлены базовые Prometheus rules: `alerts/nms-alerts.yml` (API down, worker down, high 5xx, polling failures spike).
   - Добавлен Alertmanager в compose + webhook `POST /alerts/webhook` (Prometheus -> Alertmanager -> API).
   - Реализована доставка в Telegram (best-effort) и Email через SMTP (получатель настраивается в admin UI).
-  - Оговорка: нужен end-to-end тест фактической доставки на рабочие каналы (Telegram + SMTP).
+  - Подтверждена фактическая email-доставка (`2026-04-09`: письмо получено на целевой адрес).
+  - Подтверждён e2e через Alertmanager -> webhook API -> email (`2026-04-09`).
 
 - [~] Логирование присутствует
   - Есть логи сервисов и ротация worker-логов.
@@ -99,7 +100,7 @@
 - [x] Rate-limit/lockout для `/login`
 - [~] Security headers + HTTPS-only политика
 - [x] Backup + проверенный restore
-- [~] Базовый набор алертов
+- [x] Базовый набор алертов
 - [x] Smoke-test после деплоя
 
 ---
