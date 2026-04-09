@@ -148,23 +148,32 @@ func main() {
 		cfg.SNMP.Retries,
 	)
 
-	ticker := time.NewTicker(1 * time.Minute)
-	lldpTicker := time.NewTicker(5 * time.Minute)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	defer ticker.Stop()
-	defer lldpTicker.Stop()
 
-	logger.Info("🚀 NMS Worker v3 started (prod logging)")
-
-	for {
-		select {
-		case <-ctx.Done():
-			logger.Info("🛑 Worker shutdown")
-			return
-		case <-ticker.C:
-			logger.Info("=== Polling cycle ===", zap.Int("interval_sec", 60))
-
+	var snmpWg sync.WaitGroup
+	snmpWg.Add(1)
+	go func() {
+		defer snmpWg.Done()
+		for {
+			if ctx.Err() != nil {
+				return
+			}
+			intervalSec := repo.GetWorkerPollIntervalSeconds()
+			logger.Info("SNMP poll: пауза до следующего цикла", zap.Int("interval_sec", intervalSec))
+			timer := time.NewTimer(time.Duration(intervalSec) * time.Second)
+			select {
+			case <-ctx.Done():
+				if !timer.Stop() {
+					<-timer.C
+				}
+				return
+			case <-timer.C:
+			}
+			if ctx.Err() != nil {
+				return
+			}
+			logger.Info("=== Polling cycle ===", zap.Int("interval_sec", intervalSec))
 			start := time.Now()
 			success, failed, err := pollAllDevices(ctx, repo, snmpClient, logger)
 			workerPollDurationSeconds.Observe(time.Since(start).Seconds())
@@ -177,9 +186,21 @@ func main() {
 			if err != nil {
 				logger.Error("Polling failed", zap.Error(err))
 			}
+			logger.Info("=== Cycle complete ===", zap.Duration("duration", time.Since(start)))
+		}
+	}()
 
-			logger.Info("=== Cycle complete ===",
-				zap.Duration("duration", time.Since(start)))
+	lldpTicker := time.NewTicker(5 * time.Minute)
+	defer lldpTicker.Stop()
+
+	logger.Info("🚀 NMS Worker v3 started (prod logging)")
+
+	for {
+		select {
+		case <-ctx.Done():
+			logger.Info("🛑 Worker shutdown")
+			snmpWg.Wait()
+			return
 		case <-lldpTicker.C:
 			if !lldpBusy.CompareAndSwap(false, true) {
 				logger.Warn("LLDP scan skipped: previous run still in progress")

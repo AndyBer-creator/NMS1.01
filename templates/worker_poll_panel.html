@@ -1,0 +1,35 @@
+{{define "workerPollPanel"}}
+<div class="space-y-3">
+    {{if .ErrMsg}}
+    <p class="text-sm text-red-400">{{.ErrMsg}}</p>
+    {{end}}
+    {{if .Saved}}
+    <p class="text-sm text-emerald-400">Сохранено. Worker подхватит значение после завершения текущей паузы между циклами.</p>
+    {{end}}
+    <p class="text-sm text-gray-300">
+        Пауза между полными циклами SNMP-опроса всех устройств в <code class="text-cyan-200/90">nms-worker</code>.
+        Диапазон: <span class="text-gray-200 font-mono">{{.MinSec}}</span>–<span class="text-gray-200 font-mono">{{.MaxSec}}</span> с.
+    </p>
+    {{if .Admin}}
+    <form class="flex flex-col sm:flex-row sm:flex-wrap sm:items-end gap-3"
+          hx-post="/settings/worker-poll-interval"
+          hx-target="#worker-poll-panel-wrap"
+          hx-swap="innerHTML">
+        <div>
+            <label class="block text-xs text-gray-400 mb-1">Интервал, сек</label>
+            <input type="number" name="interval_sec" value="{{.IntervalSec}}" min="{{.MinSec}}" max="{{.MaxSec}}" required
+                   class="w-full sm:w-40 p-3 bg-gray-900/60 border border-gray-600 rounded-lg focus:border-cyan-400 focus:outline-none font-mono">
+        </div>
+        <button type="submit"
+                class="px-6 py-3 rounded-lg bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 font-semibold shadow-lg">
+            Сохранить
+        </button>
+    </form>
+    {{else}}
+    <p class="text-sm text-gray-400">
+        Текущий интервал: <span class="text-white font-mono text-base">{{.IntervalSec}}</span> с
+        <span class="text-gray-500">· изменять может только администратор.</span>
+    </p>
+    {{end}}
+</div>
+{{end}}
