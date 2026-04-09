@@ -1,6 +1,6 @@
 SHELL := /bin/bash
 
-.PHONY: migrate server worker traps dev docker-up clean backup-db restore-db smoke-test
+.PHONY: migrate server worker traps dev docker-up clean backup-db restore-db smoke-test rbac-smoke
 
 # Правильный способ: env файл для make
 include .env
@@ -39,3 +39,6 @@ restore-db:
 
 smoke-test:
 	./scripts/smoke_test.sh
+
+rbac-smoke:
+	./scripts/rbac_smoke_test.sh
