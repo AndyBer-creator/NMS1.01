@@ -16,15 +16,17 @@
   - UI для viewer скрыт (без discovery/add/edit/delete/SNMP SET/HTTP-HTTPS кнопок).
   - Оговорка: требуется регрессионный e2e/smoke тест на все сценарии ролей.
 
-- [~] Веб-логин реализован (`/login` + cookie session)
+- [x] Веб-логин реализован (`/login` + cookie session)
   - Есть logout и ограничение прав для viewer.
-  - Оговорка: пока нет rate-limit/lockout на попытки входа.
+  - Добавлен rate-limit/lockout на попытки входа (по IP и username, с `429` и `Retry-After`).
 
-- [ ] CSRF защита для state-changing запросов
-  - Нужно добавить CSRF-токены/проверки для POST/DELETE (формы + HTMX).
+- [x] CSRF защита для state-changing запросов
+  - Включён middleware `RequireCSRF` (double-submit cookie) для mutating-методов.
+  - Подключены токены в формы/HTMX/fetch (`X-CSRF-Token` / `csrf_token`).
 
-- [ ] Ограничение brute-force на login
-  - Нужно добавить throttling/lockout по IP и username.
+- [x] Ограничение brute-force на login
+  - Добавлен throttling/lockout по IP и username.
+  - Логируются события `login failed` и `login throttled`.
 
 - [ ] Security headers
   - Добавить минимум: `X-Frame-Options`, `X-Content-Type-Options`, `Referrer-Policy`, CSP.
@@ -86,8 +88,8 @@
 
 Перед production запуском обязательно закрыть:
 
-- [ ] CSRF для mutating-запросов
-- [ ] Rate-limit/lockout для `/login`
+- [x] CSRF для mutating-запросов
+- [x] Rate-limit/lockout для `/login`
 - [ ] Security headers + HTTPS-only политика
 - [ ] Backup + проверенный restore
 - [ ] Базовый набор алертов

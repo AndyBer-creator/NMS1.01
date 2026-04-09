@@ -1,9 +1,11 @@
 package http
 
 import (
+	"fmt"
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 
 	"go.uber.org/zap"
 )
@@ -46,6 +48,24 @@ func (h *Handlers) LoginPost(w http.ResponseWriter, r *http.Request) {
 	user := strings.TrimSpace(r.FormValue("username"))
 	pass := r.FormValue("password")
 	next := safeNext(r.FormValue("next"))
+	ip := clientIP(r)
+	now := time.Now()
+
+	if ok, retryAfter := authLoginLimiter.check(ip, user, now); !ok {
+		msg := "Слишком много попыток входа. Повторите позже."
+		if retryAfter > 0 {
+			msg = fmt.Sprintf("Слишком много попыток входа. Повторите через %d сек.", int(retryAfter.Seconds())+1)
+		}
+		w.Header().Set("Retry-After", fmt.Sprintf("%d", int(retryAfter.Seconds())+1))
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.WriteHeader(http.StatusTooManyRequests)
+		_ = h.loginTmpl.ExecuteTemplate(w, "login.html", map[string]any{
+			"Error": msg,
+			"Next":  next,
+		})
+		h.logger.Warn("login throttled", zap.String("ip", ip), zap.String("user", user), zap.Duration("retry_after", retryAfter))
+		return
+	}
 
 	var rl role
 	switch {
@@ -54,14 +74,17 @@ func (h *Handlers) LoginPost(w http.ResponseWriter, r *http.Request) {
 	case basicMatch(viewer, user, pass):
 		rl = roleViewer
 	default:
+		authLoginLimiter.onFailure(ip, user, now)
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		w.WriteHeader(http.StatusUnauthorized)
 		_ = h.loginTmpl.ExecuteTemplate(w, "login.html", map[string]any{
 			"Error": "Неверный логин или пароль.",
 			"Next":  next,
 		})
+		h.logger.Warn("login failed", zap.String("ip", ip), zap.String("user", user))
 		return
 	}
+	authLoginLimiter.onSuccess(ip, user)
 
 	token, err := signSessionToken(user, rl)
 	if err != nil {
