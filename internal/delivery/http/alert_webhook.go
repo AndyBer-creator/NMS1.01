@@ -1,10 +1,10 @@
 package http
 
 import (
+	"NMS1/internal/config"
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"os"
 	"strings"
 	"time"
 
@@ -41,16 +41,16 @@ func (h *Handlers) AlertWebhook(w http.ResponseWriter, r *http.Request) {
 
 	emailTo := h.repo.GetAlertEmailTo()
 	smtpClient := services.NewSMTPClient(
-		os.Getenv("SMTP_HOST"),
-		defaultIfEmpty(os.Getenv("SMTP_PORT"), "587"),
-		os.Getenv("SMTP_USER"),
-		os.Getenv("SMTP_PASS"),
-		os.Getenv("SMTP_FROM"),
+		config.EnvOrFile("SMTP_HOST"),
+		defaultIfEmpty(config.EnvOrFile("SMTP_PORT"), "587"),
+		config.EnvOrFile("SMTP_USER"),
+		config.EnvOrFile("SMTP_PASS"),
+		config.EnvOrFile("SMTP_FROM"),
 	)
 
 	telegram := services.NewTelegramAlert(
-		os.Getenv("TELEGRAM_TOKEN"),
-		os.Getenv("TELEGRAM_CHAT_ID"),
+		config.EnvOrFile("TELEGRAM_TOKEN"),
+		config.EnvOrFile("TELEGRAM_CHAT_ID"),
 	)
 
 	var sent, skipped int

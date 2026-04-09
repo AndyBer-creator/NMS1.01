@@ -1,6 +1,7 @@
 package main
 
 import (
+	"NMS1/internal/config"
 	"NMS1/internal/repository"
 	"NMS1/internal/timezone"
 	"context"
@@ -29,7 +30,7 @@ func main() {
 
 	logger.Info("🚀 SNMP Trap Receiver v1 started")
 
-	dsn := strings.TrimSpace(os.Getenv("DB_DSN"))
+	dsn := strings.TrimSpace(config.EnvOrFile("DB_DSN"))
 	if dsn == "" {
 		logger.Fatal("DB_DSN is required for trap persistence")
 	}

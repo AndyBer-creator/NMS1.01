@@ -1,11 +1,11 @@
 package http
 
 import (
+	"NMS1/internal/config"
 	"NMS1/internal/repository"
 	"NMS1/internal/services"
 	"encoding/json"
 	"net/http"
-	"os"
 	"strconv"
 
 	"github.com/go-chi/chi/v5"
@@ -149,8 +149,8 @@ func (h *Handlers) testAlert(w http.ResponseWriter, r *http.Request) {
 		trapVars = input.Message
 	}
 
-	botToken := os.Getenv("TELEGRAM_TOKEN")
-	chatID := os.Getenv("TELEGRAM_CHAT_ID")
+	botToken := config.EnvOrFile("TELEGRAM_TOKEN")
+	chatID := config.EnvOrFile("TELEGRAM_CHAT_ID")
 	if botToken == "" || chatID == "" {
 		http.Error(w, "TELEGRAM_TOKEN and TELEGRAM_CHAT_ID must be set", http.StatusInternalServerError)
 		return

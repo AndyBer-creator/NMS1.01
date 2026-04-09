@@ -3,8 +3,8 @@ package main
 import (
 	"database/sql"
 	"log"
-	"os"
 
+	"NMS1/internal/config"
 	"NMS1/internal/timezone"
 
 	_ "github.com/jackc/pgx/v5/stdlib"
@@ -13,7 +13,7 @@ import (
 
 func main() {
 	timezone.InitFromEnv()
-	dsn := os.Getenv("DB_DSN")
+	dsn := config.EnvOrFile("DB_DSN")
 	if dsn == "" {
 		log.Fatal("DB_DSN must be set (see .env)")
 	}

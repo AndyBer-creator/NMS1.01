@@ -34,13 +34,14 @@
 
 ## 2) Secrets & Configuration
 
-- [~] Конфиг через env
+- [x] Конфиг через env
   - Учетки и сессия поддерживаются через `NMS_ADMIN_*`, `NMS_VIEWER_*`, `NMS_SESSION_SECRET`.
-  - Оговорка: требуется обязательная политика ротации и хранение секретов вне `.env` в проде.
+  - Добавлена формальная политика: `SECRETS_POLICY.md` (классификация, ротация, инцидент-процедура).
 
-- [ ] Полный secret-management процесс
-  - Vault / Docker secrets / аналог.
-  - Ротация и отзыв старых секретов (особенно Telegram/DB/admin pass).
+- [x] Полный secret-management процесс
+  - Добавлена поддержка `*_FILE` для критичных секретов в коде (`DB_DSN`, auth/session, Telegram, SMTP).
+  - Добавлен Docker-secrets overlay: `docker-compose.secrets.yml`.
+  - Добавлен операционный процесс bootstrap/rotation/revoke: `SECRETS_PROCESS.md` + `scripts/init_docker_secrets.sh`.
 
 ## 3) Data Safety (PostgreSQL)
 
