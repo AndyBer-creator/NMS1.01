@@ -11,6 +11,7 @@ import (
 func Router(handlers *Handlers) *chi.Mux {
 	r := chi.NewRouter()
 	r.Use(PrometheusMetrics, middleware.Logger, middleware.Recoverer)
+	r.Use(SecurityHeaders)
 
 	// Без авторизации: статика, проверки для оркестраторов, метрики, вход/выход
 	r.Handle("/static/*", http.StripPrefix("/static/", http.FileServer(http.Dir("./static"))))
