@@ -46,19 +46,21 @@ var (
 )
 
 type Handlers struct {
-	repo         *postgres.Repo
-	snmp         *snmp.Client
-	scanner      *discovery.Scanner
-	TrapsRepo    *repository.TrapsRepo
-	logger       *zap.Logger
-	devicesTmpl  *template.Template // devicesTable + devicesPage
-	mibPanelTmpl *template.Template
-	loginTmpl    *template.Template
-	mibUploadDir string
-	mib          *mibresolver.Resolver
+	repo          *postgres.Repo
+	snmp          *snmp.Client
+	scanner       *discovery.Scanner
+	TrapsRepo     *repository.TrapsRepo
+	logger        *zap.Logger
+	dashboardTmpl *template.Template
+	devicesTmpl   *template.Template // devicesTable + devicesPage
+	mibPanelTmpl  *template.Template
+	loginTmpl     *template.Template
+	mibUploadDir  string
+	mib           *mibresolver.Resolver
 }
 
 func NewHandlers(repo *postgres.Repo, snmpClient *snmp.Client, scanner *discovery.Scanner, trapsRepo *repository.TrapsRepo, logger *zap.Logger, mibUploadDir string, mib *mibresolver.Resolver) *Handlers {
+	dashboardTmpl := template.Must(template.ParseFiles("templates/dashboard.html"))
 	devicesTmpl := template.Must(template.ParseFiles(
 		"templates/devices_table.html",
 		"templates/devices_page.html",
@@ -68,16 +70,17 @@ func NewHandlers(repo *postgres.Repo, snmpClient *snmp.Client, scanner *discover
 	loginTmpl := template.Must(template.ParseFiles("templates/login.html"))
 
 	h := &Handlers{
-		repo:         repo,
-		snmp:         snmpClient,
-		scanner:      scanner,
-		TrapsRepo:    trapsRepo,
-		logger:       logger,
-		devicesTmpl:  devicesTmpl,
-		mibPanelTmpl: mibPanelTmpl,
-		loginTmpl:    loginTmpl,
-		mibUploadDir: mibUploadDir,
-		mib:          mib,
+		repo:          repo,
+		snmp:          snmpClient,
+		scanner:       scanner,
+		TrapsRepo:     trapsRepo,
+		logger:        logger,
+		dashboardTmpl: dashboardTmpl,
+		devicesTmpl:   devicesTmpl,
+		mibPanelTmpl:  mibPanelTmpl,
+		loginTmpl:     loginTmpl,
+		mibUploadDir:  mibUploadDir,
+		mib:           mib,
 	}
 	return h
 }
@@ -106,11 +109,13 @@ type devicesTableRow struct {
 	LastSeen    string
 	LastPollOK  string
 	LastError   string
+	Admin       bool
 }
 
 type devicesTableViewModel struct {
 	Devices []devicesTableRow
 	Total   int
+	Admin   bool
 }
 
 var allowedSNMPSetOIDs = map[string]struct{}{
@@ -189,7 +194,11 @@ func devicesTableViewModelFromDevices(devices []*domain.Device) devicesTableView
 
 func (h *Handlers) Dashboard(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	http.ServeFile(w, r, "templates/dashboard.html")
+	u := userFromContext(r.Context())
+	admin := u == nil || u.role == roleAdmin
+	_ = h.dashboardTmpl.Execute(w, map[string]any{
+		"Admin": admin,
+	})
 }
 
 // ✅ GET /devices → JSON список устройств
@@ -222,6 +231,11 @@ func (h *Handlers) DevicesTable(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 
 	vm := devicesTableViewModelFromDevices(devices)
+	u := userFromContext(r.Context())
+	vm.Admin = u == nil || u.role == roleAdmin
+	for i := range vm.Devices {
+		vm.Devices[i].Admin = vm.Admin
+	}
 	if err := h.devicesTmpl.ExecuteTemplate(w, "devicesTable", vm); err != nil {
 		http.Error(w, "Template render error", http.StatusInternalServerError)
 		return
@@ -346,6 +360,11 @@ func (h *Handlers) DevicesListPage(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 
 	vm := devicesTableViewModelFromDevices(devices)
+	u := userFromContext(r.Context())
+	vm.Admin = u == nil || u.role == roleAdmin
+	for i := range vm.Devices {
+		vm.Devices[i].Admin = vm.Admin
+	}
 	if err := h.devicesTmpl.ExecuteTemplate(w, "devicesPage", vm); err != nil {
 		h.logger.Error("DevicesListPage template", zap.Error(err))
 		http.Error(w, "Template render error", http.StatusInternalServerError)

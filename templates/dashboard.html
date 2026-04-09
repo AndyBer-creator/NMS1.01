@@ -1,3 +1,4 @@
+{{/* dashboard is rendered as Go template to hide admin-only controls from viewer */}}
 <!DOCTYPE html>
 <html><head><title>NMS1 Dashboard</title>
 <script src="https://unpkg.com/htmx.org@1.9.10"></script>
@@ -24,6 +25,7 @@
     </div>
 
     <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {{if .Admin}}
         <!-- 🔎 ПОИСК SNMP В ПОДСЕТИ -->
         <div class="bg-gradient-to-br from-amber-900/40 to-orange-950/40 border border-amber-600/40 p-6 rounded-xl shadow-2xl col-span-1 lg:col-span-2">
             <h2 class="text-2xl font-semibold mb-4 flex items-center">
@@ -132,6 +134,15 @@
                 })();
             </script>
         </div>
+        {{else}}
+        <div class="bg-gray-800/70 border border-gray-700/60 p-6 rounded-xl shadow-2xl col-span-1 lg:col-span-2">
+            <h2 class="text-2xl font-semibold mb-3 flex items-center">
+                <span class="w-3 h-3 bg-gray-500 rounded-full mr-3"></span>
+                🔒 Режим просмотра
+            </h2>
+            <p class="text-sm text-gray-400">Вы вошли как <b>viewer</b>. Операции изменения отключены: discovery, добавление/редактирование устройств, SNMP SET, доступ по HTTP/HTTPS.</p>
+        </div>
+        {{end}}
 
         <!-- MIB: загрузка файлов (admin) -->
         <div class="bg-gradient-to-br from-violet-950/50 to-purple-950/40 border border-violet-500/40 p-6 rounded-xl shadow-2xl col-span-1 lg:col-span-2">
@@ -157,6 +168,7 @@
             </div>
         </div>
         
+        {{if .Admin}}
         <!-- 🔥 ФОРМА ДОБАВЛЕНИЯ УСТРОЙСТВ -->
         <div class="bg-gradient-to-br from-green-900/70 to-emerald-900/50 border-2 border-green-500/50 p-6 rounded-xl shadow-2xl">
     <h2 class="text-2xl font-semibold mb-6 flex items-center">
@@ -247,8 +259,10 @@
     <p class="text-xs text-green-400 mt-4 opacity-80 font-medium">
         Интервал между циклами опроса задаётся в блоке <b>«Интервал опроса устройств (worker)»</b> выше (по умолчанию 60 с).
     </p>
-</div>
+        </div>
+        {{end}}
 
+        {{if .Admin}}
         <!-- 🕹️ УПРАВЛЕНИЕ УСТРОЙСТВАМИ (SNMP SET) -->
         <div class="bg-gradient-to-br from-blue-900/50 to-indigo-900/30 border border-blue-500/30 p-6 rounded-xl shadow-2xl">
             <h2 class="text-2xl font-semibold mb-6 flex items-center">
@@ -427,6 +441,7 @@
                 })();
             </script>
         </div>
+        {{end}}
 
         <!-- Navigation -->
         <div class="bg-gray-800 p-6 rounded-xl shadow-2xl">
