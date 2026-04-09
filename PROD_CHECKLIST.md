@@ -75,8 +75,8 @@
   - Есть backoff, классификация ошибок опроса, события доступности.
   - Оговорка: не выполнены fault-injection/chaos проверки.
 
-- [ ] Runbook инцидентов
-  - Нужны инструкции: “DB down”, “worker stalled”, “trap backlog”, “rollback deploy”.
+- [x] Runbook инцидентов
+  - Добавлен `RUNBOOK.md` (API down, worker stalled, DB down, alert pipeline issues, smoke after incident).
 
 ## 6) Testing & Release Process
 
@@ -87,8 +87,8 @@
   - Добавлен скрипт `scripts/smoke_test.sh` + цель `make smoke-test`.
   - Проверен успешный прогон: `2026-04-09`.
 
-- [ ] Rollback-процедура
-  - Шаги отката версии и согласованная политика миграций.
+- [x] Rollback-процедура
+  - Добавлен `ROLLBACK.md` (rollback приложения, rollback БД, pre-checks, политика миграций).
 
 ---
 
