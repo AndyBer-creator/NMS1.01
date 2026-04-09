@@ -28,4 +28,4 @@ docker-logs:
 	sudo docker compose logs -f
 
 clean:
-	rm -rf bin/ *.log
+	rm -rf bin/ *.log ./trap-receiver
