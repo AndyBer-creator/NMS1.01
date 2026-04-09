@@ -42,8 +42,8 @@ func Load() *Config {
 	var cfg Config
 	_ = viper.Unmarshal(&cfg)
 
-	// DSN только из env
-	if dsn := os.Getenv("DB_DSN"); dsn != "" {
+	// DSN из DB_DSN_FILE/DB_DSN (секреты).
+	if dsn := EnvOrFile("DB_DSN"); dsn != "" {
 		cfg.DB.DSN = dsn
 	}
 	if cfg.DB.DSN == "" {

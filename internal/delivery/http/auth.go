@@ -1,11 +1,11 @@
 package http
 
 import (
+	"NMS1/internal/config"
 	"context"
 	"crypto/subtle"
 	"net/http"
 	"net/url"
-	"os"
 	"strings"
 )
 
@@ -46,13 +46,13 @@ type basicCred struct {
 
 func loadCreds() (admin basicCred, viewer basicCred) {
 	admin = basicCred{
-		user: strings.TrimSpace(os.Getenv("NMS_ADMIN_USER")),
-		pass: os.Getenv("NMS_ADMIN_PASS"),
+		user: strings.TrimSpace(config.EnvOrFile("NMS_ADMIN_USER")),
+		pass: config.EnvOrFile("NMS_ADMIN_PASS"),
 		role: roleAdmin,
 	}
 	viewer = basicCred{
-		user: strings.TrimSpace(os.Getenv("NMS_VIEWER_USER")),
-		pass: os.Getenv("NMS_VIEWER_PASS"),
+		user: strings.TrimSpace(config.EnvOrFile("NMS_VIEWER_USER")),
+		pass: config.EnvOrFile("NMS_VIEWER_PASS"),
 		role: roleViewer,
 	}
 	return admin, viewer

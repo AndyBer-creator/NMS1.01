@@ -1,13 +1,13 @@
 package http
 
 import (
+	"NMS1/internal/config"
 	"crypto/hmac"
 	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/base64"
 	"encoding/json"
 	"net/http"
-	"os"
 	"strings"
 	"time"
 )
@@ -25,7 +25,7 @@ type sessionClaims struct {
 
 // sessionSigningKey — 32 байта; при NMS_SESSION_SECRET задаётся явно, иначе стабильный вывод из кредов (без хранения пароля в коде).
 func sessionSigningKey() [32]byte {
-	secret := strings.TrimSpace(os.Getenv("NMS_SESSION_SECRET"))
+	secret := strings.TrimSpace(config.EnvOrFile("NMS_SESSION_SECRET"))
 	if secret != "" {
 		return sha256.Sum256([]byte(secret))
 	}
