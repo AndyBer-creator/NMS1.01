@@ -6,6 +6,10 @@ on:
   pull_request:
   workflow_dispatch:
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   lint:
     runs-on: ubuntu-latest
@@ -44,7 +48,7 @@ jobs:
       - name: coverage minimum
         run: ./scripts/check_coverage.sh coverage.out
         env:
-          MIN_COVERAGE_PERCENT: "11"
+          MIN_COVERAGE_PERCENT: "12"
       - name: upload coverage to Codecov
         uses: codecov/codecov-action@v5
         with:

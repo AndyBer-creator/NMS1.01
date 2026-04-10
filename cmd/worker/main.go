@@ -2,15 +2,13 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"net/http"
-	"os"
-	"path/filepath"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 
+	"NMS1/internal/applog"
 	"NMS1/internal/config"
 	"NMS1/internal/infrastructure/postgres"
 	"NMS1/internal/infrastructure/snmp"
@@ -20,8 +18,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"go.uber.org/zap"
-	"go.uber.org/zap/zapcore"
-	"gopkg.in/natefinch/lumberjack.v2"
 )
 
 var (
@@ -129,7 +125,10 @@ func main() {
 	cfg := config.Load()
 
 	// ПРОДАКШЕН logger с ротацией
-	logger := setupLogger("nms-worker")
+	logger, err := applog.NewZapFile("nms-worker")
+	if err != nil {
+		panic(err)
+	}
 	defer func() { _ = logger.Sync() }()
 
 	if err := startMetricsServer(":8081", logger); err != nil {
@@ -224,37 +223,6 @@ func main() {
 			}
 		}
 	}
-}
-
-func setupLogger(serviceName string) *zap.Logger {
-	// ✅ Dev: ./logs/  Docker: /app/logs/
-	logDir := "./logs"
-	if os.Getenv("NMS_ENV") == "docker" {
-		logDir = "/app/logs"
-	}
-
-	// Создай папку если нет
-	if err := os.MkdirAll(logDir, 0755); err != nil {
-		panic(fmt.Sprintf("Failed to create log dir %s: %v", logDir, err))
-	}
-
-	hook := &lumberjack.Logger{
-		Filename:   filepath.Join(logDir, serviceName+".log"),
-		MaxSize:    10,
-		MaxBackups: 5,
-		MaxAge:     30,
-		Compress:   true,
-		LocalTime:  true,
-	}
-
-	core := zapcore.NewCore(
-		zapcore.NewJSONEncoder(zap.NewProductionEncoderConfig()),
-		zapcore.AddSync(hook),
-		zapcore.InfoLevel,
-	)
-
-	logger := zap.New(core, zap.AddCaller())
-	return logger
 }
 
 func startMetricsServer(addr string, logger *zap.Logger) error {

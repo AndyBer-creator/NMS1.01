@@ -1,6 +1,7 @@
 package main
 
 import (
+	"NMS1/internal/applog"
 	"NMS1/internal/config"
 	"NMS1/internal/repository"
 	"NMS1/internal/timezone"
@@ -10,7 +11,6 @@ import (
 	"fmt"
 	"net"
 	"os"
-	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -18,14 +18,14 @@ import (
 	_ "github.com/jackc/pgx/v5/stdlib"
 
 	"go.uber.org/zap"
-	"go.uber.org/zap/zapcore"
-	"gopkg.in/natefinch/lumberjack.v2"
 )
 
 func main() {
 	timezone.InitFromEnv()
-	// ✅ ТОТ ЖЕ logger что в worker!
-	logger := setupLogger("nms-trap-receiver")
+	logger, err := applog.NewZapFile("nms-trap-receiver")
+	if err != nil {
+		panic(err)
+	}
 	defer func() { _ = logger.Sync() }()
 
 	logger.Info("🚀 SNMP Trap Receiver v1 started")
@@ -91,33 +91,4 @@ func main() {
 	if err := tl.Listen(fmt.Sprintf("0.0.0.0:%d", port)); err != nil {
 		logger.Fatal("Trap listener failed", zap.Error(err))
 	}
-}
-
-// ✅ ТОТ ЖЕ setupLogger из worker!
-func setupLogger(serviceName string) *zap.Logger {
-	logDir := "./logs"
-	if os.Getenv("NMS_ENV") == "docker" {
-		logDir = "/app/logs"
-	}
-
-	if err := os.MkdirAll(logDir, 0755); err != nil {
-		panic(fmt.Sprintf("Failed to create log dir %s: %v", logDir, err))
-	}
-
-	hook := &lumberjack.Logger{
-		Filename:   filepath.Join(logDir, serviceName+".log"),
-		MaxSize:    10,
-		MaxBackups: 5,
-		MaxAge:     30,
-		Compress:   true,
-		LocalTime:  true,
-	}
-
-	core := zapcore.NewCore(
-		zapcore.NewJSONEncoder(zap.NewProductionEncoderConfig()),
-		zapcore.AddSync(hook),
-		zapcore.InfoLevel,
-	)
-
-	return zap.New(core, zap.AddCaller())
 }

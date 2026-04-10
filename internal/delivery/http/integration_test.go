@@ -218,6 +218,66 @@ func TestIntegration_HTTP_ListTrapsJSON(t *testing.T) {
 	}
 }
 
+func TestIntegration_HTTP_CreateDeviceUnauthorizedJSON(t *testing.T) {
+	dsn := httpIntegrationDSN(t)
+	clearAuthEnv(t)
+	const adminUser, adminPass = "itest-unauth-admin", "itest-unauth-secret"
+	t.Setenv("NMS_ADMIN_USER", adminUser)
+	t.Setenv("NMS_ADMIN_PASS", adminPass)
+	t.Setenv("NMS_ADMIN_USER_FILE", "")
+	t.Setenv("NMS_ADMIN_PASS_FILE", "")
+	t.Setenv("NMS_ENFORCE_HTTPS", "")
+
+	repo, err := postgres.New(dsn)
+	if err != nil {
+		t.Fatalf("postgres.New: %v", err)
+	}
+	t.Cleanup(func() { _ = repo.Close() })
+
+	db, err := sql.Open("pgx", dsn)
+	if err != nil {
+		t.Fatalf("sql.Open: %v", err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+
+	pctx, pcancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer pcancel()
+	if err := db.PingContext(pctx); err != nil {
+		t.Skipf("integration: postgres unreachable (%v)", err)
+	}
+
+	trapsRepo := repository.NewTrapsRepo(db)
+	snmpClient := snmp.New(161, 2*time.Second, 1)
+	scanner := discovery.NewScanner(snmpClient, repo, zap.NewNop())
+	uploadDir := t.TempDir()
+	cfg := &config.Config{}
+	cfg.Paths.MibUploadDir = uploadDir
+	mib := mibresolver.New(config.MIBSearchDirs(cfg), zap.NewNop())
+	h := NewHandlers(repo, snmpClient, scanner, trapsRepo, zap.NewNop(), uploadDir, mib)
+	srv := httptest.NewServer(Router(h))
+	defer srv.Close()
+
+	payload := `{"ip":"192.0.2.77","name":"nope","community":"public","snmp_version":"v2c"}`
+	req, err := http.NewRequest(http.MethodPost, srv.URL+"/devices", strings.NewReader(payload))
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("POST /devices: %v", err)
+	}
+	defer func() { _ = res.Body.Close() }()
+	b, _ := io.ReadAll(res.Body)
+	if res.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("expected 401 without Basic auth, got %d: %s", res.StatusCode, b)
+	}
+	if !strings.Contains(string(b), "unauthorized") {
+		t.Fatalf("expected JSON error body, got %q", string(b))
+	}
+}
+
 func TestIntegration_HTTP_CreateAndDeleteDeviceWithAuth(t *testing.T) {
 	dsn := httpIntegrationDSN(t)
 	clearAuthEnv(t)

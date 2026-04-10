@@ -333,6 +333,8 @@ make lint           # golangci-lint (конфиг .golangci.yml), как в CI
 make vuln           # govulncheck ./...
 make check-coverage # нужен coverage.out (или сначала make test-cover)
 make ci-local        # lint + vuln + go test -race + порог coverage (~2–4 мин)
+make load-http-readonly  # нагрузка /health + /metrics (нужен API)
+make k6-readonly         # то же через k6 (нужен бинарник k6)
 ```
 
 Локальный **smoke по HTTP** (должен быть запущен API, по умолчанию `http://127.0.0.1:8080`):
@@ -342,16 +344,30 @@ make e2e-http-smoke
 # или: BASE_URL=http://localhost:8080 ./scripts/e2e_http_smoke.sh
 ```
 
-В CI (GitHub Actions, `.github/workflows/test.yml`), ветки **main**/**master** и pull request:
+**Нагрузка (read-only)** на `/health` и `/metrics` — только при работающем API (по умолчанию 200 запросов, параллельность 25):
+
+```bash
+make load-http-readonly
+# LOAD_REQUESTS=500 LOAD_CONCURRENCY=40 BASE_URL=http://127.0.0.1:8080 ./scripts/load_http_readonly.sh
+```
+
+**k6** (установите [k6](https://k6.io/docs/get-started/installation/)): `make k6-readonly` или `BASE_URL=http://127.0.0.1:8080 K6_VUS=40 K6_DURATION=1m k6 run scripts/k6_readonly.js`.
+
+В CI:
+
+- **`.github/workflows/test.yml`** — **push**/**pull_request**/**workflow_dispatch**: **lint**, **vuln**, **unit** (race, coverage, порог), **integration** (Postgres). Ручной полный прогон: **Actions → test → Run workflow**. У GitHub отключаются **расписания** после длительной неактивности репозитория (~60 дней без коммитов).
+- **`.github/workflows/nightly-lite.yml`** — **ежедневно в 04:15 UTC** только **lint** и **govulncheck** (без тестов и БД). Полный набор тестов по расписанию не гоняется, чтобы экономить минуты раннеров; при необходимости верните `schedule` в `test.yml` или добавьте отдельный workflow.
 
 - **lint** — **golangci-lint** v2.6.1 (`golangci/golangci-lint-action`, настройки в **`.golangci.yml`**);
-- **vuln** — **`govulncheck ./...`**;
-- **unit** — тесты с **`-race`**, покрытие, порог **`scripts/check_coverage.sh`** (по умолчанию **11%**, переменная `MIN_COVERAGE_PERCENT`), загрузка в **Codecov** (ошибка загрузки не валит job), артефакт **`coverage-out`**; workflow можно запустить вручную (**Actions → test → Run workflow**);
+- **vuln** — **`govulncheck ./...`**; локально для деталей по «уязвимости в зависимостях»: `go run golang.org/x/vuln/cmd/govulncheck@latest -show verbose ./...`;
+- **unit** — тесты с **`-race`**, покрытие, порог **`scripts/check_coverage.sh`** (по умолчанию **12%**, переменная `MIN_COVERAGE_PERCENT`), загрузка в **Codecov** (ошибка загрузки не валит job), артефакт **`coverage-out`**; при push в ту же ветку предыдущий прогон этого workflow **отменяется** (`concurrency`);
 - **integration** — миграции, Postgres, тесты `Integration` с **`-race`**.
 
-Обновления зависимостей: **Dependabot** (`.github/dependabot.yml`) — еженедельно `gomod` и **GitHub Actions**. Для приватного репозитория в Codecov может понадобиться секрет **`CODECOV_TOKEN`**.
+Обновления зависимостей: **Dependabot** (`.github/dependabot.yml`) — еженедельно `gomod` и **GitHub Actions**. Для **приватного** репозитория в Codecov обычно задают секрет **`CODECOV_TOKEN`** (Settings → Secrets → Actions); без токена загрузка отчёта может быть нестабильной, в CI это не валит job.
 
-Дополнительно без БД покрыты: **`internal/services`** (SMTP `Enabled` и проверки до сети; Telegram — `httptest`, в проде по-прежнему `http.DefaultClient`), **`internal/usecases/discovery`** и **`internal/usecases/lldp`** (разбор OID/параметров), **`cmd/migration`** — наличие каталога **`migrations/`**. В **pull request** ориентируйтесь на зелёный workflow **test**.
+Логи **worker** и **trap-receiver** (и пакет **`pkg/logger`**, если используете): каталог **`NMS_LOG_DIR`** переопределяет путь; иначе в Docker (`NMS_ENV=docker`) — `/app/logs`, локально — `./logs`.
+
+Дополнительно без БД покрыты: **`internal/applog`** (каталог логов и zap-файл), **`pkg/logger`** (logrus + `NMS_LOG_DIR`), **`internal/services`** (SMTP `Enabled` и проверки до сети; Telegram — `httptest`, в проде по-прежнему `http.DefaultClient`), **`internal/usecases/discovery`** и **`internal/usecases/lldp`** (разбор OID/параметров), **`cmd/migration`** — наличие каталога **`migrations/`**; **`cmd/server`** — сборка router, `run()` (слушатель, shutdown), **`TestMain`** переключает cwd на корень модуля (шаблоны). В **pull request** ориентируйтесь на зелёный workflow **test**.
 
 ### Интеграционные тесты (PostgreSQL)
 
