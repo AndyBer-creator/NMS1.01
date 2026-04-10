@@ -1,6 +1,6 @@
 SHELL := /bin/bash
 
-.PHONY: migrate server worker traps dev docker-up clean backup-db restore-db smoke-test rbac-smoke init-secrets log-secrets-check slo-gates https-policy-check chaos-worker-check test test-race test-cover test-integration lint vuln check-coverage e2e-http-smoke load-http-readonly k6-readonly k6-session-csrf k6-logout-csrf ci-local
+.PHONY: migrate server worker traps dev docker-up clean backup-db restore-db smoke-test rbac-smoke init-secrets log-secrets-check slo-gates https-policy-check chaos-worker-check test test-race test-cover test-integration lint vuln check-coverage e2e-http-smoke load-http-readonly k6-readonly k6-session-csrf k6-logout-csrf k6-admin-csrf ci-local
 
 # Если .env есть — подхватываем (docker, migrate, smoke). Без файла цели вроде `make test` всё равно работают.
 ifneq (,$(wildcard .env))
@@ -96,6 +96,11 @@ k6-session-csrf:
 k6-logout-csrf:
 	@PATH="$(HOME)/.local/bin:$$PATH" command -v k6 >/dev/null 2>&1 || { echo "k6 not found (ожидался в PATH или $(HOME)/.local/bin): https://k6.io/docs/get-started/installation/"; exit 1; }
 	PATH="$(HOME)/.local/bin:$$PATH" k6 run scripts/k6_logout_csrf.js
+
+# k6: admin Basic + CSRF + POST /devices (пустой JSON → 400, без INSERT в БД). Нужны admin учётки.
+k6-admin-csrf:
+	@PATH="$(HOME)/.local/bin:$$PATH" command -v k6 >/dev/null 2>&1 || { echo "k6 not found (ожидался в PATH или $(HOME)/.local/bin): https://k6.io/docs/get-started/installation/"; exit 1; }
+	PATH="$(HOME)/.local/bin:$$PATH" k6 run scripts/k6_admin_csrf.js
 
 # Локальная проверка перед пушем (без интеграции с БД): lint, vuln, тесты -race, порог coverage.
 ci-local: lint vuln
