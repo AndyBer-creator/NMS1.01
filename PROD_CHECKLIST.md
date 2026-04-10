@@ -90,6 +90,7 @@
 - [x] Нагрузочные прогоны (k6)
   - Read-only: `make k6-readonly` (GET `/health` / `/metrics`).
   - Session+CSRF: `make k6-session-csrf` (viewer Basic → cookie `nms_csrf` → POST `/mibs/resolve` с `X-CSRF-Token`, ожидается 200 + JSON `oid`). Проверено 2026-04-10.
+  - Admin+CSRF: `make k6-admin-csrf` (admin Basic → cookie `nms_csrf` → POST `/devices` с `{}`, ожидается 400 валидации без INSERT; порог только по `checks`, не по `http_req_failed`).
 
 - [x] Деплойный smoke-test
   - Добавлен скрипт `scripts/smoke_test.sh` + цель `make smoke-test`.
