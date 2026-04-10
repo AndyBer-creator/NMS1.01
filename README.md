@@ -367,11 +367,11 @@ make load-http-readonly
 
 Логи **worker** и **trap-receiver** (и пакет **`pkg/logger`**, если используете): каталог **`NMS_LOG_DIR`** переопределяет путь; иначе в Docker (`NMS_ENV=docker`) — `/app/logs`, локально — `./logs`.
 
-Дополнительно без БД покрыты: **`internal/applog`** (каталог логов и zap-файл), **`pkg/logger`** (logrus + `NMS_LOG_DIR`), **`internal/services`** (SMTP `Enabled` и проверки до сети; Telegram — `httptest`, в проде по-прежнему `http.DefaultClient`), **`internal/usecases/discovery`** и **`internal/usecases/lldp`** (разбор OID/параметров), **`cmd/migration`** — наличие каталога **`migrations/`**; **`cmd/server`** — сборка router, `run()` (слушатель, shutdown), **`TestMain`** переключает cwd на корень модуля (шаблоны). В **pull request** ориентируйтесь на зелёный workflow **test**.
+Дополнительно без БД покрыты: **`internal/applog`** (каталог логов и zap-файл), **`pkg/logger`** (logrus + `NMS_LOG_DIR`), **`internal/services`** (SMTP `Enabled` и проверки до сети; Telegram — `httptest`, в проде по-прежнему `http.DefaultClient`), **`internal/usecases/discovery`** и **`internal/usecases/lldp`** (разбор OID/параметров), **`cmd/migration`** — наличие каталога **`migrations/`**; **`cmd/server`** — сборка router, `run()` (слушатель, shutdown), **`TestMain`** переключает cwd на корень модуля (шаблоны); **`cmd/worker`** — `run()` (SIGINT/SIGTERM, опциональный HTTP `/metrics`, SNMP/LLDP-циклы), тесты на metrics и отмену контекста; **`cmd/trap-receiver`** — `run()` (ping БД, UDP listener, `Close` по контексту), юнит-тесты DSN/ping/`TRAP_PORT`, интеграция graceful shutdown при доступном **`DB_DSN`** (как у HTTP: при `host=postgres` на хосте — **Skip** после неудачного ping). В **pull request** ориентируйтесь на зелёный workflow **test**.
 
 ### Интеграционные тесты (PostgreSQL)
 
-Реальное подключение к БД с применёнными **миграциями**. Используйте тот же **`DB_DSN`**, что для `go run ./cmd/migration` и API (часто из `.env`). Если `go test` запускается **на хосте**, а в `.env` для Docker указан `host=postgres`, тесты **пропустят** интеграцию после неудачного ping; для реального прогона с хоста задайте `DB_DSN` с `localhost` / `127.0.0.1`.
+Реальное подключение к БД с применёнными **миграциями**. Используйте тот же **`DB_DSN`**, что для `go run ./cmd/migration` и API (часто из `.env`). Если `go test` запускается **на хосте**, а в `.env` для Docker указан `host=postgres`, тесты **пропустят** интеграцию после неудачного ping (`internal/testdb`: **`PingDBOrSkip`** / **`PingDSNOrSkip`**); для реального прогона с хоста задайте `DB_DSN` с `localhost` / `127.0.0.1`.
 
 ```bash
 source .env   # или вручную: export DB_DSN="..."
@@ -391,7 +391,7 @@ source .env
 go test ./internal/delivery/http/ -count=1 -v -run Integration
 ```
 
-Сценарии: `/health`, `/metrics`, JSON `GET /devices` и `GET /traps` (без обязательной авторизации — в тестах сбрасываются `NMS_ADMIN_*` / `NMS_VIEWER_*` и соответствующие `*_FILE`), а также **POST + DELETE `/devices`** под Basic Auth и CSRF (в этом тесте задаются временные `NMS_ADMIN_USER` / `NMS_ADMIN_PASS`). Устройство создаётся с IP из `192.0.2.0/24` (TEST-NET-1).
+Сценарии: `/health`, `/metrics`, JSON `GET /devices` и `GET /traps` (без обязательной авторизации — в тестах сбрасываются `NMS_ADMIN_*` / `NMS_VIEWER_*` и соответствующие `*_FILE`); **POST + DELETE `/devices`** под admin + CSRF; **401** на `POST /devices` без Basic при включённом admin; **403** для **viewer** на **`POST /devices`** и на **`POST /discovery/scan`** (CIDR из TEST-NET-3); **403** при неверном **`X-CSRF-Token`**. Общий сетап БД + router: **`buildIntegrationHandler`** / **`newIntegrationServer`**, **`applyIntegrationAuthEnv`**, **`newIntegrationHTTPClient`**. Устройства — IP из `192.0.2.0/24` (TEST-NET-1) или `testDeviceIP`.
 
 См. также разделы **Smoke test после деплоя** и **RBAC smoke test** выше (скрипты `scripts/smoke_test.sh`, `scripts/rbac_smoke_test.sh`).
 

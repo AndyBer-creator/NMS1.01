@@ -2,7 +2,6 @@ package http
 
 import (
 	"bytes"
-	"context"
 	"crypto/rand"
 	"database/sql"
 	"encoding/json"
@@ -23,6 +22,7 @@ import (
 	"NMS1/internal/infrastructure/snmp"
 	"NMS1/internal/mibresolver"
 	"NMS1/internal/repository"
+	"NMS1/internal/testdb"
 	"NMS1/internal/usecases/discovery"
 
 	_ "github.com/jackc/pgx/v5/stdlib"
@@ -74,20 +74,34 @@ func clearAuthEnv(t *testing.T) {
 	}
 }
 
-func testDeviceIP(t *testing.T) string {
-	t.Helper()
-	var b [1]byte
-	if _, err := rand.Read(b[:]); err != nil {
-		t.Fatalf("rand: %v", err)
-	}
-	return fmt.Sprintf("192.0.2.%d", int(b[0])%230+10)
+// integrationAuthOpts задаёт Basic-учётки для loadCreds(); пустые строки — креды не выставляются (после clearAuth).
+type integrationAuthOpts struct {
+	AdminUser, AdminPass   string
+	ViewerUser, ViewerPass string
 }
 
-func newIntegrationHandler(t *testing.T) http.Handler {
+func applyIntegrationAuthEnv(t *testing.T, opts integrationAuthOpts) {
 	t.Helper()
-	dsn := httpIntegrationDSN(t)
 	clearAuthEnv(t)
 	t.Setenv("NMS_ENFORCE_HTTPS", "")
+	if opts.AdminUser != "" {
+		t.Setenv("NMS_ADMIN_USER", opts.AdminUser)
+		t.Setenv("NMS_ADMIN_PASS", opts.AdminPass)
+		t.Setenv("NMS_ADMIN_USER_FILE", "")
+		t.Setenv("NMS_ADMIN_PASS_FILE", "")
+	}
+	if opts.ViewerUser != "" {
+		t.Setenv("NMS_VIEWER_USER", opts.ViewerUser)
+		t.Setenv("NMS_VIEWER_PASS", opts.ViewerPass)
+		t.Setenv("NMS_VIEWER_USER_FILE", "")
+		t.Setenv("NMS_VIEWER_PASS_FILE", "")
+	}
+}
+
+func buildIntegrationHandler(t *testing.T, opts integrationAuthOpts) (http.Handler, *postgres.Repo) {
+	t.Helper()
+	dsn := httpIntegrationDSN(t)
+	applyIntegrationAuthEnv(t, opts)
 
 	repo, err := postgres.New(dsn)
 	if err != nil {
@@ -101,23 +115,49 @@ func newIntegrationHandler(t *testing.T) http.Handler {
 	}
 	t.Cleanup(func() { _ = db.Close() })
 
-	pctx, pcancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer pcancel()
-	if err := db.PingContext(pctx); err != nil {
-		t.Skipf("integration: postgres unreachable (%v)", err)
-	}
+	testdb.PingDBOrSkip(t, db, 5*time.Second)
 
 	trapsRepo := repository.NewTrapsRepo(db)
 	snmpClient := snmp.New(161, 2*time.Second, 1)
 	scanner := discovery.NewScanner(snmpClient, repo, zap.NewNop())
-
 	uploadDir := t.TempDir()
 	cfg := &config.Config{}
 	cfg.Paths.MibUploadDir = uploadDir
 	mib := mibresolver.New(config.MIBSearchDirs(cfg), zap.NewNop())
-
 	h := NewHandlers(repo, snmpClient, scanner, trapsRepo, zap.NewNop(), uploadDir, mib)
-	return Router(h)
+	return Router(h), repo
+}
+
+func newIntegrationServer(t *testing.T, opts integrationAuthOpts) (*httptest.Server, *postgres.Repo) {
+	t.Helper()
+	h, repo := buildIntegrationHandler(t, opts)
+	srv := httptest.NewServer(h)
+	t.Cleanup(func() { srv.Close() })
+	return srv, repo
+}
+
+func newIntegrationHTTPClient(t *testing.T) (*http.Client, http.CookieJar) {
+	t.Helper()
+	jar, err := cookiejar.New(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return &http.Client{Jar: jar, Timeout: 15 * time.Second}, jar
+}
+
+func testDeviceIP(t *testing.T) string {
+	t.Helper()
+	var b [1]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		t.Fatalf("rand: %v", err)
+	}
+	return fmt.Sprintf("192.0.2.%d", int(b[0])%230+10)
+}
+
+func newIntegrationHandler(t *testing.T) http.Handler {
+	t.Helper()
+	h, _ := buildIntegrationHandler(t, integrationAuthOpts{})
+	return h
 }
 
 func csrfFromJar(t *testing.T, jar http.CookieJar, base *url.URL) string {
@@ -219,43 +259,10 @@ func TestIntegration_HTTP_ListTrapsJSON(t *testing.T) {
 }
 
 func TestIntegration_HTTP_CreateDeviceUnauthorizedJSON(t *testing.T) {
-	dsn := httpIntegrationDSN(t)
-	clearAuthEnv(t)
 	const adminUser, adminPass = "itest-unauth-admin", "itest-unauth-secret"
-	t.Setenv("NMS_ADMIN_USER", adminUser)
-	t.Setenv("NMS_ADMIN_PASS", adminPass)
-	t.Setenv("NMS_ADMIN_USER_FILE", "")
-	t.Setenv("NMS_ADMIN_PASS_FILE", "")
-	t.Setenv("NMS_ENFORCE_HTTPS", "")
-
-	repo, err := postgres.New(dsn)
-	if err != nil {
-		t.Fatalf("postgres.New: %v", err)
-	}
-	t.Cleanup(func() { _ = repo.Close() })
-
-	db, err := sql.Open("pgx", dsn)
-	if err != nil {
-		t.Fatalf("sql.Open: %v", err)
-	}
-	t.Cleanup(func() { _ = db.Close() })
-
-	pctx, pcancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer pcancel()
-	if err := db.PingContext(pctx); err != nil {
-		t.Skipf("integration: postgres unreachable (%v)", err)
-	}
-
-	trapsRepo := repository.NewTrapsRepo(db)
-	snmpClient := snmp.New(161, 2*time.Second, 1)
-	scanner := discovery.NewScanner(snmpClient, repo, zap.NewNop())
-	uploadDir := t.TempDir()
-	cfg := &config.Config{}
-	cfg.Paths.MibUploadDir = uploadDir
-	mib := mibresolver.New(config.MIBSearchDirs(cfg), zap.NewNop())
-	h := NewHandlers(repo, snmpClient, scanner, trapsRepo, zap.NewNop(), uploadDir, mib)
-	srv := httptest.NewServer(Router(h))
-	defer srv.Close()
+	srv, _ := newIntegrationServer(t, integrationAuthOpts{
+		AdminUser: adminUser, AdminPass: adminPass,
+	})
 
 	payload := `{"ip":"192.0.2.77","name":"nope","community":"public","snmp_version":"v2c"}`
 	req, err := http.NewRequest(http.MethodPost, srv.URL+"/devices", strings.NewReader(payload))
@@ -279,53 +286,16 @@ func TestIntegration_HTTP_CreateDeviceUnauthorizedJSON(t *testing.T) {
 }
 
 func TestIntegration_HTTP_CreateAndDeleteDeviceWithAuth(t *testing.T) {
-	dsn := httpIntegrationDSN(t)
-	clearAuthEnv(t)
 	const adminUser, adminPass = "itest-http-admin", "itest-http-secret-pass"
-	t.Setenv("NMS_ADMIN_USER", adminUser)
-	t.Setenv("NMS_ADMIN_PASS", adminPass)
-	t.Setenv("NMS_ADMIN_USER_FILE", "")
-	t.Setenv("NMS_ADMIN_PASS_FILE", "")
-	t.Setenv("NMS_ENFORCE_HTTPS", "")
-
-	repo, err := postgres.New(dsn)
-	if err != nil {
-		t.Fatalf("postgres.New: %v", err)
-	}
-	t.Cleanup(func() { _ = repo.Close() })
-
-	db, err := sql.Open("pgx", dsn)
-	if err != nil {
-		t.Fatalf("sql.Open: %v", err)
-	}
-	t.Cleanup(func() { _ = db.Close() })
-
-	pctx, pcancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer pcancel()
-	if err := db.PingContext(pctx); err != nil {
-		t.Skipf("integration: postgres unreachable (%v)", err)
-	}
-
-	trapsRepo := repository.NewTrapsRepo(db)
-	snmpClient := snmp.New(161, 2*time.Second, 1)
-	scanner := discovery.NewScanner(snmpClient, repo, zap.NewNop())
-	uploadDir := t.TempDir()
-	cfg := &config.Config{}
-	cfg.Paths.MibUploadDir = uploadDir
-	mib := mibresolver.New(config.MIBSearchDirs(cfg), zap.NewNop())
-	h := NewHandlers(repo, snmpClient, scanner, trapsRepo, zap.NewNop(), uploadDir, mib)
-	srv := httptest.NewServer(Router(h))
-	defer srv.Close()
+	srv, repo := newIntegrationServer(t, integrationAuthOpts{
+		AdminUser: adminUser, AdminPass: adminPass,
+	})
 
 	base, err := url.Parse(srv.URL)
 	if err != nil {
 		t.Fatal(err)
 	}
-	jar, err := cookiejar.New(nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	client := &http.Client{Jar: jar, Timeout: 15 * time.Second}
+	client, jar := newIntegrationHTTPClient(t)
 
 	ip := testDeviceIP(t)
 	t.Cleanup(func() { _ = repo.DeleteByIP(ip) })
@@ -381,5 +351,162 @@ func TestIntegration_HTTP_CreateAndDeleteDeviceWithAuth(t *testing.T) {
 	_ = res2.Body.Close()
 	if res2.StatusCode != http.StatusOK {
 		t.Fatalf("delete status %d", res2.StatusCode)
+	}
+}
+
+func TestIntegration_HTTP_ViewerPostDeviceForbidden(t *testing.T) {
+	const (
+		adminUser, adminPass   = "itest-viewer-admin", "itest-viewer-admin-secret"
+		viewerUser, viewerPass = "itest-viewer-ro", "itest-viewer-ro-secret"
+	)
+	srv, _ := newIntegrationServer(t, integrationAuthOpts{
+		AdminUser: adminUser, AdminPass: adminPass,
+		ViewerUser: viewerUser, ViewerPass: viewerPass,
+	})
+
+	base, err := url.Parse(srv.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	client, jar := newIntegrationHTTPClient(t)
+
+	getDevices, err := http.NewRequest(http.MethodGet, srv.URL+"/devices", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	getDevices.SetBasicAuth(viewerUser, viewerPass)
+	getDevices.Header.Set("Accept", "application/json")
+	res0, err := client.Do(getDevices)
+	if err != nil {
+		t.Fatalf("GET /devices: %v", err)
+	}
+	_, _ = io.Copy(io.Discard, res0.Body)
+	_ = res0.Body.Close()
+	if res0.StatusCode != http.StatusOK {
+		t.Fatalf("viewer GET /devices status %d", res0.StatusCode)
+	}
+
+	token := csrfFromJar(t, jar, base)
+	ip := testDeviceIP(t)
+	payload := fmt.Sprintf(`{"ip":%q,"name":"viewer-forbidden","community":"public","snmp_version":"v2c"}`, ip)
+	post, err := http.NewRequest(http.MethodPost, srv.URL+"/devices", bytes.NewReader([]byte(payload)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	post.SetBasicAuth(viewerUser, viewerPass)
+	post.Header.Set("Content-Type", "application/json")
+	post.Header.Set("X-CSRF-Token", token)
+	res1, err := client.Do(post)
+	if err != nil {
+		t.Fatalf("POST /devices: %v", err)
+	}
+	defer func() { _ = res1.Body.Close() }()
+	b, _ := io.ReadAll(res1.Body)
+	if res1.StatusCode != http.StatusForbidden {
+		t.Fatalf("expected 403 Forbidden for viewer, got %d: %s", res1.StatusCode, b)
+	}
+}
+
+func TestIntegration_HTTP_AdminPostWrongCSRF(t *testing.T) {
+	const adminUser, adminPass = "itest-csrf-admin", "itest-csrf-admin-secret"
+	srv, _ := newIntegrationServer(t, integrationAuthOpts{
+		AdminUser: adminUser, AdminPass: adminPass,
+	})
+
+	base, err := url.Parse(srv.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	client, jar := newIntegrationHTTPClient(t)
+
+	getDevices, err := http.NewRequest(http.MethodGet, srv.URL+"/devices", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	getDevices.SetBasicAuth(adminUser, adminPass)
+	getDevices.Header.Set("Accept", "application/json")
+	res0, err := client.Do(getDevices)
+	if err != nil {
+		t.Fatalf("GET /devices: %v", err)
+	}
+	_, _ = io.Copy(io.Discard, res0.Body)
+	_ = res0.Body.Close()
+	if res0.StatusCode != http.StatusOK {
+		t.Fatalf("seed status %d", res0.StatusCode)
+	}
+
+	_ = csrfFromJar(t, jar, base)
+	ip := testDeviceIP(t)
+	payload := fmt.Sprintf(`{"ip":%q,"name":"csrf-wrong","community":"public","snmp_version":"v2c"}`, ip)
+	post, err := http.NewRequest(http.MethodPost, srv.URL+"/devices", bytes.NewReader([]byte(payload)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	post.SetBasicAuth(adminUser, adminPass)
+	post.Header.Set("Content-Type", "application/json")
+	post.Header.Set("X-CSRF-Token", "intentionally-wrong-token")
+	res1, err := client.Do(post)
+	if err != nil {
+		t.Fatalf("POST /devices: %v", err)
+	}
+	defer func() { _ = res1.Body.Close() }()
+	b, _ := io.ReadAll(res1.Body)
+	if res1.StatusCode != http.StatusForbidden {
+		t.Fatalf("expected 403 CSRF mismatch, got %d: %s", res1.StatusCode, b)
+	}
+	if !strings.Contains(string(b), "CSRF") {
+		t.Fatalf("expected CSRF hint in body, got %q", string(b))
+	}
+}
+
+func TestIntegration_HTTP_ViewerPostDiscoveryScanForbidden(t *testing.T) {
+	const (
+		adminUser, adminPass   = "itest-disc-admin", "itest-disc-admin-secret"
+		viewerUser, viewerPass = "itest-disc-viewer", "itest-disc-viewer-secret"
+	)
+	srv, _ := newIntegrationServer(t, integrationAuthOpts{
+		AdminUser: adminUser, AdminPass: adminPass,
+		ViewerUser: viewerUser, ViewerPass: viewerPass,
+	})
+
+	base, err := url.Parse(srv.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	client, jar := newIntegrationHTTPClient(t)
+
+	getDevices, err := http.NewRequest(http.MethodGet, srv.URL+"/devices", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	getDevices.SetBasicAuth(viewerUser, viewerPass)
+	getDevices.Header.Set("Accept", "application/json")
+	res0, err := client.Do(getDevices)
+	if err != nil {
+		t.Fatalf("GET /devices: %v", err)
+	}
+	_, _ = io.Copy(io.Discard, res0.Body)
+	_ = res0.Body.Close()
+	if res0.StatusCode != http.StatusOK {
+		t.Fatalf("viewer GET /devices status %d", res0.StatusCode)
+	}
+
+	token := csrfFromJar(t, jar, base)
+	payload := `{"cidr":"203.0.113.0/28","community":"public","snmp_version":"v2c","max_hosts":4,"concurrency":1}`
+	post, err := http.NewRequest(http.MethodPost, srv.URL+"/discovery/scan", bytes.NewReader([]byte(payload)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	post.SetBasicAuth(viewerUser, viewerPass)
+	post.Header.Set("Content-Type", "application/json")
+	post.Header.Set("X-CSRF-Token", token)
+	res1, err := client.Do(post)
+	if err != nil {
+		t.Fatalf("POST /discovery/scan: %v", err)
+	}
+	defer func() { _ = res1.Body.Close() }()
+	b, _ := io.ReadAll(res1.Body)
+	if res1.StatusCode != http.StatusForbidden {
+		t.Fatalf("expected 403 Forbidden for viewer on discovery scan, got %d: %s", res1.StatusCode, b)
 	}
 }

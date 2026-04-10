@@ -1,94 +1,38 @@
 package main
 
 import (
+	"context"
+	"fmt"
+	"os"
+	"os/signal"
+	"strings"
+	"syscall"
+
 	"NMS1/internal/applog"
 	"NMS1/internal/config"
-	"NMS1/internal/repository"
 	"NMS1/internal/timezone"
-	"context"
-	"database/sql"
-	"encoding/json"
-	"fmt"
-	"net"
-	"os"
-	"strconv"
-	"strings"
-
-	"github.com/gosnmp/gosnmp"
-	_ "github.com/jackc/pgx/v5/stdlib"
 
 	"go.uber.org/zap"
 )
 
 func main() {
 	timezone.InitFromEnv()
+
 	logger, err := applog.NewZapFile("nms-trap-receiver")
 	if err != nil {
-		panic(err)
+		fmt.Fprintf(os.Stderr, "nms-trap-receiver: logger: %v\n", err)
+		os.Exit(1)
 	}
 	defer func() { _ = logger.Sync() }()
 
 	logger.Info("🚀 SNMP Trap Receiver v1 started")
 
 	dsn := strings.TrimSpace(config.EnvOrFile("DB_DSN"))
-	if dsn == "" {
-		logger.Fatal("DB_DSN is required for trap persistence")
-	}
-	db, err := sql.Open("pgx", dsn)
-	if err != nil {
-		logger.Fatal("DB open failed", zap.Error(err))
-	}
-	defer func() { _ = db.Close() }()
-	if err := db.Ping(); err != nil {
-		logger.Fatal("DB ping failed", zap.Error(err))
-	}
-	repo := repository.NewTrapsRepo(db)
 
-	port := uint16(162)
-	if p := strings.TrimSpace(os.Getenv("TRAP_PORT")); p != "" {
-		if parsed, perr := strconv.ParseUint(p, 10, 16); perr == nil {
-			port = uint16(parsed)
-		}
-	}
+	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer cancel()
 
-	tl := gosnmp.NewTrapListener()
-	tl.Params = gosnmp.Default
-	tl.Params.Port = port
-	tl.OnNewTrap = func(packet *gosnmp.SnmpPacket, addr *net.UDPAddr) {
-		trapOID := "unknown"
-		vars := make(map[string]string)
-		for _, v := range packet.Variables {
-			val := fmt.Sprintf("%v", v.Value)
-			vars[v.Name] = val
-			if v.Name == ".1.3.6.1.6.3.1.1.4.1.0" || v.Name == "1.3.6.1.6.3.1.1.4.1.0" {
-				if val != "" {
-					trapOID = val
-				}
-			}
-		}
-		if trapOID == "unknown" && packet.Enterprise != "" {
-			trapOID = packet.Enterprise
-		}
-
-		uptime := int64(packet.Timestamp)
-		if err := repo.Insert(context.Background(), addr.IP.String(), trapOID, uptime, vars, false); err != nil {
-			logger.Error("Failed to persist trap",
-				zap.String("from", addr.IP.String()),
-				zap.String("oid", trapOID),
-				zap.Error(err))
-			return
-		}
-
-		raw, _ := json.Marshal(vars)
-		logger.Info("SNMP trap persisted",
-			zap.String("from", addr.IP.String()),
-			zap.String("oid", trapOID),
-			zap.Int64("uptime", uptime),
-			zap.ByteString("vars", raw))
-	}
-
-	logger.Info("Listening SNMP traps", zap.String("addr", fmt.Sprintf("0.0.0.0:%d/udp", port)))
-	if err := tl.Listen(fmt.Sprintf("0.0.0.0:%d", port)); err != nil {
-		logger.Fatal("Trap listener failed", zap.Error(err))
+	if err := run(ctx, logger, dsn, trapListenPort()); err != nil {
+		logger.Fatal("trap receiver stopped", zap.Error(err))
 	}
 }
