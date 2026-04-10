@@ -79,6 +79,8 @@ func clearAuthEnv(t *testing.T) {
 type integrationAuthOpts struct {
 	AdminUser, AdminPass   string
 	ViewerUser, ViewerPass string
+	// MibUploadDir если задан — каталог загрузки MIB (иначе t.TempDir()).
+	MibUploadDir string
 }
 
 func applyIntegrationAuthEnv(t *testing.T, opts integrationAuthOpts) {
@@ -121,7 +123,14 @@ func buildIntegrationHandler(t *testing.T, opts integrationAuthOpts) (http.Handl
 	trapsRepo := repository.NewTrapsRepo(db)
 	snmpClient := snmp.New(161, 2*time.Second, 1)
 	scanner := discovery.NewScanner(snmpClient, repo, zap.NewNop())
-	uploadDir := t.TempDir()
+	uploadDir := opts.MibUploadDir
+	if uploadDir == "" {
+		uploadDir = t.TempDir()
+	} else {
+		if err := os.MkdirAll(uploadDir, 0o755); err != nil {
+			t.Fatalf("MkdirAll mib upload dir: %v", err)
+		}
+	}
 	cfg := &config.Config{}
 	cfg.Paths.MibUploadDir = uploadDir
 	mib := mibresolver.New(config.MIBSearchDirs(cfg), zap.NewNop())
@@ -686,6 +695,75 @@ func TestIntegration_HTTP_ViewerPostMibUploadForbidden(t *testing.T) {
 	b, _ := io.ReadAll(res.Body)
 	if res.StatusCode != http.StatusForbidden {
 		t.Fatalf("expected 403 for viewer on MIB upload, got %d: %s", res.StatusCode, b)
+	}
+}
+
+func TestIntegration_HTTP_AdminPostMibUploadWritesFile(t *testing.T) {
+	const (
+		adminUser, adminPass = "itest-mibup-ok-admin", "itest-mibup-ok-secret"
+		filename             = "integration-admin-upload.mib"
+	)
+	uploadDir := t.TempDir()
+	srv, _ := newIntegrationServer(t, integrationAuthOpts{
+		AdminUser:    adminUser,
+		AdminPass:    adminPass,
+		MibUploadDir: uploadDir,
+	})
+
+	_, jar, baseURL := adminIntegrationCSRF(t, srv, adminUser, adminPass)
+	token := csrfFromJar(t, jar, baseURL)
+	client := &http.Client{
+		Jar:     jar,
+		Timeout: 15 * time.Second,
+		CheckRedirect: func(_ *http.Request, _ []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
+	}
+
+	var body bytes.Buffer
+	mw := multipart.NewWriter(&body)
+	part, err := mw.CreateFormFile("file", filename)
+	if err != nil {
+		t.Fatal(err)
+	}
+	content := "-- mib integration admin upload --\nTEST-MIB-DEFINITION ::= BEGIN\nEND\n"
+	if _, err := part.Write([]byte(content)); err != nil {
+		t.Fatal(err)
+	}
+	ct := mw.FormDataContentType()
+	if err := mw.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	post, err := http.NewRequest(http.MethodPost, srv.URL+"/mibs/upload", &body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	post.SetBasicAuth(adminUser, adminPass)
+	post.Header.Set("Content-Type", ct)
+	post.Header.Set("X-CSRF-Token", token)
+
+	res, err := client.Do(post)
+	if err != nil {
+		t.Fatalf("POST /mibs/upload: %v", err)
+	}
+	defer func() { _ = res.Body.Close() }()
+	_, _ = io.Copy(io.Discard, res.Body)
+	if res.StatusCode != http.StatusSeeOther {
+		t.Fatalf("expected 303 after MIB upload, got %d", res.StatusCode)
+	}
+	loc := res.Header.Get("Location")
+	if !strings.Contains(loc, "mib=ok") {
+		t.Fatalf("unexpected Location %q", loc)
+	}
+
+	dest := filepath.Join(uploadDir, filename)
+	got, err := os.ReadFile(dest)
+	if err != nil {
+		t.Fatalf("read uploaded file: %v", err)
+	}
+	if string(got) != content {
+		t.Fatalf("file content mismatch: got %q want %q", got, content)
 	}
 }
 

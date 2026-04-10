@@ -1,6 +1,6 @@
 SHELL := /bin/bash
 
-.PHONY: migrate server worker traps dev docker-up clean backup-db restore-db smoke-test rbac-smoke init-secrets log-secrets-check slo-gates https-policy-check chaos-worker-check test test-race test-cover test-integration lint vuln check-coverage e2e-http-smoke load-http-readonly k6-readonly ci-local
+.PHONY: migrate server worker traps dev docker-up clean backup-db restore-db smoke-test rbac-smoke init-secrets log-secrets-check slo-gates https-policy-check chaos-worker-check test test-race test-cover test-integration lint vuln check-coverage e2e-http-smoke load-http-readonly k6-readonly k6-session-csrf ci-local
 
 # Если .env есть — подхватываем (docker, migrate, smoke). Без файла цели вроде `make test` всё равно работают.
 ifneq (,$(wildcard .env))
@@ -85,6 +85,11 @@ load-http-readonly:
 k6-readonly:
 	@command -v k6 >/dev/null 2>&1 || { echo "k6 not found: https://k6.io/docs/get-started/installation/"; exit 1; }
 	k6 run scripts/k6_readonly.js
+
+# k6: сессия Basic + CSRF (GET /devices, POST /mibs/resolve). Нужны K6_VIEWER_USER / K6_VIEWER_PASS (или NMS_VIEWER_* в env).
+k6-session-csrf:
+	@command -v k6 >/dev/null 2>&1 || { echo "k6 not found: https://k6.io/docs/get-started/installation/"; exit 1; }
+	k6 run scripts/k6_session_csrf.js
 
 # Локальная проверка перед пушем (без интеграции с БД): lint, vuln, тесты -race, порог coverage.
 ci-local: lint vuln
