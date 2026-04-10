@@ -262,6 +262,86 @@ func TestIntegration_HTTP_HealthAndMetrics(t *testing.T) {
 	}
 }
 
+func TestIntegration_HTTP_HTTPSPolicyRedirectAndBypass(t *testing.T) {
+	t.Setenv("NMS_ENFORCE_HTTPS", "true")
+	const adminUser, adminPass = "itest-https-admin", "itest-https-secret"
+	srv, _ := newIntegrationServer(t, integrationAuthOpts{
+		AdminUser: adminUser, AdminPass: adminPass,
+	})
+
+	// Non-bypass route over plain HTTP must redirect before auth middleware.
+	req1, err := http.NewRequest(http.MethodGet, srv.URL+"/devices", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req1.Host = "nms.local"
+	clientNoRedirect := &http.Client{
+		Timeout: 15 * time.Second,
+		CheckRedirect: func(_ *http.Request, _ []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
+	}
+	res1, err := clientNoRedirect.Do(req1)
+	if err != nil {
+		t.Fatalf("GET /devices over HTTP: %v", err)
+	}
+	_, _ = io.Copy(io.Discard, res1.Body)
+	_ = res1.Body.Close()
+	if res1.StatusCode != http.StatusPermanentRedirect {
+		t.Fatalf("expected 308 redirect for /devices over HTTP, got %d", res1.StatusCode)
+	}
+
+	// Bypass endpoints must stay on HTTP for probe/scrape compatibility.
+	res2, err := http.Get(srv.URL + "/health")
+	if err != nil {
+		t.Fatalf("GET /health: %v", err)
+	}
+	body2, _ := io.ReadAll(res2.Body)
+	_ = res2.Body.Close()
+	if res2.StatusCode != http.StatusOK || string(body2) != "OK" {
+		t.Fatalf("health bypass failed: %d %q", res2.StatusCode, body2)
+	}
+
+	res3, err := http.Get(srv.URL + "/metrics")
+	if err != nil {
+		t.Fatalf("GET /metrics: %v", err)
+	}
+	metricsBody, _ := io.ReadAll(res3.Body)
+	_ = res3.Body.Close()
+	if res3.StatusCode != http.StatusOK {
+		t.Fatalf("metrics bypass failed: status %d", res3.StatusCode)
+	}
+	if !strings.Contains(string(metricsBody), "# HELP") && !strings.Contains(string(metricsBody), "nms_") {
+		t.Fatalf("metrics bypass body missing expected prometheus exposition")
+	}
+}
+
+func TestIntegration_HTTP_HTTPSPolicyForwardedProtoSkipsRedirect(t *testing.T) {
+	t.Setenv("NMS_ENFORCE_HTTPS", "true")
+	const adminUser, adminPass = "itest-https-fwd-admin", "itest-https-fwd-secret"
+	srv, _ := newIntegrationServer(t, integrationAuthOpts{
+		AdminUser: adminUser, AdminPass: adminPass,
+	})
+
+	// Reverse proxy terminates TLS and forwards HTTP with X-Forwarded-Proto=https.
+	req, err := http.NewRequest(http.MethodGet, srv.URL+"/devices", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.SetBasicAuth(adminUser, adminPass)
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("X-Forwarded-Proto", "https")
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("GET /devices with forwarded proto https: %v", err)
+	}
+	body, _ := io.ReadAll(res.Body)
+	_ = res.Body.Close()
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200 without redirect behind proxy, got %d: %s", res.StatusCode, body)
+	}
+}
+
 func TestIntegration_HTTP_ListDevicesJSON(t *testing.T) {
 	h := newIntegrationHandler(t)
 	srv := httptest.NewServer(h)
