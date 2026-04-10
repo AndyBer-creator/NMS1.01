@@ -312,6 +312,46 @@ go run ./cmd/worker    # в другом терминале
 go run ./cmd/trap-receiver  # при необходимости (порт 162 — права)
 ```
 
+## Тесты
+
+### Юнит-тесты
+
+```bash
+go test ./... -count=1
+# или (работает и без файла .env):
+make test
+```
+
+БД не обязательна: интеграционные тесты **пропускаются**, если не задан `DB_DSN`.
+
+В CI (GitHub Actions) job **unit** гоняет `go test ./...`; job **integration** поднимает Postgres, выполняет `go run ./cmd/migration` и прогоняет тесты с именем `Integration` в пакетах postgres, repository и HTTP (см. `.github/workflows/test.yml`).
+
+### Интеграционные тесты (PostgreSQL)
+
+Реальное подключение к БД с применёнными **миграциями**. Используйте тот же **`DB_DSN`**, что для `go run ./cmd/migration` и API (часто из `.env`). Если `go test` запускается **на хосте**, а в `.env` для Docker указан `host=postgres`, тесты **пропустят** интеграцию после неудачного ping; для реального прогона с хоста задайте `DB_DSN` с `localhost` / `127.0.0.1`.
+
+```bash
+source .env   # или вручную: export DB_DSN="..."
+go test ./internal/infrastructure/postgres/ ./internal/repository/ -count=1 -v
+# вместе с HTTP-интеграцией:
+make test-integration
+```
+
+Покрытие: жизненный цикл устройств и метрик, настройки worker/email, события доступности, SNMP SET audit, LLDP scan/link, вставка и выборка трапов. Тестовые устройства создаются с IP из диапазона `172.19.0.0/16`, чтобы не пересекаться с сидом `192.168.0.100` в миграции.
+
+### HTTP-интеграция (Chi + реальная БД)
+
+Пакет `internal/delivery/http`: полный `Router`, `httptest`, те же `DB_DSN` и миграции. Перед прогоном `TestMain` переключает рабочий каталог на **корень модуля** (нужны `templates/` и `static/`).
+
+```bash
+source .env
+go test ./internal/delivery/http/ -count=1 -v -run Integration
+```
+
+Сценарии: `/health`, `/metrics`, JSON `GET /devices` и `GET /traps` (без обязательной авторизации — в тестах сбрасываются `NMS_ADMIN_*` / `NMS_VIEWER_*` и соответствующие `*_FILE`), а также **POST + DELETE `/devices`** под Basic Auth и CSRF (в этом тесте задаются временные `NMS_ADMIN_USER` / `NMS_ADMIN_PASS`). Устройство создаётся с IP из `192.0.2.0/24` (TEST-NET-1).
+
+См. также разделы **Smoke test после деплоя** и **RBAC smoke test** выше (скрипты `scripts/smoke_test.sh`, `scripts/rbac_smoke_test.sh`).
+
 ## Лицензия
 
 Проприетарный проект.
