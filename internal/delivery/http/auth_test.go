@@ -156,3 +156,99 @@ func TestRequireAdmin_BlocksViewerWithForbidden(t *testing.T) {
 		t.Fatalf("expected forbidden body, got %q", string(body))
 	}
 }
+
+func TestRequireAuth_AllowsBasicAdminAndSetsContextUser(t *testing.T) {
+	t.Setenv("NMS_ADMIN_USER", "admin")
+	t.Setenv("NMS_ADMIN_PASS", "secret")
+	t.Setenv("NMS_VIEWER_USER", "viewer")
+	t.Setenv("NMS_VIEWER_PASS", "view-secret")
+	t.Setenv("NMS_ADMIN_USER_FILE", "")
+	t.Setenv("NMS_ADMIN_PASS_FILE", "")
+	t.Setenv("NMS_VIEWER_USER_FILE", "")
+	t.Setenv("NMS_VIEWER_PASS_FILE", "")
+
+	protected := RequireAuth(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		u := userFromContext(r.Context())
+		if u == nil {
+			t.Fatal("expected user in context")
+		}
+		if u.username != "admin" || u.role != roleAdmin {
+			t.Fatalf("unexpected auth user: %+v", u)
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	req := httptest.NewRequest(http.MethodGet, "/devices", nil)
+	req.SetBasicAuth("admin", "secret")
+	rr := httptest.NewRecorder()
+	protected.ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rr.Code)
+	}
+}
+
+func TestRequireAuth_AllowsBasicViewerAndSetsContextUser(t *testing.T) {
+	t.Setenv("NMS_ADMIN_USER", "admin")
+	t.Setenv("NMS_ADMIN_PASS", "secret")
+	t.Setenv("NMS_VIEWER_USER", "viewer")
+	t.Setenv("NMS_VIEWER_PASS", "view-secret")
+	t.Setenv("NMS_ADMIN_USER_FILE", "")
+	t.Setenv("NMS_ADMIN_PASS_FILE", "")
+	t.Setenv("NMS_VIEWER_USER_FILE", "")
+	t.Setenv("NMS_VIEWER_PASS_FILE", "")
+
+	protected := RequireAuth(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		u := userFromContext(r.Context())
+		if u == nil {
+			t.Fatal("expected user in context")
+		}
+		if u.username != "viewer" || u.role != roleViewer {
+			t.Fatalf("unexpected auth user: %+v", u)
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	req := httptest.NewRequest(http.MethodGet, "/devices", nil)
+	req.SetBasicAuth("viewer", "view-secret")
+	rr := httptest.NewRecorder()
+	protected.ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rr.Code)
+	}
+}
+
+func TestRequireAuth_AllowsValidSessionCookie(t *testing.T) {
+	t.Setenv("NMS_ADMIN_USER", "admin")
+	t.Setenv("NMS_ADMIN_PASS", "secret")
+	t.Setenv("NMS_VIEWER_USER", "")
+	t.Setenv("NMS_VIEWER_PASS", "")
+	t.Setenv("NMS_ADMIN_USER_FILE", "")
+	t.Setenv("NMS_ADMIN_PASS_FILE", "")
+	t.Setenv("NMS_VIEWER_USER_FILE", "")
+	t.Setenv("NMS_VIEWER_PASS_FILE", "")
+	t.Setenv("NMS_SESSION_SECRET", "itest-session-secret")
+
+	token, err := signSessionToken("admin", roleAdmin)
+	if err != nil {
+		t.Fatalf("signSessionToken: %v", err)
+	}
+
+	protected := RequireAuth(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		u := userFromContext(r.Context())
+		if u == nil {
+			t.Fatal("expected user in context from session cookie")
+		}
+		if u.username != "admin" || u.role != roleAdmin {
+			t.Fatalf("unexpected auth user from session: %+v", u)
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	req := httptest.NewRequest(http.MethodGet, "/devices", nil)
+	req.AddCookie(&http.Cookie{Name: sessionCookieName, Value: token})
+	rr := httptest.NewRecorder()
+	protected.ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rr.Code)
+	}
+}
