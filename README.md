@@ -352,7 +352,7 @@ make load-http-readonly
 # LOAD_REQUESTS=500 LOAD_CONCURRENCY=40 BASE_URL=http://127.0.0.1:8080 ./scripts/load_http_readonly.sh
 ```
 
-**k6** (установите [k6](https://k6.io/docs/get-started/installation/)): `make k6-readonly` или `BASE_URL=http://127.0.0.1:8080 K6_VUS=40 K6_DURATION=1m k6 run scripts/k6_readonly.js`.
+**k6** (установите [k6](https://k6.io/docs/get-started/installation/)): `make k6-readonly` или `BASE_URL=http://127.0.0.1:8080 K6_VUS=40 K6_DURATION=1m k6 run scripts/k6_readonly.js`. Если `command -v k6` пустой, а бинарник лежит в **`~/.local/bin/k6`**, откройте новый терминал или выполните **`source ~/.bashrc`**; цели **`make k6-readonly`** и **`make k6-session-csrf`** сами подставляют **`~/.local/bin`** в `PATH` на время запуска.
 
 **k6 с сессией и CSRF** (`scripts/k6_session_csrf.js`): в каждой итерации VU делает `GET /devices` с Basic (viewer) и заголовком `Accept: application/json`, получает cookie `nms_csrf`, затем `POST /mibs/resolve` с телом `{"symbol":"1.3.6.1.2.1.1.1.0"}` и заголовком `X-CSRF-Token` (числовой OID резолвится без snmptranslate). Ожидается **200** и JSON с полем `oid` — так проверяется double-submit cookie без мутаций БД и без «ложных» failed по HTTP из‑за 403. Запуск: экспортируйте пароли viewer (`K6_VIEWER_USER`, `K6_VIEWER_PASS` или `NMS_VIEWER_USER` / `NMS_VIEWER_PASS`, если `make` подхватил `.env`) и выполните `make k6-session-csrf` или `k6 run scripts/k6_session_csrf.js`.
 
