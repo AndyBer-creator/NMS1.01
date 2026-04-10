@@ -117,5 +117,8 @@ test-cover:
 	go tool cover -func=coverage.out | tail -n 1
 
 # Нужен DB_DSN (например из .env). Иначе сценарии Integration — SKIP.
+# С хоста при Postgres на localhost: переопределите DB_DSN в командной строке (include .env из Makefile
+# иначе задаст host=postgres из .env). Пример:
+#   make test-integration DB_DSN='host=127.0.0.1 port=5432 user=nms-user password=YOUR_PASS dbname=NMS sslmode=disable'
 test-integration:
 	go test ./internal/infrastructure/postgres/ ./internal/repository/ ./internal/delivery/http/ -count=1 -v -run Integration
