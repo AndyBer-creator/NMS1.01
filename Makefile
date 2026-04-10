@@ -1,10 +1,12 @@
 SHELL := /bin/bash
 
-.PHONY: migrate server worker traps dev docker-up clean backup-db restore-db smoke-test rbac-smoke init-secrets log-secrets-check slo-gates https-policy-check chaos-worker-check
+.PHONY: migrate server worker traps dev docker-up clean backup-db restore-db smoke-test rbac-smoke init-secrets log-secrets-check slo-gates https-policy-check chaos-worker-check test test-integration
 
-# Правильный способ: env файл для make
+# Если .env есть — подхватываем (docker, migrate, smoke). Без файла цели вроде `make test` всё равно работают.
+ifneq (,$(wildcard .env))
 include .env
 export
+endif
 
 migrate:
 	go run ./cmd/migration/
@@ -57,3 +59,10 @@ https-policy-check:
 
 chaos-worker-check:
 	./scripts/chaos_worker_check.sh
+
+test:
+	go test ./... -count=1
+
+# Нужен DB_DSN (например из .env). Иначе сценарии Integration — SKIP.
+test-integration:
+	go test ./internal/infrastructure/postgres/ ./internal/repository/ ./internal/delivery/http/ -count=1 -v -run Integration
