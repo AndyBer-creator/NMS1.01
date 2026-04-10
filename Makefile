@@ -82,14 +82,15 @@ load-http-readonly:
 	./scripts/load_http_readonly.sh
 
 # Нагрузка k6 на /health и /metrics (нужен k6 и запущенный API). BASE_URL, K6_VUS, K6_DURATION.
+# PATH дополняем ~/.local/bin (типичная установка без sudo), чтобы не зависеть от перезапуска терминала.
 k6-readonly:
-	@command -v k6 >/dev/null 2>&1 || { echo "k6 not found: https://k6.io/docs/get-started/installation/"; exit 1; }
-	k6 run scripts/k6_readonly.js
+	@PATH="$(HOME)/.local/bin:$$PATH" command -v k6 >/dev/null 2>&1 || { echo "k6 not found (ожидался в PATH или $(HOME)/.local/bin): https://k6.io/docs/get-started/installation/"; exit 1; }
+	PATH="$(HOME)/.local/bin:$$PATH" k6 run scripts/k6_readonly.js
 
 # k6: сессия Basic + CSRF (GET /devices, POST /mibs/resolve). Нужны K6_VIEWER_USER / K6_VIEWER_PASS (или NMS_VIEWER_* в env).
 k6-session-csrf:
-	@command -v k6 >/dev/null 2>&1 || { echo "k6 not found: https://k6.io/docs/get-started/installation/"; exit 1; }
-	k6 run scripts/k6_session_csrf.js
+	@PATH="$(HOME)/.local/bin:$$PATH" command -v k6 >/dev/null 2>&1 || { echo "k6 not found (ожидался в PATH или $(HOME)/.local/bin): https://k6.io/docs/get-started/installation/"; exit 1; }
+	PATH="$(HOME)/.local/bin:$$PATH" k6 run scripts/k6_session_csrf.js
 
 # Локальная проверка перед пушем (без интеграции с БД): lint, vuln, тесты -race, порог coverage.
 ci-local: lint vuln
