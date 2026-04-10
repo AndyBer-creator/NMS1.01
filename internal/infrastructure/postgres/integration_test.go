@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"NMS1/internal/domain"
+	"NMS1/internal/testdb"
 
 	_ "github.com/jackc/pgx/v5/stdlib"
 )
@@ -49,11 +50,7 @@ func openIntegrationRepo(t *testing.T) (*Repo, *sql.DB) {
 		_ = repo.Close()
 		_ = db.Close()
 	})
-	pctx, pcancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer pcancel()
-	if err := db.PingContext(pctx); err != nil {
-		t.Skipf("integration: postgres unreachable (%v)", err)
-	}
+	testdb.PingDBOrSkip(t, db, 5*time.Second)
 	return repo, db
 }
 

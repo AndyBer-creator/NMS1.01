@@ -10,6 +10,8 @@ import (
 	"testing"
 	"time"
 
+	"NMS1/internal/testdb"
+
 	_ "github.com/jackc/pgx/v5/stdlib"
 )
 
@@ -39,11 +41,7 @@ func TestIntegration_TrapsInsertAndList(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = db.Close() })
 
-	pctx, pcancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer pcancel()
-	if err := db.PingContext(pctx); err != nil {
-		t.Skipf("integration: postgres unreachable (%v)", err)
-	}
+	testdb.PingDBOrSkip(t, db, 5*time.Second)
 
 	ip := uniqueTrapIP(t)
 	oid := "1.3.6.1.6.3.1.1.5.3"
@@ -86,11 +84,7 @@ func TestIntegration_TrapsInsertEmptyOIDBecomesUnknown(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = db.Close() })
 
-	pctx, pcancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer pcancel()
-	if err := db.PingContext(pctx); err != nil {
-		t.Skipf("integration: postgres unreachable (%v)", err)
-	}
+	testdb.PingDBOrSkip(t, db, 5*time.Second)
 
 	ip := uniqueTrapIP(t)
 	repo := NewTrapsRepo(db)
