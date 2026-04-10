@@ -3,7 +3,7 @@
 set -euo pipefail
 export LC_NUMERIC=C
 PROFILE="${1:-coverage.out}"
-MIN="${MIN_COVERAGE_PERCENT:-11}"
+MIN="${MIN_COVERAGE_PERCENT:-12}"
 
 if [[ ! -f "$PROFILE" ]]; then
   echo "coverage: file not found: $PROFILE (run go test -coverprofile=... first)" >&2

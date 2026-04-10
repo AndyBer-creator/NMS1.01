@@ -6,6 +6,8 @@ import (
 	"runtime"
 	"strconv"
 
+	"NMS1/internal/applog"
+
 	logrus "github.com/sirupsen/logrus"
 	"gopkg.in/natefinch/lumberjack.v2"
 )
@@ -18,9 +20,10 @@ type Logger struct {
 func New(serviceName string) *Logger {
 	log := logrus.New()
 
+	logDir := applog.ResolveLogDir()
 	// Продакшен ротация логов
 	log.Out = &lumberjack.Logger{
-		Filename:   filepath.Join("/app/logs", serviceName+".log"),
+		Filename:   filepath.Join(logDir, serviceName+".log"),
 		MaxSize:    10, // MB
 		MaxBackups: 5,
 		MaxAge:     30, // days
@@ -39,8 +42,7 @@ func New(serviceName string) *Logger {
 	log.SetLevel(logrus.InfoLevel)
 	log.SetReportCaller(true)
 
-	// Создать папку logs
-	_ = os.MkdirAll("/app/logs", 0755)
+	_ = os.MkdirAll(logDir, 0755)
 
 	return &Logger{Logger: log, serviceName: serviceName}
 }

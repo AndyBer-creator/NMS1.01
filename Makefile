@@ -1,6 +1,6 @@
 SHELL := /bin/bash
 
-.PHONY: migrate server worker traps dev docker-up clean backup-db restore-db smoke-test rbac-smoke init-secrets log-secrets-check slo-gates https-policy-check chaos-worker-check test test-race test-cover test-integration lint vuln check-coverage e2e-http-smoke ci-local
+.PHONY: migrate server worker traps dev docker-up clean backup-db restore-db smoke-test rbac-smoke init-secrets log-secrets-check slo-gates https-policy-check chaos-worker-check test test-race test-cover test-integration lint vuln check-coverage e2e-http-smoke load-http-readonly k6-readonly ci-local
 
 # Если .env есть — подхватываем (docker, migrate, smoke). Без файла цели вроде `make test` всё равно работают.
 ifneq (,$(wildcard .env))
@@ -76,6 +76,15 @@ check-coverage:
 
 e2e-http-smoke:
 	./scripts/e2e_http_smoke.sh
+
+# Нагрузка на /health и /metrics (нужен запущенный API). LOAD_REQUESTS, LOAD_CONCURRENCY, BASE_URL.
+load-http-readonly:
+	./scripts/load_http_readonly.sh
+
+# Нагрузка k6 на /health и /metrics (нужен k6 и запущенный API). BASE_URL, K6_VUS, K6_DURATION.
+k6-readonly:
+	@command -v k6 >/dev/null 2>&1 || { echo "k6 not found: https://k6.io/docs/get-started/installation/"; exit 1; }
+	k6 run scripts/k6_readonly.js
 
 # Локальная проверка перед пушем (без интеграции с БД): lint, vuln, тесты -race, порог coverage.
 ci-local: lint vuln
