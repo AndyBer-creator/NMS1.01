@@ -75,6 +75,18 @@ func clearAuthEnv(t *testing.T) {
 	}
 }
 
+func clearAlertDeliveryEnv(t *testing.T) {
+	t.Helper()
+	for _, k := range []string{
+		"TELEGRAM_TOKEN", "TELEGRAM_CHAT_ID",
+		"TELEGRAM_TOKEN_FILE", "TELEGRAM_CHAT_ID_FILE",
+		"SMTP_HOST", "SMTP_PORT", "SMTP_USER", "SMTP_PASS", "SMTP_FROM",
+		"SMTP_HOST_FILE", "SMTP_PORT_FILE", "SMTP_USER_FILE", "SMTP_PASS_FILE", "SMTP_FROM_FILE",
+	} {
+		t.Setenv(k, "")
+	}
+}
+
 // integrationAuthOpts задаёт Basic-учётки для loadCreds(); пустые строки — креды не выставляются (после clearAuth).
 type integrationAuthOpts struct {
 	AdminUser, AdminPass   string
@@ -339,6 +351,92 @@ func TestIntegration_HTTP_HTTPSPolicyForwardedProtoSkipsRedirect(t *testing.T) {
 	_ = res.Body.Close()
 	if res.StatusCode != http.StatusOK {
 		t.Fatalf("expected 200 without redirect behind proxy, got %d: %s", res.StatusCode, body)
+	}
+}
+
+func TestIntegration_HTTP_AlertWebhookMethodNotAllowed(t *testing.T) {
+	clearAlertDeliveryEnv(t)
+	srv, _ := newIntegrationServer(t, integrationAuthOpts{})
+	req, err := http.NewRequest(http.MethodGet, srv.URL+"/alerts/webhook", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("GET /alerts/webhook: %v", err)
+	}
+	body, _ := io.ReadAll(res.Body)
+	_ = res.Body.Close()
+	if res.StatusCode != http.StatusMethodNotAllowed {
+		t.Fatalf("expected 405, got %d: %s", res.StatusCode, body)
+	}
+}
+
+func TestIntegration_HTTP_AlertWebhookInvalidJSON(t *testing.T) {
+	clearAlertDeliveryEnv(t)
+	srv, _ := newIntegrationServer(t, integrationAuthOpts{})
+	req, err := http.NewRequest(http.MethodPost, srv.URL+"/alerts/webhook", strings.NewReader("not-json{"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("POST /alerts/webhook: %v", err)
+	}
+	body, _ := io.ReadAll(res.Body)
+	_ = res.Body.Close()
+	if res.StatusCode != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", res.StatusCode, body)
+	}
+}
+
+func TestIntegration_HTTP_AlertWebhookEmptyAlertsNoContent(t *testing.T) {
+	clearAlertDeliveryEnv(t)
+	srv, _ := newIntegrationServer(t, integrationAuthOpts{})
+	req, err := http.NewRequest(http.MethodPost, srv.URL+"/alerts/webhook", strings.NewReader(`{"status":"firing","alerts":[]}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("POST /alerts/webhook: %v", err)
+	}
+	_, _ = io.Copy(io.Discard, res.Body)
+	_ = res.Body.Close()
+	if res.StatusCode != http.StatusNoContent {
+		t.Fatalf("expected 204, got %d", res.StatusCode)
+	}
+}
+
+func TestIntegration_HTTP_AlertWebhookFiringReturnsJSON(t *testing.T) {
+	clearAlertDeliveryEnv(t)
+	srv, _ := newIntegrationServer(t, integrationAuthOpts{})
+	payload := `{"status":"firing","alerts":[{"status":"firing","labels":{"alertname":"ItestAlert"},"annotations":{"summary":"sum","description":"desc"},"startsAt":"2026-01-01T00:00:00Z"}]}`
+	req, err := http.NewRequest(http.MethodPost, srv.URL+"/alerts/webhook", strings.NewReader(payload))
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("POST /alerts/webhook: %v", err)
+	}
+	body, _ := io.ReadAll(res.Body)
+	_ = res.Body.Close()
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", res.StatusCode, body)
+	}
+	var out map[string]any
+	if err := json.Unmarshal(body, &out); err != nil {
+		t.Fatalf("decode json: %v", err)
+	}
+	if out["status"] != "ok" {
+		t.Fatalf("status field: got %v", out["status"])
+	}
+	if v, ok := out["alerts_total"].(float64); !ok || int(v) != 1 {
+		t.Fatalf("alerts_total: got %v", out["alerts_total"])
 	}
 }
 
