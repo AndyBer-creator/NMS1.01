@@ -360,7 +360,7 @@ make load-http-readonly
 
 - **lint** — **golangci-lint** v2.6.1 (`golangci/golangci-lint-action`, настройки в **`.golangci.yml`**);
 - **vuln** — **`govulncheck ./...`**; локально для деталей по «уязвимости в зависимостях»: `go run golang.org/x/vuln/cmd/govulncheck@latest -show verbose ./...`;
-- **unit** — тесты с **`-race`**, покрытие, порог **`scripts/check_coverage.sh`** (по умолчанию **12%**, переменная `MIN_COVERAGE_PERCENT`), загрузка в **Codecov** (ошибка загрузки не валит job), артефакт **`coverage-out`**; при push в ту же ветку предыдущий прогон этого workflow **отменяется** (`concurrency`);
+- **unit** — тесты с **`-race`**, покрытие, порог **`scripts/check_coverage.sh`** (по умолчанию **15%**, переменная `MIN_COVERAGE_PERCENT`), загрузка в **Codecov** (ошибка загрузки не валит job), артефакт **`coverage-out`**; при push в ту же ветку предыдущий прогон этого workflow **отменяется** (`concurrency`);
 - **integration** — миграции, Postgres, тесты `Integration` с **`-race`**.
 
 Обновления зависимостей: **Dependabot** (`.github/dependabot.yml`) — еженедельно `gomod` и **GitHub Actions**. Для **приватного** репозитория в Codecov обычно задают секрет **`CODECOV_TOKEN`** (Settings → Secrets → Actions); без токена загрузка отчёта может быть нестабильной, в CI это не валит job.
@@ -380,7 +380,7 @@ go test ./internal/infrastructure/postgres/ ./internal/repository/ -count=1 -v
 make test-integration
 ```
 
-Покрытие: жизненный цикл устройств и метрик, настройки worker/email, события доступности, SNMP SET audit, LLDP scan/link, вставка и выборка трапов. Тестовые устройства создаются с IP из диапазона `172.19.0.0/16`, чтобы не пересекаться с сидом `192.168.0.100` в миграции.
+Покрытие: жизненный цикл устройств и метрик, настройки worker/email, события доступности, SNMP SET audit, LLDP scan/link, вставка и выборка трапов, лимит **`ByDevice`**. Тестовые устройства создаются с IP из диапазона `172.19.0.0/16`, чтобы не пересекаться с сидом `192.168.0.100` в миграции.
 
 ### HTTP-интеграция (Chi + реальная БД)
 
@@ -391,7 +391,7 @@ source .env
 go test ./internal/delivery/http/ -count=1 -v -run Integration
 ```
 
-Сценарии: `/health`, `/metrics`, JSON `GET /devices` и `GET /traps` (без обязательной авторизации — в тестах сбрасываются `NMS_ADMIN_*` / `NMS_VIEWER_*` и соответствующие `*_FILE`); **POST + DELETE `/devices`** под admin + CSRF; **401** на `POST /devices` без Basic при включённом admin; **403** для **viewer** на **`POST /devices`**, **`GET /devices/{ip}/edit`**, **`POST /devices/{ip}`** (обновление), **`DELETE /devices/{ip}`**, **`POST /devices/{ip}/snmp/set`**, **`POST /discovery/scan`**, **`POST /settings/worker-poll-interval`**, **`POST /settings/alert-email`**, **`POST /mibs/delete`**, **`POST /test-alert`**; **403** при неверном **`X-CSRF-Token`**; admin **POST `/settings/worker-poll-interval`** (**`interval_sec=333`**) и **POST `/settings/alert-email`** (валидный **`email`**) с откатом в **`t.Cleanup`**; невалидный **`email`** у admin → **200** и HTML с текстом валидации, **`GetAlertEmailTo`** без изменений. Общий сетап БД + router: **`buildIntegrationHandler`** / **`newIntegrationServer`**, **`applyIntegrationAuthEnv`**, **`newIntegrationHTTPClient`**, для сценариев viewer + небезопасные методы — **`viewerIntegrationCSRF`** (seed **`GET /devices`** с Basic viewer). Устройства — IP из `192.0.2.0/24` (TEST-NET-1) или `testDeviceIP`.
+Сценарии: `/health`, `/metrics`, JSON `GET /devices` и `GET /traps` (без обязательной авторизации — в тестах сбрасываются `NMS_ADMIN_*` / `NMS_VIEWER_*` и соответствующие `*_FILE`); **POST + DELETE `/devices`** под admin + CSRF; **401** на `POST /devices` без Basic при включённом admin; **403** для **viewer** на **`POST /devices`**, **`GET /devices/{ip}/edit`**, **`POST /devices/{ip}`** (обновление), **`DELETE /devices/{ip}`**, **`POST /devices/{ip}/snmp/set`**, **`POST /discovery/scan`**, **`POST /settings/worker-poll-interval`**, **`POST /settings/alert-email`**, **`POST /mibs/delete`**, **`POST /mibs/upload`** (multipart), **`POST /test-alert`**; **403** при неверном **`X-CSRF-Token`**; admin **POST `/settings/worker-poll-interval`** (**`interval_sec=333`**) и **POST `/settings/alert-email`** (валидный **`email`**) с откатом в **`t.Cleanup`**; невалидный **`email`** у admin → **200** и HTML с текстом валидации, **`GetAlertEmailTo`** без изменений. Общий сетап БД + router: **`buildIntegrationHandler`** / **`newIntegrationServer`**, **`applyIntegrationAuthEnv`**, **`newIntegrationHTTPClient`**, **`viewerIntegrationCSRF`** / **`adminIntegrationCSRF`** (seed **`GET /devices`** с Basic viewer/admin). Устройства — IP из `192.0.2.0/24` (TEST-NET-1) или `testDeviceIP`.
 
 См. также разделы **Smoke test после деплоя** и **RBAC smoke test** выше (скрипты `scripts/smoke_test.sh`, `scripts/rbac_smoke_test.sh`).
 
