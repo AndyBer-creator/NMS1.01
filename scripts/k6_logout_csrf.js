@@ -1,6 +1,10 @@
-// Session + CSRF: viewer Basic auth, GET /devices (cookie nms_csrf), POST /mibs/resolve + X-CSRF-Token.
-// Требуются k6 и работающий API. Учётки — как у viewer (см. ниже).
-// BASE_URL (по умолчанию http://127.0.0.1:8080), K6_VUS, K6_DURATION — как в k6_readonly.js.
+// Session + CSRF (mutating): Basic auth, GET /devices (cookie nms_csrf), POST /logout + X-CSRF-Token.
+// Требуются k6 и работающий API.
+//
+// ENV:
+// - BASE_URL (default http://127.0.0.1:8080)
+// - K6_VUS, K6_DURATION
+// - K6_VIEWER_USER / K6_VIEWER_PASS (или NMS_VIEWER_USER / NMS_VIEWER_PASS)
 
 import http from "k6/http";
 import { check } from "k6";
@@ -36,29 +40,6 @@ function snippet(s, max) {
   return v.slice(0, max) + "...";
 }
 
-export function setup() {
-  const { u, p } = viewerCreds();
-  if (!u || !p || u === "..." || p === "...") {
-    exec.test.abort(
-      "Set K6_VIEWER_USER and K6_VIEWER_PASS (Basic auth viewer). " +
-        "Обычно те же значения, что NMS_VIEWER_USER / NMS_VIEWER_PASS в .env (передайте в окружение k6: export ...)."
-    );
-  }
-
-  const res = http.get(`${base}/devices`, {
-    headers: {
-      Accept: "application/json",
-      Authorization: basicAuthHeader(u, p),
-    },
-  });
-  if (res.status !== 200) {
-    exec.test.abort(
-      `Viewer auth/CSRF seed failed: GET /devices expected 200, got ${res.status}. ` +
-        `Body=${JSON.stringify(snippet(res.body, 200))}`
-    );
-  }
-}
-
 function csrfFromResponse(res, pageURL) {
   const list = res.cookies && res.cookies["nms_csrf"];
   if (list && list.length > 0) {
@@ -77,6 +58,30 @@ function csrfFromResponse(res, pageURL) {
   const joined = Array.isArray(sc) ? sc.join(";") : String(sc);
   const m = joined.match(/nms_csrf=([^;]+)/);
   return m ? decodeURIComponent(m[1]) : "";
+}
+
+export function setup() {
+  const { u, p } = viewerCreds();
+  if (!u || !p || u === "..." || p === "...") {
+    exec.test.abort(
+      "Set K6_VIEWER_USER and K6_VIEWER_PASS (Basic auth viewer). " +
+        "Обычно те же значения, что NMS_VIEWER_USER / NMS_VIEWER_PASS в .env (передайте в окружение k6: export ...)."
+    );
+  }
+
+  const res = http.get(`${base}/devices`, {
+    headers: {
+      Accept: "application/json",
+      Authorization: basicAuthHeader(u, p),
+    },
+  });
+  if (res.status !== 200) {
+    exec.test.abort(
+      `Viewer seed failed: GET /devices expected 200, got ${res.status}. Body=${JSON.stringify(
+        snippet(res.body, 200)
+      )}`
+    );
+  }
 }
 
 export default function () {
@@ -99,29 +104,18 @@ export default function () {
   }
 
   const token = csrfFromResponse(getRes, seedURL);
-  const body = JSON.stringify({ symbol: "1.3.6.1.2.1.1.1.0" });
-
-  const postRes = http.post(`${base}/mibs/resolve`, body, {
+  const postRes = http.post(`${base}/logout`, "", {
+    redirects: 0,
     headers: {
-      Accept: "application/json",
-      "Content-Type": "application/json",
       "X-CSRF-Token": token,
       Authorization: authz,
     },
   });
 
   check(postRes, {
-    "POST /mibs/resolve 200": (r) => r.status === 200,
-    "resolve JSON has oid": (r) => {
-      if (r.status !== 200) {
-        return false;
-      }
-      try {
-        const j = JSON.parse(String(r.body));
-        return typeof j.oid === "string" && j.oid.length > 0;
-      } catch (e) {
-        return false;
-      }
-    },
+    "POST /logout 302": (r) => r.status === 302,
+    "POST /logout Location /login": (r) =>
+      String(r.headers.Location || "").startsWith("/login"),
   });
 }
+

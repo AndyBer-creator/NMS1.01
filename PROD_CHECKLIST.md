@@ -87,6 +87,10 @@
   - PostgreSQL/traps: `internal/infrastructure/postgres`, `internal/repository` при `DB_DSN`.
   - CI: unit + integration (см. `.github/workflows/test.yml`), порог покрытия по `scripts/check_coverage.sh` (по умолчанию 15%).
 
+- [x] Нагрузочные прогоны (k6)
+  - Read-only: `make k6-readonly` (GET `/health` / `/metrics`).
+  - Session+CSRF: `make k6-session-csrf` (viewer Basic → cookie `nms_csrf` → POST `/mibs/resolve` с `X-CSRF-Token`, ожидается 200 + JSON `oid`). Проверено 2026-04-10.
+
 - [x] Деплойный smoke-test
   - Добавлен скрипт `scripts/smoke_test.sh` + цель `make smoke-test`.
   - Проверен успешный прогон: `2026-04-09`.
