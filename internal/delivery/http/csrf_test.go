@@ -1,6 +1,7 @@
 package http
 
 import (
+	"crypto/tls"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -58,6 +59,34 @@ func TestEnsureCSRFCookie_ReusesExisting(t *testing.T) {
 	}
 }
 
+func TestEnsureCSRFCookie_SecureWhenForwardedHTTPS(t *testing.T) {
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest(http.MethodGet, "/", nil)
+	r.Header.Set("X-Forwarded-Proto", "https")
+	_, err := ensureCSRFCookie(w, r)
+	if err != nil {
+		t.Fatalf("ensureCSRFCookie: %v", err)
+	}
+	cookies := w.Result().Cookies()
+	if len(cookies) != 1 || !cookies[0].Secure {
+		t.Fatalf("expected Secure cookie, got %#v", cookies)
+	}
+}
+
+func TestEnsureCSRFCookie_SecureWhenTLSRequest(t *testing.T) {
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest(http.MethodGet, "https://nms.local/", nil)
+	r.TLS = &tls.ConnectionState{}
+	_, err := ensureCSRFCookie(w, r)
+	if err != nil {
+		t.Fatalf("ensureCSRFCookie: %v", err)
+	}
+	cookies := w.Result().Cookies()
+	if len(cookies) != 1 || !cookies[0].Secure {
+		t.Fatalf("expected Secure cookie for TLS request, got %#v", cookies)
+	}
+}
+
 func TestRequireCSRF_GetAlwaysPasses(t *testing.T) {
 	nextOK := false
 	h := RequireCSRF(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -99,5 +128,37 @@ func TestRequireCSRF_PostWithMatchingHeader(t *testing.T) {
 	h.ServeHTTP(w, r)
 	if w.Code != http.StatusOK || !nextOK {
 		t.Fatalf("POST with token: code=%d next=%v", w.Code, nextOK)
+	}
+}
+
+func TestRequireCSRF_PostWithFormFieldToken(t *testing.T) {
+	token := "form-field-token"
+	nextOK := false
+	h := RequireCSRF(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		nextOK = true
+	}))
+	w := httptest.NewRecorder()
+	body := "csrf_token=" + token
+	r := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(body))
+	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	r.AddCookie(&http.Cookie{Name: csrfCookieName, Value: token})
+	h.ServeHTTP(w, r)
+	if w.Code != http.StatusOK || !nextOK {
+		t.Fatalf("POST form csrf_token: code=%d next=%v", w.Code, nextOK)
+	}
+}
+
+func TestRequireCSRF_PostWrongHeaderTokenForbidden(t *testing.T) {
+	token := "good-token"
+	h := RequireCSRF(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Fatal("next must not run")
+	}))
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest(http.MethodPost, "/", nil)
+	r.AddCookie(&http.Cookie{Name: csrfCookieName, Value: token})
+	r.Header.Set("X-CSRF-Token", "wrong-token")
+	h.ServeHTTP(w, r)
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("want 403, got %d", w.Code)
 	}
 }
