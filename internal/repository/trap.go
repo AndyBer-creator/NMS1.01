@@ -25,7 +25,7 @@ func (r *TrapsRepo) List(ctx context.Context, limit int) ([]domain.Trap, error) 
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	traps := make([]domain.Trap, 0)
 	for rows.Next() {
@@ -51,7 +51,7 @@ func (r *TrapsRepo) ByDevice(ctx context.Context, ip string, limit int) ([]domai
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	traps := make([]domain.Trap, 0)
 	for rows.Next() {

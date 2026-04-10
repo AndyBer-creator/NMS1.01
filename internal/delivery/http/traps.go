@@ -39,7 +39,7 @@ func (h *TrapHandler) List(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(traps)
+	_ = json.NewEncoder(w).Encode(traps)
 }
 
 func (h *TrapHandler) ByDevice(w http.ResponseWriter, r *http.Request) {
@@ -68,7 +68,7 @@ func (h *TrapHandler) ByDevice(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(traps)
+	_ = json.NewEncoder(w).Encode(traps)
 }
 
 func (h *Handlers) ListTraps(w http.ResponseWriter, r *http.Request) {
@@ -90,7 +90,7 @@ func (h *Handlers) ListTraps(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(traps)
+	_ = json.NewEncoder(w).Encode(traps)
 }
 
 func (h *Handlers) TrapsByDevice(w http.ResponseWriter, r *http.Request) {
@@ -119,7 +119,7 @@ func (h *Handlers) TrapsByDevice(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(traps)
+	_ = json.NewEncoder(w).Encode(traps)
 }
 
 func (h *Handlers) TrapsPage(w http.ResponseWriter, r *http.Request) {
@@ -169,7 +169,7 @@ func (h *Handlers) testAlert(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{
+	_ = json.NewEncoder(w).Encode(map[string]string{
 		"status":    "ok",
 		"device_ip": input.DeviceIP,
 		"oid":       input.OID,

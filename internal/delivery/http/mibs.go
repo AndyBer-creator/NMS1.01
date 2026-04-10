@@ -110,7 +110,7 @@ func (h *Handlers) MibPanel(w http.ResponseWriter, r *http.Request) {
 	u := userFromContext(r.Context())
 	if u != nil && u.role != roleAdmin {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		fmt.Fprint(w, `<div class="text-sm text-gray-500">Загрузка MIB доступна только администратору.</div>`)
+		_, _ = fmt.Fprint(w, `<div class="text-sm text-gray-500">Загрузка MIB доступна только администратору.</div>`)
 		return
 	}
 
@@ -138,7 +138,7 @@ func (h *Handlers) MibUpload(w http.ResponseWriter, r *http.Request) {
 		h.mibUploadError(w, r, "Файл не выбран")
 		return
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	safe, ok := safeMibFilename(hdr.Filename)
 	if !ok {
@@ -154,8 +154,9 @@ func (h *Handlers) MibUpload(w http.ResponseWriter, r *http.Request) {
 		h.mibUploadError(w, r, "Не удалось сохранить файл")
 		return
 	}
+	defer func() { _ = out.Close() }()
+
 	n, err := io.Copy(out, io.LimitReader(file, mibUploadMaxBytes+1))
-	out.Close()
 	if err != nil {
 		_ = os.Remove(tmp)
 		h.mibUploadError(w, r, "Ошибка записи")

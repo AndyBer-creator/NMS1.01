@@ -65,7 +65,7 @@ func (r *Repo) ListAvailabilityEvents(limit int, deviceID *int) ([]AvailabilityE
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	out := make([]AvailabilityEvent, 0)
 	for rows.Next() {

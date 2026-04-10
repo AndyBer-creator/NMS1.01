@@ -130,7 +130,7 @@ func main() {
 
 	// ПРОДАКШЕН logger с ротацией
 	logger := setupLogger("nms-worker")
-	defer logger.Sync()
+	defer func() { _ = logger.Sync() }()
 
 	if err := startMetricsServer(":8081", logger); err != nil {
 		logger.Warn("Metrics server failed to start", zap.Error(err))
@@ -140,7 +140,7 @@ func main() {
 	if err != nil {
 		logger.Fatal("DB failed", zap.Error(err))
 	}
-	defer repo.Close()
+	defer func() { _ = repo.Close() }()
 
 	snmpClient := snmp.New(
 		int(cfg.SNMP.Port),

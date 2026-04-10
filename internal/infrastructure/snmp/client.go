@@ -172,7 +172,7 @@ func (c *Client) getV2c(ip string, community string, oids []string) (map[string]
 	if err := conn.Connect(); err != nil {
 		return nil, wrapSNMPError("connect", err)
 	}
-	defer conn.Conn.Close()
+	defer func() { _ = conn.Conn.Close() }()
 
 	pdu, err := conn.Get(oids)
 	if err != nil {
@@ -186,23 +186,12 @@ func (c *Client) getV2c(ip string, community string, oids []string) (map[string]
 	return result, nil
 }
 
-func (c *Client) versionFromString(version string) gosnmp.SnmpVersion {
-	switch version {
-	case "v1":
-		return gosnmp.Version1
-	case "v3":
-		return gosnmp.Version3
-	default:
-		return gosnmp.Version2c
-	}
-}
-
 func (c *Client) getV3(device *domain.Device, oids []string) (map[string]string, error) {
 	conn, err := c.newV3Conn(device)
 	if err != nil {
 		return nil, err
 	}
-	defer conn.Conn.Close()
+	defer func() { _ = conn.Conn.Close() }()
 
 	pdu, err := conn.Get(oids)
 	if err != nil {
@@ -230,7 +219,7 @@ func (c *Client) walkV2c(ip string, community string, baseOID string) (map[strin
 	if err := conn.Connect(); err != nil {
 		return nil, wrapSNMPError("connect", err)
 	}
-	defer conn.Conn.Close()
+	defer func() { _ = conn.Conn.Close() }()
 
 	pdus, err := conn.BulkWalkAll(baseOID)
 	if err != nil {
@@ -254,7 +243,7 @@ func (c *Client) walkV3(device *domain.Device, baseOID string) (map[string]strin
 	if err != nil {
 		return nil, err
 	}
-	defer conn.Conn.Close()
+	defer func() { _ = conn.Conn.Close() }()
 
 	conn.MaxRepetitions = 25
 
@@ -288,7 +277,7 @@ func (c *Client) setV2c(ip, community, oid string, pduType gosnmp.Asn1BER, value
 	if err := conn.Connect(); err != nil {
 		return wrapSNMPError("connect", err)
 	}
-	defer conn.Conn.Close()
+	defer func() { _ = conn.Conn.Close() }()
 
 	pdus := []gosnmp.SnmpPDU{
 		{
@@ -309,7 +298,7 @@ func (c *Client) setV3(device *domain.Device, oid string, pduType gosnmp.Asn1BER
 	if err != nil {
 		return err
 	}
-	defer conn.Conn.Close()
+	defer func() { _ = conn.Conn.Close() }()
 
 	pdus := []gosnmp.SnmpPDU{
 		{

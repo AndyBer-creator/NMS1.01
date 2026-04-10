@@ -40,7 +40,7 @@ func New(serviceName string) *Logger {
 	log.SetReportCaller(true)
 
 	// Создать папку logs
-	os.MkdirAll("/app/logs", 0755)
+	_ = os.MkdirAll("/app/logs", 0755)
 
 	return &Logger{Logger: log, serviceName: serviceName}
 }

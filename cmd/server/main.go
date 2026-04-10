@@ -26,7 +26,7 @@ func main() {
 	timezone.InitFromEnv()
 	cfg := config.Load()
 	logger, _ := zap.NewProduction()
-	defer logger.Sync()
+	defer func() { _ = logger.Sync() }()
 
 	snmpClient := snmp.New(int(cfg.SNMP.Port),
 		time.Duration(cfg.SNMP.Timeout)*time.Second, cfg.SNMP.Retries)
@@ -35,13 +35,14 @@ func main() {
 	if err != nil {
 		logger.Fatal("DB failed", zap.Error(err))
 	}
-	defer repo.Close()
+	defer func() { _ = repo.Close() }()
 
 	logger.Info("DB connected OK")
 	db, err := sql.Open("pgx", cfg.DB.DSN)
 	if err != nil {
 		logger.Fatal("DB direct failed", zap.Error(err))
 	}
+	defer func() { _ = db.Close() }()
 
 	trapsRepo := repository.NewTrapsRepo(db)
 	logger.Info("TrapsRepo initialized")
