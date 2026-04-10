@@ -1,6 +1,6 @@
 # NMS1 Production Readiness Checklist
 
-Дата обновления: 2026-04-09
+Дата обновления: 2026-04-10
 
 Этот файл фиксирует минимальные требования для безопасного go-live и текущий статус проекта.
 
@@ -82,8 +82,10 @@
 
 ## 6) Testing & Release Process
 
-- [ ] Интеграционные тесты критичных сценариев
-  - auth/rbac/device mutate/viewer read-only/worker interval setting.
+- [x] Интеграционные тесты критичных сценариев
+  - HTTP: RBAC/CSRF (viewer vs admin), CRUD устройств, настройки worker/email, discovery/MIB/SNMP/test-alert; `internal/testdb` для ping БД; `make test-integration` и пакет `internal/delivery/http` (`-run Integration`).
+  - PostgreSQL/traps: `internal/infrastructure/postgres`, `internal/repository` при `DB_DSN`.
+  - CI: unit + integration (см. `.github/workflows/test.yml`), порог покрытия по `scripts/check_coverage.sh` (по умолчанию 15%).
 
 - [x] Деплойный smoke-test
   - Добавлен скрипт `scripts/smoke_test.sh` + цель `make smoke-test`.

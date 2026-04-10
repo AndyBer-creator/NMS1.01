@@ -97,3 +97,33 @@ func TestIntegration_TrapsInsertEmptyOIDBecomesUnknown(t *testing.T) {
 		t.Fatalf("want oid unknown: %+v err=%v", list, err)
 	}
 }
+
+func TestIntegration_TrapsByDeviceRespectsLimit(t *testing.T) {
+	dsn := trapIntegrationDSN(t)
+	db, err := sql.Open("pgx", dsn)
+	if err != nil {
+		t.Fatalf("sql.Open: %v", err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+
+	testdb.PingDBOrSkip(t, db, 5*time.Second)
+
+	ip := uniqueTrapIP(t)
+	repo := NewTrapsRepo(db)
+	ctx := context.Background()
+
+	if err := repo.Insert(ctx, ip, "1.3.6.1.1.1.1", 1, map[string]string{"a": "1"}, false); err != nil {
+		t.Fatalf("Insert 1: %v", err)
+	}
+	if err := repo.Insert(ctx, ip, "1.3.6.1.1.1.2", 2, map[string]string{"b": "2"}, false); err != nil {
+		t.Fatalf("Insert 2: %v", err)
+	}
+
+	list, err := repo.ByDevice(ctx, ip, 1)
+	if err != nil {
+		t.Fatalf("ByDevice: %v", err)
+	}
+	if len(list) != 1 {
+		t.Fatalf("ByDevice limit=1: want 1 row, got %d %+v", len(list), list)
+	}
+}

@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"mime/multipart"
 	"net/http"
 	"net/http/cookiejar"
 	"net/http/httptest"
@@ -171,6 +172,32 @@ func viewerIntegrationCSRF(t *testing.T, srv *httptest.Server, viewerUser, viewe
 	return client, csrfFromJar(t, jar, base)
 }
 
+// adminIntegrationCSRF — admin делает GET /devices (JSON); возвращает клиент, jar и base для повторного csrfFromJar.
+func adminIntegrationCSRF(t *testing.T, srv *httptest.Server, adminUser, adminPass string) (*http.Client, http.CookieJar, *url.URL) {
+	t.Helper()
+	base, err := url.Parse(srv.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	client, jar := newIntegrationHTTPClient(t)
+	req, err := http.NewRequest(http.MethodGet, srv.URL+"/devices", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.SetBasicAuth(adminUser, adminPass)
+	req.Header.Set("Accept", "application/json")
+	res, err := client.Do(req)
+	if err != nil {
+		t.Fatalf("GET /devices (admin seed): %v", err)
+	}
+	_, _ = io.Copy(io.Discard, res.Body)
+	_ = res.Body.Close()
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("admin GET /devices status %d", res.StatusCode)
+	}
+	return client, jar, base
+}
+
 func testDeviceIP(t *testing.T) string {
 	t.Helper()
 	var b [1]byte
@@ -317,30 +344,10 @@ func TestIntegration_HTTP_CreateAndDeleteDeviceWithAuth(t *testing.T) {
 		AdminUser: adminUser, AdminPass: adminPass,
 	})
 
-	base, err := url.Parse(srv.URL)
-	if err != nil {
-		t.Fatal(err)
-	}
-	client, jar := newIntegrationHTTPClient(t)
+	client, jar, base := adminIntegrationCSRF(t, srv, adminUser, adminPass)
 
 	ip := testDeviceIP(t)
 	t.Cleanup(func() { _ = repo.DeleteByIP(ip) })
-
-	getDevices, err := http.NewRequest(http.MethodGet, srv.URL+"/devices", nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	getDevices.SetBasicAuth(adminUser, adminPass)
-	getDevices.Header.Set("Accept", "application/json")
-	res0, err := client.Do(getDevices)
-	if err != nil {
-		t.Fatalf("seed GET /devices: %v", err)
-	}
-	_, _ = io.Copy(io.Discard, res0.Body)
-	_ = res0.Body.Close()
-	if res0.StatusCode != http.StatusOK {
-		t.Fatalf("seed status %d", res0.StatusCode)
-	}
 
 	token := csrfFromJar(t, jar, base)
 	payload := fmt.Sprintf(`{"ip":%q,"name":"http-itest","community":"public","snmp_version":"v2c"}`, ip)
@@ -417,28 +424,7 @@ func TestIntegration_HTTP_AdminPostWrongCSRF(t *testing.T) {
 		AdminUser: adminUser, AdminPass: adminPass,
 	})
 
-	base, err := url.Parse(srv.URL)
-	if err != nil {
-		t.Fatal(err)
-	}
-	client, jar := newIntegrationHTTPClient(t)
-
-	getDevices, err := http.NewRequest(http.MethodGet, srv.URL+"/devices", nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	getDevices.SetBasicAuth(adminUser, adminPass)
-	getDevices.Header.Set("Accept", "application/json")
-	res0, err := client.Do(getDevices)
-	if err != nil {
-		t.Fatalf("GET /devices: %v", err)
-	}
-	_, _ = io.Copy(io.Discard, res0.Body)
-	_ = res0.Body.Close()
-	if res0.StatusCode != http.StatusOK {
-		t.Fatalf("seed status %d", res0.StatusCode)
-	}
-
+	client, jar, base := adminIntegrationCSRF(t, srv, adminUser, adminPass)
 	_ = csrfFromJar(t, jar, base)
 	ip := testDeviceIP(t)
 	payload := fmt.Sprintf(`{"ip":%q,"name":"csrf-wrong","community":"public","snmp_version":"v2c"}`, ip)
@@ -535,28 +521,7 @@ func TestIntegration_HTTP_AdminPostWorkerPollIntervalRoundTrip(t *testing.T) {
 		}
 	})
 
-	base, err := url.Parse(srv.URL)
-	if err != nil {
-		t.Fatal(err)
-	}
-	client, jar := newIntegrationHTTPClient(t)
-
-	getDevices, err := http.NewRequest(http.MethodGet, srv.URL+"/devices", nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	getDevices.SetBasicAuth(adminUser, adminPass)
-	getDevices.Header.Set("Accept", "application/json")
-	res0, err := client.Do(getDevices)
-	if err != nil {
-		t.Fatalf("GET /devices: %v", err)
-	}
-	_, _ = io.Copy(io.Discard, res0.Body)
-	_ = res0.Body.Close()
-	if res0.StatusCode != http.StatusOK {
-		t.Fatalf("seed status %d", res0.StatusCode)
-	}
-
+	client, jar, base := adminIntegrationCSRF(t, srv, adminUser, adminPass)
 	token := csrfFromJar(t, jar, base)
 	const wantSec = 333
 	post, err := http.NewRequest(http.MethodPost, srv.URL+"/settings/worker-poll-interval",
@@ -626,28 +591,7 @@ func TestIntegration_HTTP_AdminPostAlertEmailRoundTrip(t *testing.T) {
 
 	const wantEmail = "itest-alert-roundtrip@example.com"
 
-	base, err := url.Parse(srv.URL)
-	if err != nil {
-		t.Fatal(err)
-	}
-	client, jar := newIntegrationHTTPClient(t)
-
-	getDevices, err := http.NewRequest(http.MethodGet, srv.URL+"/devices", nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	getDevices.SetBasicAuth(adminUser, adminPass)
-	getDevices.Header.Set("Accept", "application/json")
-	res0, err := client.Do(getDevices)
-	if err != nil {
-		t.Fatalf("GET /devices: %v", err)
-	}
-	_, _ = io.Copy(io.Discard, res0.Body)
-	_ = res0.Body.Close()
-	if res0.StatusCode != http.StatusOK {
-		t.Fatalf("seed status %d", res0.StatusCode)
-	}
-
+	client, jar, base := adminIntegrationCSRF(t, srv, adminUser, adminPass)
 	token := csrfFromJar(t, jar, base)
 	post, err := http.NewRequest(http.MethodPost, srv.URL+"/settings/alert-email",
 		strings.NewReader("email="+url.QueryEscape(wantEmail)))
@@ -701,6 +645,50 @@ func TestIntegration_HTTP_ViewerPostMibDeleteForbidden(t *testing.T) {
 	}
 }
 
+func TestIntegration_HTTP_ViewerPostMibUploadForbidden(t *testing.T) {
+	const (
+		adminUser, adminPass   = "itest-mibup-admin", "itest-mibup-admin-secret"
+		viewerUser, viewerPass = "itest-mibup-viewer", "itest-mibup-viewer-secret"
+	)
+	srv, _ := newIntegrationServer(t, integrationAuthOpts{
+		AdminUser: adminUser, AdminPass: adminPass,
+		ViewerUser: viewerUser, ViewerPass: viewerPass,
+	})
+
+	client, token := viewerIntegrationCSRF(t, srv, viewerUser, viewerPass)
+
+	var body bytes.Buffer
+	mw := multipart.NewWriter(&body)
+	part, err := mw.CreateFormFile("file", "upload-itest.mib")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := part.Write([]byte("-- mib integration stub --\n")); err != nil {
+		t.Fatal(err)
+	}
+	contentType := mw.FormDataContentType()
+	if err := mw.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	post, err := http.NewRequest(http.MethodPost, srv.URL+"/mibs/upload", &body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	post.SetBasicAuth(viewerUser, viewerPass)
+	post.Header.Set("Content-Type", contentType)
+	post.Header.Set("X-CSRF-Token", token)
+	res, err := client.Do(post)
+	if err != nil {
+		t.Fatalf("POST /mibs/upload: %v", err)
+	}
+	defer func() { _ = res.Body.Close() }()
+	b, _ := io.ReadAll(res.Body)
+	if res.StatusCode != http.StatusForbidden {
+		t.Fatalf("expected 403 for viewer on MIB upload, got %d: %s", res.StatusCode, b)
+	}
+}
+
 func TestIntegration_HTTP_ViewerPostTestAlertForbidden(t *testing.T) {
 	const (
 		adminUser, adminPass   = "itest-talert-admin", "itest-talert-admin-secret"
@@ -744,28 +732,7 @@ func TestIntegration_HTTP_AdminPostAlertEmailInvalidReturnsPanelWithError(t *tes
 		}
 	})
 
-	base, err := url.Parse(srv.URL)
-	if err != nil {
-		t.Fatal(err)
-	}
-	client, jar := newIntegrationHTTPClient(t)
-
-	getDevices, err := http.NewRequest(http.MethodGet, srv.URL+"/devices", nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	getDevices.SetBasicAuth(adminUser, adminPass)
-	getDevices.Header.Set("Accept", "application/json")
-	res0, err := client.Do(getDevices)
-	if err != nil {
-		t.Fatalf("GET /devices: %v", err)
-	}
-	_, _ = io.Copy(io.Discard, res0.Body)
-	_ = res0.Body.Close()
-	if res0.StatusCode != http.StatusOK {
-		t.Fatalf("seed status %d", res0.StatusCode)
-	}
-
+	client, jar, base := adminIntegrationCSRF(t, srv, adminUser, adminPass)
 	token := csrfFromJar(t, jar, base)
 	post, err := http.NewRequest(http.MethodPost, srv.URL+"/settings/alert-email",
 		strings.NewReader("email="+url.QueryEscape("not-a-valid-email")))
