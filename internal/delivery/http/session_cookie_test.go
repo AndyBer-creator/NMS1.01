@@ -1,6 +1,7 @@
 package http
 
 import (
+	"crypto/tls"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -51,6 +52,24 @@ func TestSetSessionCookie_ForwardedHTTPSIsSecure(t *testing.T) {
 	}
 }
 
+func TestSetSessionCookie_TLSRequestIsSecure(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "https://nms.local/login", nil)
+	req.TLS = &tls.ConnectionState{}
+	rr := httptest.NewRecorder()
+
+	setSessionCookie(rr, req, "token-value")
+
+	res := rr.Result()
+	defer func() { _ = res.Body.Close() }()
+	cookies := res.Cookies()
+	if len(cookies) == 0 {
+		t.Fatal("expected session cookie")
+	}
+	if !cookies[0].Secure {
+		t.Fatal("expected Secure=true for TLS request")
+	}
+}
+
 func TestClearSessionCookie_SetsExpiredCookie(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "http://nms.local/logout", nil)
 	rr := httptest.NewRecorder()
@@ -72,6 +91,24 @@ func TestClearSessionCookie_SetsExpiredCookie(t *testing.T) {
 	}
 	if c.Value != "" {
 		t.Fatalf("expected cleared value, got %q", c.Value)
+	}
+}
+
+func TestClearSessionCookie_ForwardedHTTPSIsSecure(t *testing.T) {
+	req := httptest.NewRequest(http.MethodPost, "http://nms.local/logout", nil)
+	req.Header.Set("X-Forwarded-Proto", "https")
+	rr := httptest.NewRecorder()
+
+	clearSessionCookie(rr, req)
+
+	res := rr.Result()
+	defer func() { _ = res.Body.Close() }()
+	cookies := res.Cookies()
+	if len(cookies) == 0 {
+		t.Fatal("expected clearing cookie")
+	}
+	if !cookies[0].Secure {
+		t.Fatal("expected Secure=true for forwarded HTTPS request")
 	}
 }
 
