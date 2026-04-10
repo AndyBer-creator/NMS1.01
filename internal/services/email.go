@@ -78,13 +78,13 @@ func (c *SMTPClient) sendTLS(addr, to string, msg []byte) error {
 	if err != nil {
 		return err
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	client, err := smtp.NewClient(conn, c.Host)
 	if err != nil {
 		return err
 	}
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 
 	if c.User != "" || c.Pass != "" {
 		if err := client.Auth(smtp.PlainAuth("", c.User, c.Pass, c.Host)); err != nil {
@@ -121,7 +121,7 @@ func (c *SMTPClient) sendStartTLS(addr, to string, msg []byte) error {
 		_ = conn.Close()
 		return err
 	}
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 
 	if ok, _ := client.Extension("STARTTLS"); ok {
 		if err := client.StartTLS(&tls.Config{ServerName: c.Host, MinVersion: tls.VersionTLS12}); err != nil {

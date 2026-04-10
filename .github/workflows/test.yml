@@ -4,8 +4,32 @@ on:
   push:
     branches: [main, master]
   pull_request:
+  workflow_dispatch:
 
 jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v8
+        with:
+          version: v2.6.1
+          args: --timeout=5m
+
+  vuln:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: govulncheck
+        run: go run golang.org/x/vuln/cmd/govulncheck@latest ./...
+
   unit:
     runs-on: ubuntu-latest
     steps:
@@ -13,8 +37,26 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
-      - name: go test
-        run: go test ./... -count=1
+      - name: go test (race + coverage)
+        run: go test ./... -count=1 -race -coverprofile=coverage.out -covermode=atomic
+      - name: coverage summary
+        run: go tool cover -func=coverage.out | tail -n 1
+      - name: coverage minimum
+        run: ./scripts/check_coverage.sh coverage.out
+        env:
+          MIN_COVERAGE_PERCENT: "11"
+      - name: upload coverage to Codecov
+        uses: codecov/codecov-action@v5
+        with:
+          files: coverage.out
+          fail_ci_if_error: false
+      - name: upload coverage.out
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: coverage-out
+          path: coverage.out
+          if-no-files-found: ignore
 
   integration:
     runs-on: ubuntu-latest
@@ -40,4 +82,4 @@ jobs:
       - name: migrations
         run: go run ./cmd/migration
       - name: integration tests
-        run: go test ./internal/infrastructure/postgres/ ./internal/repository/ ./internal/delivery/http/ -count=1 -v -run Integration
+        run: go test ./internal/infrastructure/postgres/ ./internal/repository/ ./internal/delivery/http/ -count=1 -race -v -run Integration

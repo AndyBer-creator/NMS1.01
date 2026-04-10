@@ -26,7 +26,7 @@ func main() {
 	timezone.InitFromEnv()
 	// ✅ ТОТ ЖЕ logger что в worker!
 	logger := setupLogger("nms-trap-receiver")
-	defer logger.Sync()
+	defer func() { _ = logger.Sync() }()
 
 	logger.Info("🚀 SNMP Trap Receiver v1 started")
 
@@ -38,7 +38,7 @@ func main() {
 	if err != nil {
 		logger.Fatal("DB open failed", zap.Error(err))
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	if err := db.Ping(); err != nil {
 		logger.Fatal("DB ping failed", zap.Error(err))
 	}

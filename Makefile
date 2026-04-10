@@ -1,6 +1,6 @@
 SHELL := /bin/bash
 
-.PHONY: migrate server worker traps dev docker-up clean backup-db restore-db smoke-test rbac-smoke init-secrets log-secrets-check slo-gates https-policy-check chaos-worker-check test test-integration
+.PHONY: migrate server worker traps dev docker-up clean backup-db restore-db smoke-test rbac-smoke init-secrets log-secrets-check slo-gates https-policy-check chaos-worker-check test test-race test-cover test-integration lint vuln check-coverage e2e-http-smoke ci-local
 
 # Если .env есть — подхватываем (docker, migrate, smoke). Без файла цели вроде `make test` всё равно работают.
 ifneq (,$(wildcard .env))
@@ -62,6 +62,34 @@ chaos-worker-check:
 
 test:
 	go test ./... -count=1
+
+# Как в CI (см. .golangci.yml).
+lint:
+	go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.6.1 run ./... --timeout=5m
+
+vuln:
+	go run golang.org/x/vuln/cmd/govulncheck@latest ./...
+
+check-coverage:
+	@test -f coverage.out || $(MAKE) test-cover
+	./scripts/check_coverage.sh coverage.out
+
+e2e-http-smoke:
+	./scripts/e2e_http_smoke.sh
+
+# Локальная проверка перед пушем (без интеграции с БД): lint, vuln, тесты -race, порог coverage.
+ci-local: lint vuln
+	go test ./... -count=1 -race -coverprofile=coverage.out -covermode=atomic
+	./scripts/check_coverage.sh coverage.out
+
+# Как в CI job unit: детектор гонок (медленнее).
+test-race:
+	go test ./... -count=1 -race
+
+# Профиль в ./coverage.out (в .gitignore); итог по функциям в консоль.
+test-cover:
+	go test ./... -count=1 -coverprofile=coverage.out -covermode=atomic
+	go tool cover -func=coverage.out | tail -n 1
 
 # Нужен DB_DSN (например из .env). Иначе сценарии Integration — SKIP.
 test-integration:

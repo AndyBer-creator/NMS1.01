@@ -140,7 +140,7 @@ func TestIntegration_HTTP_HealthAndMetrics(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GET /health: %v", err)
 	}
-	defer res.Body.Close()
+	defer func() { _ = res.Body.Close() }()
 	body, _ := io.ReadAll(res.Body)
 	if res.StatusCode != http.StatusOK || string(body) != "OK" {
 		t.Fatalf("health: %d %q", res.StatusCode, body)
@@ -150,7 +150,7 @@ func TestIntegration_HTTP_HealthAndMetrics(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GET /metrics: %v", err)
 	}
-	defer res2.Body.Close()
+	defer func() { _ = res2.Body.Close() }()
 	b2, _ := io.ReadAll(res2.Body)
 	if res2.StatusCode != http.StatusOK {
 		t.Fatalf("metrics status: %d", res2.StatusCode)
@@ -174,7 +174,7 @@ func TestIntegration_HTTP_ListDevicesJSON(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GET /devices: %v", err)
 	}
-	defer res.Body.Close()
+	defer func() { _ = res.Body.Close() }()
 	if res.StatusCode != http.StatusOK {
 		b, _ := io.ReadAll(res.Body)
 		t.Fatalf("status %d: %s", res.StatusCode, b)
@@ -197,14 +197,14 @@ func TestIntegration_HTTP_ListTrapsJSON(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GET /traps: %v", err)
 	}
-	defer res.Body.Close()
 	if res.StatusCode == http.StatusNotFound {
+		_ = res.Body.Close()
 		res, err = http.Get(srv.URL + "/traps/")
 		if err != nil {
 			t.Fatal(err)
 		}
-		defer res.Body.Close()
 	}
+	defer func() { _ = res.Body.Close() }()
 	if res.StatusCode != http.StatusOK {
 		b, _ := io.ReadAll(res.Body)
 		t.Fatalf("traps status %d: %s", res.StatusCode, b)
@@ -281,7 +281,7 @@ func TestIntegration_HTTP_CreateAndDeleteDeviceWithAuth(t *testing.T) {
 		t.Fatalf("seed GET /devices: %v", err)
 	}
 	_, _ = io.Copy(io.Discard, res0.Body)
-	res0.Body.Close()
+	_ = res0.Body.Close()
 	if res0.StatusCode != http.StatusOK {
 		t.Fatalf("seed status %d", res0.StatusCode)
 	}
@@ -300,7 +300,7 @@ func TestIntegration_HTTP_CreateAndDeleteDeviceWithAuth(t *testing.T) {
 		t.Fatalf("POST /devices: %v", err)
 	}
 	body1, _ := io.ReadAll(res1.Body)
-	res1.Body.Close()
+	_ = res1.Body.Close()
 	if res1.StatusCode != http.StatusOK {
 		t.Fatalf("create status %d: %s", res1.StatusCode, body1)
 	}
@@ -318,7 +318,7 @@ func TestIntegration_HTTP_CreateAndDeleteDeviceWithAuth(t *testing.T) {
 		t.Fatalf("DELETE: %v", err)
 	}
 	_, _ = io.Copy(io.Discard, res2.Body)
-	res2.Body.Close()
+	_ = res2.Body.Close()
 	if res2.StatusCode != http.StatusOK {
 		t.Fatalf("delete status %d", res2.StatusCode)
 	}

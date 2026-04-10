@@ -10,12 +10,10 @@ import (
 
 	// 🚨 ОБЯЗАТЕЛЬНЫЙ BLANK IMPORT
 	_ "github.com/jackc/pgx/v5/stdlib"
-	"go.uber.org/zap"
 )
 
 type Repo struct {
-	db     *sql.DB
-	logger *zap.Logger
+	db *sql.DB
 }
 
 type SNMPSetAuditRecord struct {
@@ -121,7 +119,7 @@ func (r *Repo) ListDevices() ([]*domain.Device, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var devices []*domain.Device
 	for rows.Next() {

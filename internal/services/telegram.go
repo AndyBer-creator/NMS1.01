@@ -10,8 +10,9 @@ import (
 )
 
 type TelegramAlert struct {
-	BotToken string
-	ChatID   string
+	BotToken   string
+	ChatID     string
+	HTTPClient *http.Client // nil — http.DefaultClient (для тестов подставляют Transport)
 }
 
 func NewTelegramAlert(botToken, chatID string) *TelegramAlert {
@@ -46,7 +47,11 @@ func (t *TelegramAlert) SendCriticalTrap(deviceIP, oid, trapVars string) error {
 		return fmt.Errorf("json marshal failed: %w", err)
 	}
 
-	resp, err := http.Post(
+	client := t.HTTPClient
+	if client == nil {
+		client = http.DefaultClient
+	}
+	resp, err := client.Post(
 		"https://api.telegram.org/bot"+t.BotToken+"/sendMessage",
 		"application/json",
 		bytes.NewBuffer(jsonData),
@@ -54,7 +59,7 @@ func (t *TelegramAlert) SendCriticalTrap(deviceIP, oid, trapVars string) error {
 	if err != nil {
 		return fmt.Errorf("telegram http post failed: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)

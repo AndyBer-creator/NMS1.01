@@ -100,7 +100,7 @@ func (r *Repo) GetLatestLldpLinks() ([]LldpLinkView, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var out []LldpLinkView
 	for rows.Next() {

@@ -2,7 +2,6 @@ package postgres
 
 import (
 	"context"
-	"database/sql"
 	"strconv"
 	"strings"
 )
@@ -32,9 +31,7 @@ func (r *Repo) GetWorkerPollIntervalSeconds() int {
 	err := r.db.QueryRowContext(context.Background(),
 		`SELECT value FROM nms_settings WHERE key = $1`, SettingKeyWorkerPollIntervalSec).Scan(&raw)
 	if err != nil {
-		if err != sql.ErrNoRows {
-			// таблица есть, но ошибка — безопасный дефолт
-		}
+		// Нет строки или любая ошибка чтения — безопасный дефолт.
 		return DefaultWorkerPollIntervalSeconds
 	}
 	n, err := strconv.Atoi(strings.TrimSpace(raw))

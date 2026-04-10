@@ -22,9 +22,11 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
-	goose.SetDialect("postgres")
+	if err := goose.SetDialect("postgres"); err != nil {
+		log.Fatal(err)
+	}
 	if err := goose.Up(db, "migrations"); err != nil {
 		log.Fatal(err)
 	}

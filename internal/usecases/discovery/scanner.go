@@ -259,9 +259,8 @@ func normalizeSNMPVersion(v string) string {
 
 func deviceNameFromDescr(ip, descr string) string {
 	const maxLen = 120
-	runes := []rune(descr)
 	var b strings.Builder
-	for _, r := range runes {
+	for _, r := range descr {
 		if len(b.String()) >= maxLen {
 			break
 		}
@@ -283,7 +282,7 @@ func tcpPing(host string) bool {
 	for _, port := range ports {
 		conn, err := net.DialTimeout("tcp", host+":"+port, 1*time.Second)
 		if err == nil {
-			conn.Close()
+			_ = conn.Close()
 			return true
 		}
 	}

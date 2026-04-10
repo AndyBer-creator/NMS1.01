@@ -220,7 +220,7 @@ func (h *Handlers) ListDevices(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(devices)
+	_ = json.NewEncoder(w).Encode(devices)
 }
 
 // ✅ /devices/table → HTML fragment для HTMX Dashboard
@@ -385,13 +385,13 @@ func (h *Handlers) DevicesPage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-	fmt.Fprintf(w, "✅ DB OK! Devices: %d\n\n", len(devices))
+	_, _ = fmt.Fprintf(w, "✅ DB OK! Devices: %d\n\n", len(devices))
 	for _, dPtr := range devices {
 		if dPtr == nil {
 			continue
 		}
 		d := *dPtr
-		fmt.Fprintf(w, "ID:%d | %s (%s) | %s\n", d.ID, d.Name, d.IP, d.Status)
+		_, _ = fmt.Fprintf(w, "ID:%d | %s (%s) | %s\n", d.ID, d.Name, d.IP, d.Status)
 	}
 }
 
@@ -417,7 +417,7 @@ func (h *Handlers) GetMetric(w http.ResponseWriter, r *http.Request) {
 	if device == nil {
 		if demo := h.demoData(ip, numericOID); demo != nil {
 			w.Header().Set("Content-Type", "application/json")
-			json.NewEncoder(w).Encode(demo)
+			_ = json.NewEncoder(w).Encode(demo)
 			return
 		}
 		http.Error(w, "Device not found", http.StatusNotFound)
@@ -438,7 +438,7 @@ func (h *Handlers) GetMetric(w http.ResponseWriter, r *http.Request) {
 
 	out := map[string]string{numericOID: val}
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(out)
+	_ = json.NewEncoder(w).Encode(out)
 }
 
 // ✅ POST /devices/{ip}/snmp/set → SNMP SET (v2c/v3) для одного OID
@@ -757,7 +757,7 @@ func (h *Handlers) CreateDevice(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{
+	_ = json.NewEncoder(w).Encode(map[string]interface{}{
 		"id":     device.ID,
 		"ip":     device.IP,
 		"name":   device.Name,
@@ -793,7 +793,7 @@ func (h *Handlers) DeleteDevice(w http.ResponseWriter, r *http.Request) {
 // ✅ Health check
 func (h *Handlers) Health(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
-	w.Write([]byte("OK"))
+	_, _ = w.Write([]byte("OK"))
 }
 
 // LldpTopologyPage отдает HTML страницу с графом LLDP.

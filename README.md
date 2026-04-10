@@ -324,7 +324,34 @@ make test
 
 БД не обязательна: интеграционные тесты **пропускаются**, если не задан `DB_DSN`.
 
-В CI (GitHub Actions) job **unit** гоняет `go test ./...`; job **integration** поднимает Postgres, выполняет `go run ./cmd/migration` и прогоняет тесты с именем `Integration` в пакетах postgres, repository и HTTP (см. `.github/workflows/test.yml`).
+Дополнительно локально:
+
+```bash
+make test-race    # go test -race ./... (как в CI)
+make test-cover   # coverage.out + итоговая строка go tool cover -func
+make lint           # golangci-lint (конфиг .golangci.yml), как в CI
+make vuln           # govulncheck ./...
+make check-coverage # нужен coverage.out (или сначала make test-cover)
+make ci-local        # lint + vuln + go test -race + порог coverage (~2–4 мин)
+```
+
+Локальный **smoke по HTTP** (должен быть запущен API, по умолчанию `http://127.0.0.1:8080`):
+
+```bash
+make e2e-http-smoke
+# или: BASE_URL=http://localhost:8080 ./scripts/e2e_http_smoke.sh
+```
+
+В CI (GitHub Actions, `.github/workflows/test.yml`), ветки **main**/**master** и pull request:
+
+- **lint** — **golangci-lint** v2.6.1 (`golangci/golangci-lint-action`, настройки в **`.golangci.yml`**);
+- **vuln** — **`govulncheck ./...`**;
+- **unit** — тесты с **`-race`**, покрытие, порог **`scripts/check_coverage.sh`** (по умолчанию **11%**, переменная `MIN_COVERAGE_PERCENT`), загрузка в **Codecov** (ошибка загрузки не валит job), артефакт **`coverage-out`**; workflow можно запустить вручную (**Actions → test → Run workflow**);
+- **integration** — миграции, Postgres, тесты `Integration` с **`-race`**.
+
+Обновления зависимостей: **Dependabot** (`.github/dependabot.yml`) — еженедельно `gomod` и **GitHub Actions**. Для приватного репозитория в Codecov может понадобиться секрет **`CODECOV_TOKEN`**.
+
+Дополнительно без БД покрыты: **`internal/services`** (SMTP `Enabled` и проверки до сети; Telegram — `httptest`, в проде по-прежнему `http.DefaultClient`), **`internal/usecases/discovery`** и **`internal/usecases/lldp`** (разбор OID/параметров), **`cmd/migration`** — наличие каталога **`migrations/`**. В **pull request** ориентируйтесь на зелёный workflow **test**.
 
 ### Интеграционные тесты (PostgreSQL)
 
