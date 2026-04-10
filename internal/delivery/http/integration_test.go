@@ -440,6 +440,72 @@ func TestIntegration_HTTP_AlertWebhookFiringReturnsJSON(t *testing.T) {
 	}
 }
 
+func TestIntegration_HTTP_AlertWebhookResolvedOnlySkipsDeliveryCounters(t *testing.T) {
+	clearAlertDeliveryEnv(t)
+	srv, _ := newIntegrationServer(t, integrationAuthOpts{})
+	payload := `{"status":"resolved","alerts":[{"status":"resolved","labels":{"alertname":"ResolvedOnly"},"annotations":{"summary":"sum","description":"desc"},"startsAt":"2026-01-01T00:00:00Z"}]}`
+	req, err := http.NewRequest(http.MethodPost, srv.URL+"/alerts/webhook", strings.NewReader(payload))
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("POST /alerts/webhook: %v", err)
+	}
+	body, _ := io.ReadAll(res.Body)
+	_ = res.Body.Close()
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", res.StatusCode, body)
+	}
+	var out map[string]any
+	if err := json.Unmarshal(body, &out); err != nil {
+		t.Fatalf("decode json: %v", err)
+	}
+	if v, ok := out["alerts_total"].(float64); !ok || int(v) != 1 {
+		t.Fatalf("alerts_total: got %v", out["alerts_total"])
+	}
+	if v, ok := out["email_sent"].(float64); !ok || int(v) != 0 {
+		t.Fatalf("email_sent: got %v", out["email_sent"])
+	}
+	if v, ok := out["email_skipped"].(float64); !ok || int(v) != 0 {
+		t.Fatalf("email_skipped: got %v", out["email_skipped"])
+	}
+}
+
+func TestIntegration_HTTP_AlertWebhookMixedStatusesCountsOnlyFiringDelivery(t *testing.T) {
+	clearAlertDeliveryEnv(t)
+	srv, _ := newIntegrationServer(t, integrationAuthOpts{})
+	payload := `{"status":"firing","alerts":[{"status":"firing","labels":{"alertname":"FiringOne"},"annotations":{"summary":"sum","description":"desc"},"startsAt":"2026-01-01T00:00:00Z"},{"status":"resolved","labels":{"alertname":"ResolvedTwo"},"annotations":{"summary":"sum","description":"desc"},"startsAt":"2026-01-01T00:00:00Z"}]}`
+	req, err := http.NewRequest(http.MethodPost, srv.URL+"/alerts/webhook", strings.NewReader(payload))
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("POST /alerts/webhook: %v", err)
+	}
+	body, _ := io.ReadAll(res.Body)
+	_ = res.Body.Close()
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", res.StatusCode, body)
+	}
+	var out map[string]any
+	if err := json.Unmarshal(body, &out); err != nil {
+		t.Fatalf("decode json: %v", err)
+	}
+	if v, ok := out["alerts_total"].(float64); !ok || int(v) != 2 {
+		t.Fatalf("alerts_total: got %v", out["alerts_total"])
+	}
+	if v, ok := out["email_sent"].(float64); !ok || int(v) != 0 {
+		t.Fatalf("email_sent: got %v", out["email_sent"])
+	}
+	if v, ok := out["email_skipped"].(float64); !ok || int(v) != 1 {
+		t.Fatalf("email_skipped: got %v", out["email_skipped"])
+	}
+}
+
 func TestIntegration_HTTP_ListDevicesJSON(t *testing.T) {
 	h := newIntegrationHandler(t)
 	srv := httptest.NewServer(h)

@@ -124,5 +124,16 @@ func TestEnforceHTTPS_RedirectAndBypass(t *testing.T) {
 	if rr2.Code != http.StatusOK || !nextCalled {
 		t.Fatalf("expected bypass path to call next with 200")
 	}
+
+	rr3 := httptest.NewRecorder()
+	req3 := httptest.NewRequest(http.MethodGet, "http://nms.local/login?next=%2Fdevices%3Ftab%3Dall", nil)
+	req3.Host = "nms.local"
+	h.ServeHTTP(rr3, req3)
+	if rr3.Code != http.StatusPermanentRedirect {
+		t.Fatalf("expected 308 redirect with query, got %d", rr3.Code)
+	}
+	if loc := rr3.Header().Get("Location"); loc != "https://nms.local/login?next=%2Fdevices%3Ftab%3Dall" {
+		t.Fatalf("expected query-preserving redirect location, got %q", loc)
+	}
 }
 

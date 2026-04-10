@@ -118,3 +118,41 @@ func TestRequireAuth_UnauthorizedJSONReturnsJSON(t *testing.T) {
 		t.Fatalf("expected unauthorized json body, got %q", string(body))
 	}
 }
+
+func TestRequireAdmin_AllowsWhenUserMissing(t *testing.T) {
+	nextCalled := false
+	protected := RequireAdmin(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		nextCalled = true
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	req := httptest.NewRequest(http.MethodGet, "/admin-op", nil)
+	rr := httptest.NewRecorder()
+	protected.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rr.Code)
+	}
+	if !nextCalled {
+		t.Fatal("expected next handler to be called when user is nil")
+	}
+}
+
+func TestRequireAdmin_BlocksViewerWithForbidden(t *testing.T) {
+	protected := RequireAdmin(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	req := httptest.NewRequest(http.MethodPost, "/devices", nil)
+	req = withUser(req, &authUser{username: "viewer", role: roleViewer})
+	rr := httptest.NewRecorder()
+	protected.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusForbidden {
+		t.Fatalf("expected 403, got %d", rr.Code)
+	}
+	body, _ := io.ReadAll(rr.Body)
+	if !strings.Contains(string(body), "Forbidden") {
+		t.Fatalf("expected forbidden body, got %q", string(body))
+	}
+}
