@@ -25,6 +25,8 @@ func Router(handlers *Handlers) *chi.Mux {
 	r.Get("/login", handlers.LoginPage)
 	r.Post("/login", handlers.LoginPost)
 	r.Post("/alerts/webhook", handlers.AlertWebhook)
+	// WS terminal auth via short-lived signed token from terminal page.
+	r.Get("/ws/terminal/{id}", handlers.TerminalWS)
 
 	r.Group(func(r chi.Router) {
 		r.Use(RequireAuth)
@@ -44,7 +46,6 @@ func Router(handlers *Handlers) *chi.Mux {
 		r.With(RequireAdmin).Delete("/devices/{id}", handlers.DeleteDevice)
 		r.With(RequireAdmin).Post("/devices/{id}/snmp/set", handlers.SetSNMP)
 		r.With(RequireAdmin).Get("/devices/{id}/terminal", handlers.TerminalPage)
-		r.With(RequireAdmin).Get("/ws/terminal/{id}", handlers.TerminalWS)
 
 		r.With(RequireAdmin).Post("/discovery/scan", handlers.DiscoverScan)
 
