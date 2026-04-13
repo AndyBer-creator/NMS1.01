@@ -27,6 +27,18 @@ import (
 	"go.uber.org/zap"
 )
 
+func deviceIDFromChi(r *http.Request) (int, error) {
+	s := strings.TrimSpace(chi.URLParam(r, "id"))
+	if s == "" {
+		return 0, fmt.Errorf("empty device id")
+	}
+	id, err := strconv.Atoi(s)
+	if err != nil || id <= 0 {
+		return 0, fmt.Errorf("invalid device id")
+	}
+	return id, nil
+}
+
 var (
 	requestsTotal = prometheus.NewCounterVec(
 		prometheus.CounterOpts{
@@ -285,12 +297,12 @@ func (h *Handlers) DevicesTable(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handlers) EditDeviceRow(w http.ResponseWriter, r *http.Request) {
-	ip := chi.URLParam(r, "ip")
-	if strings.TrimSpace(ip) == "" {
-		http.Error(w, "IP required", http.StatusBadRequest)
+	id, err := deviceIDFromChi(r)
+	if err != nil {
+		http.Error(w, "Invalid device id", http.StatusBadRequest)
 		return
 	}
-	device, err := h.repo.GetDeviceByIP(ip)
+	device, err := h.repo.GetDeviceByID(id)
 	if err != nil {
 		http.Error(w, "Database error", http.StatusInternalServerError)
 		return
@@ -304,12 +316,12 @@ func (h *Handlers) EditDeviceRow(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handlers) UpdateDevice(w http.ResponseWriter, r *http.Request) {
-	ip := chi.URLParam(r, "ip")
-	if strings.TrimSpace(ip) == "" {
-		http.Error(w, "IP required", http.StatusBadRequest)
+	id, err := deviceIDFromChi(r)
+	if err != nil {
+		http.Error(w, "Invalid device id", http.StatusBadRequest)
 		return
 	}
-	existing, err := h.repo.GetDeviceByIP(ip)
+	existing, err := h.repo.GetDeviceByID(id)
 	if err != nil {
 		http.Error(w, "Database error", http.StatusInternalServerError)
 		return
@@ -324,7 +336,7 @@ func (h *Handlers) UpdateDevice(w http.ResponseWriter, r *http.Request) {
 	}
 
 	patch := &domain.Device{
-		IP:          ip,
+		IP:          existing.IP,
 		Name:        strings.TrimSpace(r.FormValue("name")),
 		Community:   strings.TrimSpace(r.FormValue("community")),
 		SNMPVersion: r.FormValue("snmp_version"),
@@ -380,7 +392,7 @@ func (h *Handlers) UpdateDevice(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	updated, err := h.repo.UpdateDeviceByIP(ip, patch)
+	updated, err := h.repo.UpdateDeviceByID(id, patch)
 	if err != nil {
 		http.Error(w, "Update failed: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -433,10 +445,14 @@ func (h *Handlers) DevicesPage(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// SNMP метрика /devices/{ip}/metric/{oid}
+// SNMP метрика /devices/{id}/metric/{oid}
 
 func (h *Handlers) GetMetric(w http.ResponseWriter, r *http.Request) {
-	ip := chi.URLParam(r, "ip")
+	id, err := deviceIDFromChi(r)
+	if err != nil {
+		http.Error(w, "Invalid device id", http.StatusBadRequest)
+		return
+	}
 	oid := chi.URLParam(r, "oid")
 
 	numericOID, err := h.resolveOIDInput(oid)
@@ -445,26 +461,21 @@ func (h *Handlers) GetMetric(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	device, err := h.repo.GetDeviceByIP(ip)
+	device, err := h.repo.GetDeviceByID(id)
 	if err != nil {
-		h.logger.Error("GetDeviceByIP failed", zap.String("ip", ip), zap.Error(err))
+		h.logger.Error("GetDeviceByID failed", zap.Int("id", id), zap.Error(err))
 		http.Error(w, "DB error", http.StatusInternalServerError)
 		return
 	}
 
 	if device == nil {
-		if demo := h.demoData(ip, numericOID); demo != nil {
-			w.Header().Set("Content-Type", "application/json")
-			_ = json.NewEncoder(w).Encode(demo)
-			return
-		}
 		http.Error(w, "Device not found", http.StatusNotFound)
 		return
 	}
 
 	result, err := h.snmp.GetDevice(device, []string{numericOID})
 	if err != nil {
-		h.logger.Error("SNMP Get failed", zap.String("ip", ip), zap.String("oid", numericOID), zap.Error(err))
+		h.logger.Error("SNMP Get failed", zap.String("ip", device.IP), zap.String("oid", numericOID), zap.Error(err))
 		http.Error(w, "SNMP failed: "+err.Error(), http.StatusServiceUnavailable)
 		return
 	}
@@ -479,11 +490,11 @@ func (h *Handlers) GetMetric(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(out)
 }
 
-// ✅ POST /devices/{ip}/snmp/set → SNMP SET (v2c/v3) для одного OID
+// ✅ POST /devices/{id}/snmp/set → SNMP SET (v2c/v3) для одного OID
 func (h *Handlers) SetSNMP(w http.ResponseWriter, r *http.Request) {
-	ip := chi.URLParam(r, "ip")
-	if ip == "" {
-		h.writeAPIError(w, http.StatusBadRequest, "validation_error", "ip is required")
+	id, err := deviceIDFromChi(r)
+	if err != nil {
+		h.writeAPIError(w, http.StatusBadRequest, "validation_error", "invalid device id")
 		return
 	}
 
@@ -518,9 +529,9 @@ func (h *Handlers) SetSNMP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	device, err := h.repo.GetDeviceByIP(ip)
+	device, err := h.repo.GetDeviceByID(id)
 	if err != nil {
-		h.logger.Error("GetDeviceByIP failed", zap.String("ip", ip), zap.Error(err))
+		h.logger.Error("GetDeviceByID failed", zap.Int("id", id), zap.Error(err))
 		h.writeAPIError(w, http.StatusInternalServerError, "db_error", "Database error")
 		return
 	}
@@ -551,7 +562,8 @@ func (h *Handlers) SetSNMP(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]interface{}{
 			"status":        "validated",
-			"ip":            ip,
+			"id":            device.ID,
+			"ip":            device.IP,
 			"oid":           numericOID,
 			"type":          input.Type,
 			"validate_only": true,
@@ -560,7 +572,7 @@ func (h *Handlers) SetSNMP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.snmp.SetDevice(device, numericOID, pduType, value); err != nil {
-		h.logger.Error("SNMP SET failed", zap.String("ip", ip), zap.String("oid", numericOID), zap.String("type", input.Type), zap.Error(err))
+		h.logger.Error("SNMP SET failed", zap.String("ip", device.IP), zap.String("oid", numericOID), zap.String("type", input.Type), zap.Error(err))
 		_ = h.repo.InsertSNMPSetAudit(postgres.SNMPSetAuditRecord{
 			UserName: username,
 			DeviceID: sql.NullInt64{Int64: int64(device.ID), Valid: true},
@@ -586,7 +598,7 @@ func (h *Handlers) SetSNMP(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]string{
 		"status": "ok",
-		"ip":     ip,
+		"ip":     device.IP,
 		"oid":    numericOID,
 	})
 }
@@ -803,22 +815,22 @@ func (h *Handlers) CreateDevice(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// ✅ DELETE /devices/{ip} → удалить устройство
+// ✅ DELETE /devices/{id} → удалить устройство
 func (h *Handlers) DeleteDevice(w http.ResponseWriter, r *http.Request) {
-	ip := chi.URLParam(r, "ip")
-	if ip == "" {
-		http.Error(w, "IP required", http.StatusBadRequest)
+	id, err := deviceIDFromChi(r)
+	if err != nil {
+		http.Error(w, "Invalid device id", http.StatusBadRequest)
 		return
 	}
 
-	h.logger.Info("Deleting device", zap.String("ip", ip))
+	h.logger.Info("Deleting device", zap.Int("id", id))
 
-	if err := h.repo.DeleteByIP(ip); err != nil {
+	if err := h.repo.DeleteByID(id); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			http.Error(w, "Device not found", http.StatusNotFound)
 			return
 		}
-		h.logger.Error("Delete failed", zap.String("ip", ip), zap.Error(err))
+		h.logger.Error("Delete failed", zap.Int("id", id), zap.Error(err))
 		http.Error(w, "Device deletion failed", http.StatusInternalServerError)
 		return
 	}
@@ -1071,16 +1083,3 @@ func (h *Handlers) writeAPIError(w http.ResponseWriter, status int, code, msg st
 	})
 }
 
-// ✅ Demo данные для тестов
-func (h *Handlers) demoData(ip, oid string) map[string]string {
-	demo := map[string]map[string]string{
-		"192.168.0.1": {"1.3.6.1.2.1.1.1.0": "Keenetic Giga KN-1010 v3.7 (demo)"},
-		"127.0.0.1":   {"1.3.6.1.2.1.1.1.0": "Ubuntu 24.04 LTS (demo)"},
-	}
-	if data, ok := demo[ip]; ok {
-		if val, ok := data[oid]; ok {
-			return map[string]string{oid: val}
-		}
-	}
-	return nil
-}

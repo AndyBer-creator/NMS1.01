@@ -97,6 +97,65 @@ func (r *Repo) GetDeviceByIP(ip string) (*domain.Device, error) {
 	return device, err
 }
 
+// GetDeviceByID загружает устройство по id (стабильные URL вместо IP/IPv6 в пути).
+func (r *Repo) GetDeviceByID(id int) (*domain.Device, error) {
+	if id <= 0 {
+		return nil, nil
+	}
+	device := &domain.Device{}
+	var lastSeenSql sql.NullTime
+	var lastErrorAt sql.NullTime
+	var lastPollOKAt sql.NullTime
+
+	query := `
+        SELECT id, ip, name, community,
+               COALESCE(version, 'unknown'),
+               COALESCE(snmp_version, 'v2c'),
+               COALESCE(auth_proto, ''),
+               COALESCE(auth_pass, ''),
+               COALESCE(priv_proto, ''),
+               COALESCE(priv_pass, ''),
+               COALESCE(status, 'active'),
+               COALESCE(created_at, NOW()),
+               COALESCE(last_seen, created_at),
+               COALESCE(last_error, ''),
+               last_error_at,
+               last_poll_ok_at
+        FROM devices WHERE id = $1`
+
+	err := r.db.QueryRowContext(context.Background(), query, id).Scan(
+		&device.ID,
+		&device.IP,
+		&device.Name,
+		&device.Community,
+		&device.Version,
+		&device.SNMPVersion,
+		&device.AuthProto,
+		&device.AuthPass,
+		&device.PrivProto,
+		&device.PrivPass,
+		&device.Status,
+		&device.CreatedAt,
+		&lastSeenSql,
+		&device.LastError,
+		&lastErrorAt,
+		&lastPollOKAt)
+
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if lastSeenSql.Valid {
+		device.LastSeen = lastSeenSql.Time
+	}
+	if lastErrorAt.Valid {
+		device.LastErrorAt = lastErrorAt.Time
+	}
+	if lastPollOKAt.Valid {
+		device.LastPollOKAt = lastPollOKAt.Time
+	}
+	return device, err
+}
+
 func (r *Repo) ListDevices() ([]*domain.Device, error) {
 	rows, err := r.db.QueryContext(context.Background(),
 		`SELECT id,
@@ -174,6 +233,25 @@ func (r *Repo) DeleteByIP(ip string) error {
 	return nil
 }
 
+func (r *Repo) DeleteByID(id int) error {
+	if id <= 0 {
+		return sql.ErrNoRows
+	}
+	res, err := r.db.ExecContext(context.Background(),
+		`DELETE FROM devices WHERE id = $1`, id)
+	if err != nil {
+		return err
+	}
+	affected, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if affected == 0 {
+		return sql.ErrNoRows
+	}
+	return nil
+}
+
 func (r *Repo) UpdateDeviceByIP(ip string, patch *domain.Device) (*domain.Device, error) {
 	if strings.TrimSpace(ip) == "" {
 		return nil, fmt.Errorf("ip is required")
@@ -228,6 +306,58 @@ func (r *Repo) UpdateDeviceByIP(ip string, patch *domain.Device) (*domain.Device
 		return nil, err
 	}
 	return r.GetDeviceByIP(ip)
+}
+
+func (r *Repo) UpdateDeviceByID(id int, patch *domain.Device) (*domain.Device, error) {
+	if id <= 0 {
+		return nil, fmt.Errorf("id is required")
+	}
+	if patch == nil {
+		return nil, fmt.Errorf("patch is required")
+	}
+	snmpVer, err := normalizeSNMPVersion(patch.SNMPVersion)
+	if err != nil {
+		return nil, err
+	}
+	authProto := sql.NullString{Valid: strings.TrimSpace(patch.AuthProto) != ""}
+	if authProto.Valid {
+		authProto.String = strings.TrimSpace(patch.AuthProto)
+	}
+	authPass := sql.NullString{Valid: patch.AuthPass != ""}
+	if authPass.Valid {
+		authPass.String = patch.AuthPass
+	}
+	privProto := sql.NullString{Valid: strings.TrimSpace(patch.PrivProto) != ""}
+	if privProto.Valid {
+		privProto.String = strings.TrimSpace(patch.PrivProto)
+	}
+	privPass := sql.NullString{Valid: patch.PrivPass != ""}
+	if privPass.Valid {
+		privPass.String = patch.PrivPass
+	}
+	_, err = r.db.ExecContext(context.Background(), `
+		UPDATE devices
+		SET name = $1,
+		    community = $2,
+		    snmp_version = $3,
+		    auth_proto = $4,
+		    auth_pass = $5,
+		    priv_proto = $6,
+		    priv_pass = $7
+		WHERE id = $8`,
+		strings.TrimSpace(patch.Name),
+		strings.TrimSpace(patch.Community),
+		snmpVer,
+		authProto,
+		authPass,
+		privProto,
+		privPass,
+		id,
+	)
+	if err != nil {
+		return nil, err
+	}
+	return r.GetDeviceByID(id)
 }
 
 func (r *Repo) SaveMetric(deviceID int, oid, value string) error {

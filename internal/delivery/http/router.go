@@ -34,12 +34,12 @@ func Router(handlers *Handlers) *chi.Mux {
 		r.Get("/devices/list", handlers.DevicesListPage)
 		r.Get("/devices/table", handlers.DevicesTable)
 		r.Get("/devices/page", handlers.DevicesPage)
-		r.Get("/devices/{ip}/metric/{oid}", handlers.GetMetric)
+		r.Get("/devices/{id}/metric/{oid}", handlers.GetMetric)
 		r.With(RequireAdmin).Post("/devices", handlers.CreateDevice)
-		r.With(RequireAdmin).Get("/devices/{ip}/edit", handlers.EditDeviceRow)
-		r.With(RequireAdmin).Post("/devices/{ip}", handlers.UpdateDevice)
-		r.With(RequireAdmin).Delete("/devices/{ip}", handlers.DeleteDevice)
-		r.With(RequireAdmin).Post("/devices/{ip}/snmp/set", handlers.SetSNMP)
+		r.With(RequireAdmin).Get("/devices/{id}/edit", handlers.EditDeviceRow)
+		r.With(RequireAdmin).Post("/devices/{id}", handlers.UpdateDevice)
+		r.With(RequireAdmin).Delete("/devices/{id}", handlers.DeleteDevice)
+		r.With(RequireAdmin).Post("/devices/{id}/snmp/set", handlers.SetSNMP)
 
 		r.With(RequireAdmin).Post("/discovery/scan", handlers.DiscoverScan)
 
@@ -59,7 +59,6 @@ func Router(handlers *Handlers) *chi.Mux {
 		r.Route("/traps", func(r chi.Router) {
 			r.Get("/page", handlers.TrapsPage)
 			r.Get("/", handlers.ListTraps)
-			r.Get("/{ip}", handlers.TrapsByDevice)
 		})
 
 		r.Get("/events/availability/page", handlers.AvailabilityEventsPage)

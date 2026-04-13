@@ -29,10 +29,12 @@
 
     <div class="bg-gray-800 p-6 rounded-xl shadow-2xl border border-gray-700/50 mb-8">
         <div class="flex flex-col md:flex-row md:items-end gap-4 mb-6">
-            <div class="flex-1">
-                <label for="trap-ip" class="block text-sm text-gray-300 mb-2">Фильтр по IP</label>
-                <input id="trap-ip" type="text" placeholder="например: 192.168.0.100"
-                       class="w-full p-3 bg-gray-900/60 border border-gray-600 rounded-lg focus:border-orange-400 focus:outline-none">
+            <div class="flex-1 min-w-[14rem]">
+                <label for="trap-device" class="block text-sm text-gray-300 mb-2">Фильтр по устройству</label>
+                <select id="trap-device"
+                        class="w-full p-3 bg-gray-900/60 border border-gray-600 rounded-lg focus:border-orange-400 focus:outline-none text-gray-200">
+                    <option value="">Все устройства</option>
+                </select>
             </div>
             <div class="w-full md:w-40">
                 <label for="trap-limit" class="block text-sm text-gray-300 mb-2">Лимит</label>
@@ -67,7 +69,7 @@
 
 <script>
     (function () {
-        const ipInput = document.getElementById('trap-ip');
+        const deviceSel = document.getElementById('trap-device');
         const limitInput = document.getElementById('trap-limit');
         const refreshBtn = document.getElementById('trap-refresh');
         const body = document.getElementById('trap-table-body');
@@ -95,10 +97,29 @@
                 </tr>`;
         }
 
+        async function loadDeviceOptions() {
+            const prev = deviceSel.value;
+            try {
+                const res = await fetch('/devices', { headers: { 'Accept': 'application/json' } });
+                if (!res.ok) return;
+                const devices = await res.json();
+                deviceSel.innerHTML = '<option value="">Все устройства</option>';
+                for (const d of devices || []) {
+                    const opt = document.createElement('option');
+                    opt.value = String(d.id);
+                    opt.textContent = `${d.name || 'device'} (${d.ip})`;
+                    deviceSel.appendChild(opt);
+                }
+                if (prev && [...deviceSel.options].some(o => o.value === prev)) {
+                    deviceSel.value = prev;
+                }
+            } catch (e) { /* ignore */ }
+        }
+
         async function loadTraps() {
-            const ip = (ipInput.value || '').trim();
+            const devId = (deviceSel.value || '').trim();
             const limit = Math.max(1, Math.min(1000, parseInt(limitInput.value || '100', 10) || 100));
-            const url = ip ? `/traps/${encodeURIComponent(ip)}?limit=${limit}` : `/traps?limit=${limit}`;
+            const url = devId ? `/traps?device_id=${encodeURIComponent(devId)}&limit=${limit}` : `/traps?limit=${limit}`;
             refreshBtn.disabled = true;
             summary.textContent = 'Загрузка...';
             try {
@@ -127,7 +148,8 @@
 
         refreshBtn.addEventListener('click', loadTraps);
         setInterval(loadTraps, 15000);
-        loadTraps();
+        setInterval(loadDeviceOptions, 60000);
+        loadDeviceOptions().then(loadTraps);
     })();
 </script>
 </body>
