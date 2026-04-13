@@ -120,6 +120,21 @@ func RequireAuth(next http.Handler) http.Handler {
 	})
 }
 
+// adminUserFromRequest — только admin: cookie-сессия или HTTP Basic (как RequireAuth, но без viewer).
+func adminUserFromRequest(r *http.Request) *authUser {
+	admin, _ := loadCreds()
+	if admin.user == "" {
+		return nil
+	}
+	if u := sessionUserFromCookie(r); u != nil && u.role == roleAdmin {
+		return u
+	}
+	if user, pass, ok := r.BasicAuth(); ok && basicMatch(admin, user, pass) {
+		return &authUser{username: user, role: roleAdmin}
+	}
+	return nil
+}
+
 func RequireAdmin(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		u := userFromContext(r.Context())
