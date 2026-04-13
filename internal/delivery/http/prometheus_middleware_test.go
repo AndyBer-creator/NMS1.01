@@ -1,6 +1,8 @@
 package http
 
 import (
+	"bufio"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -8,6 +10,28 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/prometheus/client_golang/prometheus/testutil"
 )
+
+type hijackRecorder struct {
+	*httptest.ResponseRecorder
+	hijackCalls int
+}
+
+func (h *hijackRecorder) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+	h.hijackCalls++
+	return nil, nil, nil
+}
+
+func TestResponseWriterDelegatesHijack(t *testing.T) {
+	inner := &hijackRecorder{ResponseRecorder: httptest.NewRecorder()}
+	wrap := &responseWriter{ResponseWriter: inner, status: http.StatusOK}
+	var hj http.Hijacker = wrap
+	if _, _, err := hj.Hijack(); err != nil {
+		t.Fatalf("Hijack: %v", err)
+	}
+	if inner.hijackCalls != 1 {
+		t.Fatalf("expected underlying Hijack once, got %d", inner.hijackCalls)
+	}
+}
 
 func TestResponseWriterCapturesStatusCode(t *testing.T) {
 	rr := httptest.NewRecorder()

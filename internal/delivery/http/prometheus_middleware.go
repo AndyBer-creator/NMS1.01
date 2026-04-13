@@ -1,6 +1,9 @@
 package http
 
 import (
+	"bufio"
+	"errors"
+	"net"
 	"net/http"
 	"strconv"
 	"time"
@@ -17,6 +20,21 @@ type responseWriter struct {
 func (w *responseWriter) WriteHeader(code int) {
 	w.status = code
 	w.ResponseWriter.WriteHeader(code)
+}
+
+// Hijack нужен для WebSocket (gorilla/websocket); без него Upgrade падает и браузер даёт code 1006.
+func (w *responseWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+	hj, ok := w.ResponseWriter.(http.Hijacker)
+	if !ok {
+		return nil, nil, errors.New("prometheus responseWriter: Hijacker not supported by underlying writer")
+	}
+	return hj.Hijack()
+}
+
+func (w *responseWriter) Flush() {
+	if f, ok := w.ResponseWriter.(http.Flusher); ok {
+		f.Flush()
+	}
 }
 
 // PrometheusMetrics увеличивает nms_requests_total по каждому запросу (method, endpoint, status).
