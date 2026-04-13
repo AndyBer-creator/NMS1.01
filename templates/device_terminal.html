@@ -170,13 +170,19 @@
         };
 
         ws.onerror = function () {
-            setStatus('Ошибка WebSocket');
+            setStatus('Ошибка WebSocket (network/upgrade)');
         };
-        ws.onclose = function () {
+        ws.onclose = function (ev) {
             ws = null;
             btnConnect.disabled = false;
             btnDisconnect.disabled = true;
-            if (!statusEl.textContent.startsWith('Ошибка')) setStatus('');
+            if (!statusEl.textContent.startsWith('Ошибка')) {
+                if (ev && ev.code && ev.code !== 1000) {
+                    setStatus('WebSocket закрыт: code=' + ev.code + (ev.reason ? (', reason=' + ev.reason) : ''));
+                } else {
+                    setStatus('');
+                }
+            }
         };
     });
 })();
