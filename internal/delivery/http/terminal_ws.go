@@ -141,7 +141,7 @@ func (h *Handlers) TerminalWS(w http.ResponseWriter, r *http.Request) {
 	}
 	var init terminalInitMsg
 	if err := json.Unmarshal(initRaw, &init); err != nil || init.Type != "init" {
-		_ = conn.WriteMessage(websocket.TextMessage, terminalJSON("error", "expected init json"))
+		_ = wsWriteText(conn, nil, terminalJSON("error", "expected init json"))
 		return
 	}
 
@@ -173,7 +173,7 @@ func (h *Handlers) TerminalWS(w http.ResponseWriter, r *http.Request) {
 	if kind == "telnet" {
 		if err := h.runTerminalTelnet(r.Context(), conn, addr, dialTimeout, deadline); err != nil {
 			h.logger.Warn("terminal telnet ended", zap.Error(err))
-			_ = conn.WriteMessage(websocket.TextMessage, terminalJSON("error", err.Error()))
+			_ = wsWriteText(conn, nil, terminalJSON("error", err.Error()))
 		}
 		h.logger.Info("terminal session end",
 			zap.String("nms_user", nmsUser),
@@ -184,13 +184,13 @@ func (h *Handlers) TerminalWS(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if strings.TrimSpace(init.Username) == "" {
-		_ = conn.WriteMessage(websocket.TextMessage, terminalJSON("error", "ssh username required"))
+		_ = wsWriteText(conn, nil, terminalJSON("error", "ssh username required"))
 		return
 	}
 
 	if err := h.runTerminalSSH(r.Context(), conn, addr, init.Username, init.Password, dialTimeout, deadline); err != nil {
 		h.logger.Warn("terminal ssh ended", zap.Error(err))
-		_ = conn.WriteMessage(websocket.TextMessage, terminalJSON("error", err.Error()))
+		_ = wsWriteText(conn, nil, terminalJSON("error", err.Error()))
 	}
 
 	h.logger.Info("terminal session end",
@@ -206,6 +206,7 @@ func terminalJSON(t, msg string) []byte {
 }
 
 func (h *Handlers) runTerminalSSH(ctx context.Context, conn *websocket.Conn, addr, user, pass string, dialTimeout time.Duration, deadline time.Time) error {
+	var writeMu sync.Mutex
 	cfg := &ssh.ClientConfig{
 		User:            user,
 		Auth:            []ssh.AuthMethod{ssh.Password(pass)},
@@ -249,7 +250,7 @@ func (h *Handlers) runTerminalSSH(ctx context.Context, conn *websocket.Conn, add
 		return fmt.Errorf("shell: %w", err)
 	}
 
-	_ = conn.WriteMessage(websocket.TextMessage, terminalJSON("ok", ""))
+	_ = wsWriteText(conn, &writeMu, terminalJSON("ok", ""))
 
 	var wg sync.WaitGroup
 	wg.Add(3)
@@ -292,11 +293,11 @@ func (h *Handlers) runTerminalSSH(ctx context.Context, conn *websocket.Conn, add
 
 	go func() {
 		defer wg.Done()
-		errCh <- copyReaderToWSBinary(ctx, conn, stdout, deadline)
+		errCh <- copyReaderToWSBinary(ctx, conn, &writeMu, stdout, deadline)
 	}()
 	go func() {
 		defer wg.Done()
-		errCh <- copyReaderToWSBinary(ctx, conn, stderr, deadline)
+		errCh <- copyReaderToWSBinary(ctx, conn, &writeMu, stderr, deadline)
 	}()
 
 	wg.Wait()
@@ -313,6 +314,7 @@ func (h *Handlers) runTerminalSSH(ctx context.Context, conn *websocket.Conn, add
 }
 
 func (h *Handlers) runTerminalTelnet(ctx context.Context, conn *websocket.Conn, addr string, dialTimeout time.Duration, deadline time.Time) error {
+	var writeMu sync.Mutex
 	d := net.Dialer{Timeout: dialTimeout}
 	tcp, err := d.DialContext(ctx, "tcp", addr)
 	if err != nil {
@@ -320,7 +322,7 @@ func (h *Handlers) runTerminalTelnet(ctx context.Context, conn *websocket.Conn, 
 	}
 	defer tcp.Close()
 
-	_ = conn.WriteMessage(websocket.TextMessage, terminalJSON("ok", ""))
+	_ = wsWriteText(conn, &writeMu, terminalJSON("ok", ""))
 
 	var wg sync.WaitGroup
 	wg.Add(2)
@@ -332,7 +334,7 @@ func (h *Handlers) runTerminalTelnet(ctx context.Context, conn *websocket.Conn, 
 	}()
 	go func() {
 		defer wg.Done()
-		errCh <- copyTelnetServerToWS(ctx, conn, tcp, deadline)
+		errCh <- copyTelnetServerToWS(ctx, conn, &writeMu, tcp, deadline)
 	}()
 
 	wg.Wait()
@@ -378,7 +380,7 @@ func copyWSBinaryToWriter(ctx context.Context, conn *websocket.Conn, w io.Writer
 	}
 }
 
-func copyReaderToWSBinary(ctx context.Context, conn *websocket.Conn, r io.Reader, deadline time.Time) error {
+func copyReaderToWSBinary(ctx context.Context, conn *websocket.Conn, writeMu *sync.Mutex, r io.Reader, deadline time.Time) error {
 	buf := make([]byte, 8192)
 	for {
 		if time.Now().After(deadline) {
@@ -391,8 +393,7 @@ func copyReaderToWSBinary(ctx context.Context, conn *websocket.Conn, r io.Reader
 		}
 		n, err := r.Read(buf)
 		if n > 0 {
-			_ = conn.SetWriteDeadline(time.Now().Add(30 * time.Second))
-			if werr := conn.WriteMessage(websocket.BinaryMessage, buf[:n]); werr != nil {
+			if werr := wsWriteBinary(conn, writeMu, buf[:n]); werr != nil {
 				return werr
 			}
 		}
@@ -406,15 +407,14 @@ func copyReaderToWSBinary(ctx context.Context, conn *websocket.Conn, r io.Reader
 }
 
 // copyTelnetServerToWS: поток с устройства, отвечаем отказом на опции Telnet (минимум для стабильности).
-func copyTelnetServerToWS(ctx context.Context, conn *websocket.Conn, tcpConn net.Conn, deadline time.Time) error {
+func copyTelnetServerToWS(ctx context.Context, conn *websocket.Conn, writeMu *sync.Mutex, tcpConn net.Conn, deadline time.Time) error {
 	br := newByteReader(tcpConn)
 	buf := make([]byte, 0, 4096)
 	flush := func() error {
 		if len(buf) == 0 {
 			return nil
 		}
-		_ = conn.SetWriteDeadline(time.Now().Add(30 * time.Second))
-		err := conn.WriteMessage(websocket.BinaryMessage, buf)
+		err := wsWriteBinary(conn, writeMu, buf)
 		buf = buf[:0]
 		return err
 	}
@@ -488,6 +488,24 @@ func copyTelnetServerToWS(ctx context.Context, conn *websocket.Conn, tcpConn net
 			// GA, NOP, etc. — игнор.
 		}
 	}
+}
+
+func wsWriteText(conn *websocket.Conn, mu *sync.Mutex, payload []byte) error {
+	if mu != nil {
+		mu.Lock()
+		defer mu.Unlock()
+	}
+	_ = conn.SetWriteDeadline(time.Now().Add(30 * time.Second))
+	return conn.WriteMessage(websocket.TextMessage, payload)
+}
+
+func wsWriteBinary(conn *websocket.Conn, mu *sync.Mutex, payload []byte) error {
+	if mu != nil {
+		mu.Lock()
+		defer mu.Unlock()
+	}
+	_ = conn.SetWriteDeadline(time.Now().Add(30 * time.Second))
+	return conn.WriteMessage(websocket.BinaryMessage, payload)
 }
 
 type byteReader struct {
