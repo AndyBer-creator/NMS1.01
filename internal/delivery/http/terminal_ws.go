@@ -33,6 +33,8 @@ const (
 	telnetWILL = byte(251)
 	telnetSB   = byte(250)
 	telnetSE   = byte(240)
+	telnetOptSGA  = byte(3)  // Suppress Go Ahead
+	telnetOptECHO = byte(1)  // Echo
 )
 
 var terminalUpgrader = websocket.Upgrader{
@@ -477,6 +479,11 @@ func (h *Handlers) runTerminalTelnet(ctx context.Context, conn *websocket.Conn, 
 	}
 	defer tcp.Close()
 	h.logger.Info("terminal telnet dial connected", zap.String("dial_addr", addr))
+	if c, ok := tcp.(*net.TCPConn); ok {
+		_ = c.SetNoDelay(true)
+	}
+	// Попытка «разбудить» line-mode telnet устройства: просим ECHO и suppress-go-ahead.
+	_, _ = tcp.Write([]byte{telnetIAC, telnetWILL, telnetOptECHO, telnetIAC, telnetWILL, telnetOptSGA})
 
 	_ = wsWriteText(conn, writeMu, terminalJSON("ok", ""))
 	// Явный маркер в терминале: помогает отличить «WS сломан» от «устройство молчит после коннекта».
