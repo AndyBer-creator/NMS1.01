@@ -10,6 +10,7 @@ import (
 	"html/template"
 	"net"
 	"net/http"
+	"net/netip"
 	"strconv"
 	"strings"
 
@@ -103,6 +104,8 @@ func init() {
 type devicesTableRow struct {
 	ID          int
 	IP          string
+	// IPHost — host для URL (IPv6 в квадратных скобках, при zone — %25… по RFC 6874).
+	IPHost      string
 	Name        string
 	Status      string
 	StatusClass string
@@ -137,6 +140,40 @@ func isAllowedSetOID(numericOID string) bool {
 }
 
 // normalizeSNMPVersionInput совпадает с логикой postgres.normalizeSNMPVersion (v1 / v2c / v3).
+// ipHostForURL возвращает host для authority в http/https/ssh/telnet URL.
+// IPv4 и имена хостов без изменений; IPv6 — [addr]; с зоной — [addr%25zone].
+func ipHostForURL(s string) string {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return s
+	}
+	addr, err := netip.ParseAddr(s)
+	if err != nil {
+		return s
+	}
+	addr = addr.Unmap()
+	if addr.Is4() {
+		return addr.String()
+	}
+	if !addr.Is6() {
+		return s
+	}
+	if z := addr.Zone(); z != "" {
+		z = strings.ReplaceAll(z, "%", "%25")
+		i := strings.LastIndexByte(s, '%')
+		if i <= 0 {
+			return "[" + addr.String() + "]"
+		}
+		base := strings.TrimSpace(s[:i])
+		baseAddr, err := netip.ParseAddr(base)
+		if err != nil || !baseAddr.Is6() {
+			return "[" + addr.String() + "]"
+		}
+		return "[" + baseAddr.String() + "%25" + z + "]"
+	}
+	return "[" + addr.String() + "]"
+}
+
 func normalizeSNMPVersionInput(v string) (string, error) {
 	switch strings.ToLower(strings.TrimSpace(v)) {
 	case "v1":
@@ -182,6 +219,7 @@ func devicesTableViewModelFromDevices(devices []*domain.Device) devicesTableView
 		rows = append(rows, devicesTableRow{
 			ID:          d.ID,
 			IP:          d.IP,
+			IPHost:      ipHostForURL(d.IP),
 			Name:        d.Name,
 			Status:      d.Status,
 			StatusClass: statusClass,

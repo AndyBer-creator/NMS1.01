@@ -1,6 +1,6 @@
 {{define "devicesTable"}}
 <div class="overflow-x-auto" id="devices-table-root">
-    <table class="w-full min-w-[1000px] table-auto bg-gray-800/80 rounded-lg shadow-xl border border-gray-700/50 text-[15px] sm:text-base leading-snug">
+    <table class="w-full min-w-[1200px] table-auto bg-gray-800/80 rounded-lg shadow-xl border border-gray-700/50 text-[15px] sm:text-base leading-snug">
         <thead>
             <tr class="bg-gray-700/50 border-b border-gray-600">
                 <th class="px-4 py-3 sm:px-5 sm:py-4 text-left font-semibold text-gray-200 whitespace-nowrap w-14">ID</th>
@@ -11,7 +11,7 @@
                 <th class="px-4 py-3 sm:px-5 sm:py-4 text-left font-semibold text-gray-200 whitespace-nowrap">Последний успешный опрос</th>
                 <th class="px-4 py-3 sm:px-5 sm:py-4 text-left font-semibold text-gray-200 min-w-[14rem]">Последняя ошибка</th>
                 {{if .Admin}}
-                <th class="px-4 py-3 sm:px-5 sm:py-4 text-right font-semibold w-40 text-gray-200 whitespace-nowrap">Действия</th>
+                <th class="px-4 py-3 sm:px-5 sm:py-4 text-right font-semibold min-w-[28rem] text-gray-200 whitespace-nowrap">Действия</th>
                 {{else}}
                 <th class="px-4 py-3 sm:px-5 sm:py-4 text-right font-semibold w-28 text-gray-200 whitespace-nowrap">Доступ</th>
                 {{end}}
@@ -48,19 +48,33 @@
     <td class="px-4 py-3 sm:px-5 sm:py-4 text-amber-300/90 break-words">{{.LastError}}</td>
     <td class="px-4 py-3 sm:px-5 sm:py-4 text-right space-x-2 whitespace-nowrap">
         {{if .Admin}}
-        <a href="http://{{.IP}}"
+        <a href="http://{{.IPHost}}"
            target="_blank"
            rel="noopener noreferrer"
            title="Открыть HTTP"
            class="px-2.5 py-1.5 bg-gray-700/80 hover:bg-gray-700 text-white rounded-lg text-xs font-medium transition-all inline-flex items-center gap-1 shadow-sm hover:shadow-md">
             🌐 HTTP
         </a>
-        <a href="https://{{.IP}}"
+        <a href="https://{{.IPHost}}"
            target="_blank"
            rel="noopener noreferrer"
            title="Открыть HTTPS"
            class="px-2.5 py-1.5 bg-gray-700/80 hover:bg-gray-700 text-white rounded-lg text-xs font-medium transition-all inline-flex items-center gap-1 shadow-sm hover:shadow-md">
             🔒 HTTPS
+        </a>
+        <a href="ssh://{{.IPHost}}"
+           target="_blank"
+           rel="noopener noreferrer"
+           title="Открыть SSH (внешний клиент)"
+           class="px-2.5 py-1.5 bg-gray-700/80 hover:bg-gray-700 text-white rounded-lg text-xs font-medium transition-all inline-flex items-center gap-1 shadow-sm hover:shadow-md">
+            🔐 SSH
+        </a>
+        <a href="telnet://{{.IPHost}}"
+           target="_blank"
+           rel="noopener noreferrer"
+           title="Открыть Telnet (внешний клиент)"
+           class="px-2.5 py-1.5 bg-gray-700/80 hover:bg-gray-700 text-white rounded-lg text-xs font-medium transition-all inline-flex items-center gap-1 shadow-sm hover:shadow-md">
+            📟 Telnet
         </a>
         <button type="button"
                 class="px-3 py-1.5 bg-slate-600/90 hover:bg-slate-700 text-white rounded-lg text-xs font-medium transition-all inline-flex items-center gap-1 shadow-sm hover:shadow-md"
