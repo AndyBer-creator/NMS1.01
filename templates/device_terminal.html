@@ -57,6 +57,18 @@
                 class="mt-5 px-3 py-1.5 rounded-lg bg-slate-600 hover:bg-slate-500 text-white text-xs font-medium">
             Отправить пароль
         </button>
+        <button type="button" id="btn-send-cr"
+                class="mt-5 px-3 py-1.5 rounded-lg bg-gray-700 hover:bg-gray-600 text-white text-xs font-medium">
+            Send CR
+        </button>
+        <button type="button" id="btn-send-crlf"
+                class="mt-5 px-3 py-1.5 rounded-lg bg-gray-700 hover:bg-gray-600 text-white text-xs font-medium">
+            Send CRLF
+        </button>
+        <button type="button" id="btn-send-lf"
+                class="mt-5 px-3 py-1.5 rounded-lg bg-gray-700 hover:bg-gray-600 text-white text-xs font-medium">
+            Send LF
+        </button>
         <p class="text-xs text-amber-400/90 max-w-xl">Telnet без шифрования. Используйте только в доверенной сети.</p>
         {{end}}
         <button type="button" id="btn-connect"
@@ -130,6 +142,9 @@
     const telnetPasswordEl = document.getElementById('telnet-password');
     const btnSendTelnetLogin = document.getElementById('btn-send-telnet-login');
     const btnSendTelnetPassword = document.getElementById('btn-send-telnet-password');
+    const btnSendCR = document.getElementById('btn-send-cr');
+    const btnSendCRLF = document.getElementById('btn-send-crlf');
+    const btnSendLF = document.getElementById('btn-send-lf');
     let lastErrorText = '';
 
     function setStatus(t) { statusEl.textContent = t || ''; }
@@ -199,19 +214,19 @@
 
     if (btnSendTelnetLogin) {
         btnSendTelnetLogin.addEventListener('click', function () {
-            sendRaw((telnetLoginEl && telnetLoginEl.value ? telnetLoginEl.value : '') + '\r');
+            sendRaw((telnetLoginEl && telnetLoginEl.value ? telnetLoginEl.value : '') + '\r\n');
         });
     }
     if (btnSendTelnetPassword) {
         btnSendTelnetPassword.addEventListener('click', function () {
-            sendRaw((telnetPasswordEl && telnetPasswordEl.value ? telnetPasswordEl.value : '') + '\r');
+            sendRaw((telnetPasswordEl && telnetPasswordEl.value ? telnetPasswordEl.value : '') + '\r\n');
         });
     }
     if (telnetLoginEl) {
         telnetLoginEl.addEventListener('keydown', function (e) {
             if (e.key === 'Enter') {
                 e.preventDefault();
-                sendRaw((telnetLoginEl.value || '') + '\r');
+                sendRaw((telnetLoginEl.value || '') + '\r\n');
             }
         });
     }
@@ -219,10 +234,13 @@
         telnetPasswordEl.addEventListener('keydown', function (e) {
             if (e.key === 'Enter') {
                 e.preventDefault();
-                sendRaw((telnetPasswordEl.value || '') + '\r');
+                sendRaw((telnetPasswordEl.value || '') + '\r\n');
             }
         });
     }
+    if (btnSendCR) btnSendCR.addEventListener('click', function () { sendRaw('\r'); });
+    if (btnSendCRLF) btnSendCRLF.addEventListener('click', function () { sendRaw('\r\n'); });
+    if (btnSendLF) btnSendLF.addEventListener('click', function () { sendRaw('\n'); });
 
     function strFromBuf(ab) {
         const u8 = new Uint8Array(ab);
@@ -308,6 +326,10 @@
                     setStatus('Сессия');
                     term.focus();
                     sendResize();
+                    if (kind === 'telnet') {
+                        // Многие telnet-устройства показывают login prompt только после первого Enter.
+                        setTimeout(function () { sendRaw('\r'); }, 350);
+                    }
                     return true;
                 }
             } catch (e) {}
