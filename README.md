@@ -227,13 +227,13 @@ SMTP env:
 
 ### GET SNMP metric (SNMP GET)
 
-Эндпоинт: `GET /devices/{ip}/metric/{oid}`
+Эндпоинт: `GET /devices/{id}/metric/{oid}` — `{id}` это **числовой** `id` устройства в БД (стабильно для IPv6; IP в путь не кладём).
 
 Возвращает значение для одного OID (OID должен быть числовым).
 
 ### SNMP SET (управление оборудованием)
 
-Эндпоинт: `POST /devices/{ip}/snmp/set`
+Эндпоинт: `POST /devices/{id}/snmp/set`
 
 Тело запроса (JSON):
 
@@ -247,6 +247,10 @@ SMTP env:
 
 Поддерживаемые `type`:
 `Null`, `Integer`, `OctetString`, `Counter32`, `Counter64`, `Gauge32`, `Uinteger32`, `TimeTicks`, `IPAddress`, `ObjectIdentifier`.
+
+### Traps (JSON)
+
+`GET /traps?limit=100` — последние трапы. Фильтр по устройству (по `id` в БД, удобно для IPv6): `GET /traps?device_id=42&limit=100`.
 
 ### Тест алерта в Telegram (исправленный endpoint)
 
@@ -298,7 +302,7 @@ docker compose -f docker-compose.bridge.yml up -d
 
 - Загрузка файлов через дашборд (блок «MIB-файлы», роль admin) → `mibs/uploads/`.
 - **`POST /mibs/resolve`** — тело JSON `{"symbol":"IF-MIB::sysDescr.0"}` → ответ с полем `oid`.
-- **`GET /devices/{ip}/metric/{oid}`** и **`POST /devices/{ip}/snmp/set`** принимают в `oid` **числовой OID** или **символьное имя** (в URL для GET символы вроде `::` нужно кодировать).
+- **`GET /devices/{id}/metric/{oid}`** и **`POST /devices/{id}/snmp/set`** принимают в `oid` **числовой OID** или **символьное имя** (в URL для GET спецсимволы в OID кодируйте).
 
 Периодический опрос **worker** использует только **числовые OID** из `internal/config/oids.go` (без MIB-парсера на лету).
 
@@ -408,7 +412,7 @@ source .env
 go test ./internal/delivery/http/ -count=1 -v -run Integration
 ```
 
-Сценарии: `/health`, `/metrics`, JSON `GET /devices` и `GET /traps` (без обязательной авторизации — в тестах сбрасываются `NMS_ADMIN_*` / `NMS_VIEWER_*` и соответствующие `*_FILE`); **POST + DELETE `/devices`** под admin + CSRF; **401** на `POST /devices` без Basic при включённом admin; **403** для **viewer** на **`POST /devices`**, **`GET /devices/{ip}/edit`**, **`POST /devices/{ip}`** (обновление), **`DELETE /devices/{ip}`**, **`POST /devices/{ip}/snmp/set`**, **`POST /discovery/scan`**, **`POST /settings/worker-poll-interval`**, **`POST /settings/alert-email`**, **`POST /mibs/delete`**, **`POST /mibs/upload`** (multipart), **`POST /test-alert`**; **403** при неверном **`X-CSRF-Token`**; admin **POST `/settings/worker-poll-interval`** (**`interval_sec=333`**) и **POST `/settings/alert-email`** (валидный **`email`**) с откатом в **`t.Cleanup`**; невалидный **`email`** у admin → **200** и HTML с текстом валидации, **`GetAlertEmailTo`** без изменений. Общий сетап БД + router: **`buildIntegrationHandler`** / **`newIntegrationServer`**, **`applyIntegrationAuthEnv`**, **`newIntegrationHTTPClient`**, **`viewerIntegrationCSRF`** / **`adminIntegrationCSRF`** (seed **`GET /devices`** с Basic viewer/admin). Устройства — IP из `192.0.2.0/24` (TEST-NET-1) или `testDeviceIP`.
+Сценарии: `/health`, `/metrics`, JSON `GET /devices` и `GET /traps` (без обязательной авторизации — в тестах сбрасываются `NMS_ADMIN_*` / `NMS_VIEWER_*` и соответствующие `*_FILE`); **POST + DELETE `/devices`** под admin + CSRF; **401** на `POST /devices` без Basic при включённом admin; **403** для **viewer** на **`POST /devices`**, **`GET /devices/{id}/edit`**, **`POST /devices/{id}`** (обновление), **`DELETE /devices/{id}`**, **`POST /devices/{id}/snmp/set`**, **`POST /discovery/scan`**, **`POST /settings/worker-poll-interval`**, **`POST /settings/alert-email`**, **`POST /mibs/delete`**, **`POST /mibs/upload`** (multipart), **`POST /test-alert`**; **403** при неверном **`X-CSRF-Token`**; admin **POST `/settings/worker-poll-interval`** (**`interval_sec=333`**) и **POST `/settings/alert-email`** (валидный **`email`**) с откатом в **`t.Cleanup`**; невалидный **`email`** у admin → **200** и HTML с текстом валидации, **`GetAlertEmailTo`** без изменений. Общий сетап БД + router: **`buildIntegrationHandler`** / **`newIntegrationServer`**, **`applyIntegrationAuthEnv`**, **`newIntegrationHTTPClient`**, **`viewerIntegrationCSRF`** / **`adminIntegrationCSRF`** (seed **`GET /devices`** с Basic viewer/admin). Устройства — IP из `192.0.2.0/24` (TEST-NET-1) или `testDeviceIP`.
 
 См. также разделы **Smoke test после деплоя** и **RBAC smoke test** выше (скрипты `scripts/smoke_test.sh`, `scripts/rbac_smoke_test.sh`).
 

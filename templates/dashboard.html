@@ -379,7 +379,7 @@
                             deviceSel.innerHTML = '<option value="">Выбери устройство…</option>';
                             for (const d of devices || []) {
                                 const opt = document.createElement('option');
-                                opt.value = d.ip;
+                                opt.value = String(d.id);
                                 opt.textContent = `${d.name || 'device'} (${d.ip})`;
                                 deviceSel.appendChild(opt);
                             }
@@ -405,8 +405,8 @@
                         poePortEl.required = isPoe;
                     }
 
-                    async function snmpSet(ip, oid, type, value) {
-                        const url = `/devices/${encodeURIComponent(ip)}/snmp/set`;
+                    async function snmpSet(deviceId, oid, type, value) {
+                        const url = `/devices/${deviceId}/snmp/set`;
                         const body = JSON.stringify({ oid, type, value });
                         const res = await fetch(url, {
                             method: 'POST',
@@ -423,9 +423,10 @@
                     }
 
                     async function onSend() {
-                        const ip = deviceSel.value;
+                        const deviceId = deviceSel.value;
                         const ifIndex = (ifIndexEl.value || '').trim();
-                        if (!ip) { showResult(false, 'Выбери устройство'); return; }
+                        if (!deviceId) { showResult(false, 'Выбери устройство'); return; }
+                        const ipLabel = (deviceSel.options[deviceSel.selectedIndex] && deviceSel.options[deviceSel.selectedIndex].textContent) || deviceId;
 
                         sendBtn.disabled = true;
                         const prev = sendBtn.textContent;
@@ -438,23 +439,23 @@
                                 if (!ifIndex || !/^\d+$/.test(ifIndex)) { showResult(false, 'ifIndex должен быть числом'); return; }
                                 const oid = `1.3.6.1.2.1.2.2.1.7.${ifIndex}`; // ifAdminStatus.ifIndex
                                 const value = action === 'port_up' ? 1 : 2; // up(1), down(2)
-                                await snmpSet(ip, oid, 'Integer', value);
-                                showResult(true, `OK: ${ip} ifIndex=${ifIndex} admin=${value === 1 ? 'up' : 'down'}`);
+                                await snmpSet(deviceId, oid, 'Integer', value);
+                                showResult(true, `OK: ${ipLabel} ifIndex=${ifIndex} admin=${value === 1 ? 'up' : 'down'}`);
                             } else if (action === 'set_desc') {
                                 if (!ifIndex || !/^\d+$/.test(ifIndex)) { showResult(false, 'ifIndex должен быть числом'); return; }
                                 const desc = (descEl.value || '').trim();
                                 if (!desc) { showResult(false, 'Введите описание'); return; }
                                 const oid = `1.3.6.1.2.1.31.1.1.1.18.${ifIndex}`; // ifAlias.ifIndex
-                                await snmpSet(ip, oid, 'OctetString', desc);
-                                showResult(true, `OK: ${ip} ifIndex=${ifIndex} description updated`);
+                                await snmpSet(deviceId, oid, 'OctetString', desc);
+                                showResult(true, `OK: ${ipLabel} ifIndex=${ifIndex} description updated`);
                             } else if (action === 'set_vlan_access') {
                                 if (!ifIndex || !/^\d+$/.test(ifIndex)) { showResult(false, 'ifIndex должен быть числом'); return; }
                                 const vlan = (vlanEl.value || '').trim();
                                 if (!vlan || !/^\d+$/.test(vlan)) { showResult(false, 'VLAN ID должен быть числом'); return; }
                                 // Q-BRIDGE-MIB::dot1qPvid.ifIndex
                                 const oid = `1.3.6.1.2.1.17.7.1.4.5.1.1.${ifIndex}`;
-                                await snmpSet(ip, oid, 'Integer', parseInt(vlan, 10));
-                                showResult(true, `OK: ${ip} ifIndex=${ifIndex} PVID=${vlan}`);
+                                await snmpSet(deviceId, oid, 'Integer', parseInt(vlan, 10));
+                                showResult(true, `OK: ${ipLabel} ifIndex=${ifIndex} PVID=${vlan}`);
                             } else if (action === 'poe_enable' || action === 'poe_disable') {
                                 const poePort = (poePortEl.value || '').trim();
                                 if (!poePort || !/^\d+$/.test(poePort)) { showResult(false, 'PoE portIndex должен быть числом'); return; }
@@ -462,8 +463,8 @@
                                 // По умолчанию используем шаблон ...1.1.{portIndex} — при необходимости подстроим под vendor-profile.
                                 const oid = `1.3.6.1.2.1.105.1.1.1.3.1.1.${poePort}`;
                                 const value = action === 'poe_enable' ? 1 : 2; // enable(1), disable(2) — часто так, но бывает иначе у вендоров
-                                await snmpSet(ip, oid, 'Integer', value);
-                                showResult(true, `OK: ${ip} poePort=${poePort} ${value === 1 ? 'enabled' : 'disabled'}`);
+                                await snmpSet(deviceId, oid, 'Integer', value);
+                                showResult(true, `OK: ${ipLabel} poePort=${poePort} ${value === 1 ? 'enabled' : 'disabled'}`);
                             } else {
                                 showResult(false, 'Неизвестная операция');
                             }

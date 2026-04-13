@@ -9,8 +9,8 @@
 Сервис **api** вызывает **`snmptranslate`** (пакет **net-snmp-tools** в Docker-образе) с **`MIBDIRS`** из каталогов: uploads, `mibs/public`, `mibs/vendor` (и при наличии — системные `/usr/share/snmp/mibs`). Таким образом в запросах можно указывать **символьные OID** (например `IF-MIB::sysDescr.0`), они переводятся в числовые перед SNMP GET/SET.
 
 - **`POST /mibs/resolve`** — JSON `{"symbol":"MY-MIB::myNode.0"}` → `{"oid":"1.3.6....","symbol":"..."}`.
-- **`GET /devices/{ip}/metric/{oid}`** — в `{oid}` допускается числовой OID или символьное имя (в URL нужно кодировать спецсимволы, например `::`).
-- **`POST /devices/{ip}/snmp/set`** — поле `oid` в JSON может быть символьным или числовым.
+- **`GET /devices/{id}/metric/{oid}`** — `{id}` — id устройства в БД; в `{oid}` допускается числовой OID или символьное имя (в URL кодировать спецсимволы).
+- **`POST /devices/{id}/snmp/set`** — поле `oid` в JSON может быть символьным или числовым.
 
 Периодический опрос **worker** по-прежнему использует **числовые OID** из `internal/config/oids.go`.
 
@@ -32,7 +32,7 @@
 Чтобы получать пользу сразу, не парся ASN.1 MIB’ы:
 
 - заведите профили в `mibs/profiles/*.yaml` с “операциями”
-- UI выбирает операцию → подставляет OID/тип/value и отправляет на `/devices/{ip}/snmp/set`
+- UI выбирает операцию → подставляет OID/тип/value и отправляет на `/devices/{id}/snmp/set`
 
 Стандартные операции уже реализованы в UI на базе IF-MIB:
 - `ifAdminStatus` (\(1.3.6.1.2.1.2.2.1.7.{ifIndex}\)) — up/down

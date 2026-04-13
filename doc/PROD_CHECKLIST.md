@@ -12,8 +12,8 @@
 ## 1) Security & Access
 
 - [x] RBAC (admin/viewer) реализован на сервере
-  - `RequireAdmin` стоит на mutating-роутах (`/devices`, `/discovery/scan`, `/snmp/set`, и т.д.).
-  - UI для viewer скрыт (без discovery/add/edit/delete/SNMP SET/HTTP-HTTPS кнопок).
+  - `RequireAdmin` стоит на mutating-роутах (`/devices`, `/discovery/scan`, `/devices/{id}/snmp/set`, и т.д.).
+  - UI для viewer скрыт (без discovery/add/edit/delete/SNMP SET/кнопок HTTP/HTTPS/SSH/Telnet).
   - Добавлен и успешно прогнан регрессионный smoke: `scripts/rbac_smoke_test.sh` (`make rbac-smoke`, 2026-04-09).
 
 - [x] Веб-логин реализован (`/login` + cookie session)

@@ -2,11 +2,13 @@ package http
 
 import (
 	"NMS1/internal/config"
+	"NMS1/internal/domain"
 	"NMS1/internal/repository"
 	"NMS1/internal/services"
 	"encoding/json"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 	"go.uber.org/zap"
@@ -82,38 +84,30 @@ func (h *Handlers) ListTraps(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	traps, err := h.TrapsRepo.List(ctx, limit)
+	var traps []domain.Trap
+	var err error
+	if ds := strings.TrimSpace(r.URL.Query().Get("device_id")); ds != "" {
+		id, convErr := strconv.Atoi(ds)
+		if convErr != nil || id <= 0 {
+			http.Error(w, "invalid device_id", http.StatusBadRequest)
+			return
+		}
+		dev, derr := h.repo.GetDeviceByID(id)
+		if derr != nil {
+			h.logger.Error("GetDeviceByID for traps filter", zap.Int("id", id), zap.Error(derr))
+			http.Error(w, "Internal error", http.StatusInternalServerError)
+			return
+		}
+		if dev == nil {
+			http.Error(w, "Device not found", http.StatusNotFound)
+			return
+		}
+		traps, err = h.TrapsRepo.ByDevice(ctx, dev.IP, limit)
+	} else {
+		traps, err = h.TrapsRepo.List(ctx, limit)
+	}
 	if err != nil {
 		h.logger.Error("Failed to list traps", zap.Error(err))
-		http.Error(w, "Internal error", http.StatusInternalServerError)
-		return
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(traps)
-}
-
-func (h *Handlers) TrapsByDevice(w http.ResponseWriter, r *http.Request) {
-	ip := chi.URLParam(r, "ip")
-	if ip == "" {
-		http.Error(w, "IP required", http.StatusBadRequest)
-		return
-	}
-
-	ctx := r.Context()
-	limitStr := r.URL.Query().Get("limit")
-	limit := 50
-	if limitStr != "" {
-		limit, _ = strconv.Atoi(limitStr)
-		if limit > 1000 {
-			limit = 1000
-		}
-	}
-
-	traps, err := h.TrapsRepo.ByDevice(ctx, ip, limit)
-	if err != nil {
-		h.logger.Error("Failed to get traps by device",
-			zap.String("ip", ip), zap.Error(err))
 		http.Error(w, "Internal error", http.StatusInternalServerError)
 		return
 	}

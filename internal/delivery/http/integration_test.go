@@ -620,8 +620,14 @@ func TestIntegration_HTTP_CreateAndDeleteDeviceWithAuth(t *testing.T) {
 	if res1.StatusCode != http.StatusOK {
 		t.Fatalf("create status %d: %s", res1.StatusCode, body1)
 	}
+	var created struct {
+		ID int `json:"id"`
+	}
+	if err := json.Unmarshal(body1, &created); err != nil || created.ID <= 0 {
+		t.Fatalf("create response JSON: %v body=%s", err, body1)
+	}
 
-	delURL := fmt.Sprintf("%s/devices/%s", srv.URL, url.PathEscape(ip))
+	delURL := fmt.Sprintf("%s/devices/%d", srv.URL, created.ID)
 	token2 := csrfFromJar(t, jar, base)
 	del, err := http.NewRequest(http.MethodDelete, delURL, nil)
 	if err != nil {
@@ -1092,8 +1098,7 @@ func TestIntegration_HTTP_ViewerDeleteDeviceForbidden(t *testing.T) {
 	})
 
 	client, token := viewerIntegrationCSRF(t, srv, viewerUser, viewerPass)
-	targetIP := "192.0.2.88"
-	delURL := fmt.Sprintf("%s/devices/%s", srv.URL, url.PathEscape(targetIP))
+	delURL := fmt.Sprintf("%s/devices/%d", srv.URL, 999001)
 	del, err := http.NewRequest(http.MethodDelete, delURL, nil)
 	if err != nil {
 		t.Fatal(err)
@@ -1122,8 +1127,7 @@ func TestIntegration_HTTP_ViewerPostSNMPSetForbidden(t *testing.T) {
 	})
 
 	client, token := viewerIntegrationCSRF(t, srv, viewerUser, viewerPass)
-	targetIP := "192.0.2.89"
-	setURL := fmt.Sprintf("%s/devices/%s/snmp/set", srv.URL, url.PathEscape(targetIP))
+	setURL := fmt.Sprintf("%s/devices/%d/snmp/set", srv.URL, 999002)
 	payload := `{"oid":"1.3.6.1.2.1.1.5.0","type":"OctetString","value":"\"x\"","validate_only":true}`
 	post, err := http.NewRequest(http.MethodPost, setURL, strings.NewReader(payload))
 	if err != nil {
@@ -1153,8 +1157,7 @@ func TestIntegration_HTTP_ViewerGetDeviceEditForbidden(t *testing.T) {
 		ViewerUser: viewerUser, ViewerPass: viewerPass,
 	})
 
-	targetIP := "192.0.2.90"
-	editURL := fmt.Sprintf("%s/devices/%s/edit", srv.URL, url.PathEscape(targetIP))
+	editURL := fmt.Sprintf("%s/devices/%d/edit", srv.URL, 999003)
 	req, err := http.NewRequest(http.MethodGet, editURL, nil)
 	if err != nil {
 		t.Fatal(err)
@@ -1182,9 +1185,8 @@ func TestIntegration_HTTP_ViewerPostDeviceUpdateForbidden(t *testing.T) {
 	})
 
 	client, token := viewerIntegrationCSRF(t, srv, viewerUser, viewerPass)
-	targetIP := "192.0.2.91"
 	body := "name=nope&community=public&snmp_version=v2c"
-	updURL := fmt.Sprintf("%s/devices/%s", srv.URL, url.PathEscape(targetIP))
+	updURL := fmt.Sprintf("%s/devices/%d", srv.URL, 999004)
 	post, err := http.NewRequest(http.MethodPost, updURL, strings.NewReader(body))
 	if err != nil {
 		t.Fatal(err)
