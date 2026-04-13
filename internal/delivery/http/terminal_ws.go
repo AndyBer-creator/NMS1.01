@@ -130,7 +130,7 @@ func signTerminalWSToken(user string, rl role, deviceID int) (string, error) {
 		User: user,
 		Role: string(rl),
 		Dev:  deviceID,
-		Exp:  time.Now().Add(5 * time.Minute).Unix(),
+		Exp:  time.Now().Add(30 * time.Minute).Unix(),
 	}
 	payload, err := json.Marshal(claims)
 	if err != nil {
@@ -176,7 +176,7 @@ func verifyTerminalWSToken(token string, deviceID int) *authUser {
 	return &authUser{username: c.User, role: role(c.Role)}
 }
 
-// TerminalWS: WebSocket к SSH или Telnet устройства (только admin, cookie-сессия).
+// TerminalWS: WebSocket к SSH или Telnet устройства (только admin: query token или cookie/Basic).
 // Первое сообщение — текст JSON: {"type":"init","username":"...","password":"...","port":22}.
 // Далее: бинарные кадры — ввод в PTY/TCP; текст JSON {"type":"resize","cols":n,"rows":m} для SSH.
 // С сервера: бинарные кадры — вывод терминала; при ошибке — текст JSON {"type":"error",...}.
@@ -186,7 +186,11 @@ func (h *Handlers) TerminalWS(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "bad device id", http.StatusBadRequest)
 		return
 	}
-	u := verifyTerminalWSToken(strings.TrimSpace(r.URL.Query().Get("token")), id)
+	token := strings.TrimSpace(r.URL.Query().Get("token"))
+	u := verifyTerminalWSToken(token, id)
+	if u == nil {
+		u = adminUserFromRequest(r)
+	}
 	if u == nil {
 		http.Error(w, "forbidden", http.StatusForbidden)
 		return
@@ -617,6 +621,8 @@ func (h *Handlers) TerminalPage(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "failed to issue terminal token", http.StatusInternalServerError)
 		return
 	}
+	w.Header().Set("Cache-Control", "no-store, no-cache, must-revalidate")
+	w.Header().Set("Pragma", "no-cache")
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	data := struct {
 		DeviceID int
