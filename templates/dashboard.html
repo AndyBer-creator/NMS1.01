@@ -1,8 +1,10 @@
 {{/* dashboard is rendered as Go template to hide admin-only controls from viewer */}}
 <!DOCTYPE html>
 <html><head><title>NMS1 Dashboard</title>
-<script src="https://unpkg.com/htmx.org@1.9.10"></script>
-<script src="https://cdn.tailwindcss.com"></script>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="/static/css/app.css">
+<script src="/static/js/htmx.min.js"></script>
 <script>
     (function () {
         function readCookie(name) {

@@ -27,6 +27,8 @@ logs/*.log
 *.pprof
 coverage.out
 
+node_modules/
+
 # Temporary / editor artifacts
 *.tmp
 *.temp
