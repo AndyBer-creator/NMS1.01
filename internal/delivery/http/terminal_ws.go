@@ -2,6 +2,10 @@ package http
 
 import (
 	"context"
+	"crypto/hmac"
+	"crypto/sha256"
+	"crypto/subtle"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -79,6 +83,13 @@ type terminalAckMsg struct {
 	Message string `json:"message,omitempty"`
 }
 
+type terminalWSClaims struct {
+	User string `json:"u"`
+	Role string `json:"r"`
+	Dev  int    `json:"d"`
+	Exp  int64  `json:"exp"`
+}
+
 func terminalKindFromQuery(r *http.Request) string {
 	k := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("kind")))
 	switch k {
@@ -114,6 +125,57 @@ func terminalSessionDeadline() time.Time {
 	return time.Now().Add(8 * time.Hour)
 }
 
+func signTerminalWSToken(user string, rl role, deviceID int) (string, error) {
+	claims := terminalWSClaims{
+		User: user,
+		Role: string(rl),
+		Dev:  deviceID,
+		Exp:  time.Now().Add(5 * time.Minute).Unix(),
+	}
+	payload, err := json.Marshal(claims)
+	if err != nil {
+		return "", err
+	}
+	key := sessionSigningKey()
+	mac := hmac.New(sha256.New, key[:])
+	_, _ = mac.Write(payload)
+	sig := mac.Sum(nil)
+	return base64.RawURLEncoding.EncodeToString(payload) + "." + base64.RawURLEncoding.EncodeToString(sig), nil
+}
+
+func verifyTerminalWSToken(token string, deviceID int) *authUser {
+	parts := strings.Split(token, ".")
+	if len(parts) != 2 {
+		return nil
+	}
+	payload, err := base64.RawURLEncoding.DecodeString(parts[0])
+	if err != nil {
+		return nil
+	}
+	wantSig, err := base64.RawURLEncoding.DecodeString(parts[1])
+	if err != nil || len(wantSig) == 0 {
+		return nil
+	}
+	key := sessionSigningKey()
+	mac := hmac.New(sha256.New, key[:])
+	_, _ = mac.Write(payload)
+	got := mac.Sum(nil)
+	if subtle.ConstantTimeCompare(got, wantSig) != 1 {
+		return nil
+	}
+	var c terminalWSClaims
+	if err := json.Unmarshal(payload, &c); err != nil {
+		return nil
+	}
+	if c.Dev != deviceID || c.Exp < time.Now().Unix() {
+		return nil
+	}
+	if c.Role != string(roleAdmin) {
+		return nil
+	}
+	return &authUser{username: c.User, role: role(c.Role)}
+}
+
 // TerminalWS: WebSocket к SSH или Telnet устройства (только admin, cookie-сессия).
 // Первое сообщение — текст JSON: {"type":"init","username":"...","password":"...","port":22}.
 // Далее: бинарные кадры — ввод в PTY/TCP; текст JSON {"type":"resize","cols":n,"rows":m} для SSH.
@@ -122,6 +184,11 @@ func (h *Handlers) TerminalWS(w http.ResponseWriter, r *http.Request) {
 	id, err := deviceIDFromChi(r)
 	if err != nil {
 		http.Error(w, "bad device id", http.StatusBadRequest)
+		return
+	}
+	u := verifyTerminalWSToken(strings.TrimSpace(r.URL.Query().Get("token")), id)
+	if u == nil {
+		http.Error(w, "forbidden", http.StatusForbidden)
 		return
 	}
 	kind := terminalKindFromQuery(r)
@@ -162,11 +229,7 @@ func (h *Handlers) TerminalWS(w http.ResponseWriter, r *http.Request) {
 	dialTimeout := terminalDialTimeout()
 	deadline := terminalSessionDeadline()
 
-	u := userFromContext(r.Context())
-	nmsUser := ""
-	if u != nil {
-		nmsUser = u.username
-	}
+	nmsUser := u.username
 	h.logger.Info("terminal session start",
 		zap.String("nms_user", nmsUser),
 		zap.Int("device_id", id),
@@ -538,17 +601,29 @@ func (h *Handlers) TerminalPage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	kind := terminalKindFromQuery(r)
+	u := userFromContext(r.Context())
+	if u == nil || u.role != roleAdmin {
+		http.Error(w, "Forbidden", http.StatusForbidden)
+		return
+	}
+	wsToken, err := signTerminalWSToken(u.username, u.role, id)
+	if err != nil {
+		http.Error(w, "failed to issue terminal token", http.StatusInternalServerError)
+		return
+	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	data := struct {
 		DeviceID int
 		Name     string
 		IP       string
 		Kind     string
+		WSToken  string
 	}{
 		DeviceID: id,
 		Name:     dev.Name,
 		IP:       dev.IP,
 		Kind:     kind,
+		WSToken:  wsToken,
 	}
 	if err := h.terminalTmpl.Execute(w, data); err != nil {
 		h.logger.Error("terminal page", zap.Error(err))

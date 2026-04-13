@@ -60,7 +60,9 @@
     const deviceId = {{.DeviceID}};
     const kind = {{printf "%q" .Kind}};
     const wsProto = location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const wsURL = wsProto + '//' + location.host + '/ws/terminal/' + deviceId + '?kind=' + encodeURIComponent(kind);
+    const wsToken = {{printf "%q" .WSToken}};
+    const wsURL = wsProto + '//' + location.host + '/ws/terminal/' + deviceId +
+        '?kind=' + encodeURIComponent(kind) + '&token=' + encodeURIComponent(wsToken);
     const textEnc = new TextEncoder();
     let ws = null;
 
