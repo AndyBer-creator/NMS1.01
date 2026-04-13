@@ -51,6 +51,15 @@
         </button>
         <span id="term-status" class="text-sm text-gray-400 ml-auto"></span>
     </div>
+    <div id="term-error-panel" class="hidden px-4 py-2 bg-gray-900/95 border-b border-red-900/40">
+        <div class="flex flex-wrap items-start gap-2 justify-between">
+            <pre id="term-last-error" class="text-red-300 font-mono text-xs whitespace-pre-wrap break-all flex-1 min-w-0 max-h-36 overflow-auto m-0 select-all cursor-text"></pre>
+            <button type="button" id="btn-copy-err"
+                    class="shrink-0 px-3 py-1 rounded-lg bg-gray-700 hover:bg-gray-600 text-xs text-white">
+                Копировать текст
+            </button>
+        </div>
+    </div>
     <div id="terminal-wrap" class="flex-1 min-h-0 p-2 bg-black"></div>
 </div>
 <script src="/static/js/xterm.js"></script>
@@ -86,8 +95,49 @@
     const statusEl = document.getElementById('term-status');
     const btnConnect = document.getElementById('btn-connect');
     const btnDisconnect = document.getElementById('btn-disconnect');
+    const errPanel = document.getElementById('term-error-panel');
+    const errPre = document.getElementById('term-last-error');
+    const btnCopyErr = document.getElementById('btn-copy-err');
+    let lastErrorText = '';
 
     function setStatus(t) { statusEl.textContent = t || ''; }
+
+    function clearErrorPanel() {
+        lastErrorText = '';
+        errPre.textContent = '';
+        errPanel.classList.add('hidden');
+    }
+
+    function setLastError(msg) {
+        var s = (msg || '').trim();
+        if (!s) return;
+        lastErrorText = s;
+        errPre.textContent = s;
+        errPanel.classList.remove('hidden');
+    }
+
+    btnCopyErr.addEventListener('click', function () {
+        if (!lastErrorText) return;
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(lastErrorText).then(function () {
+                setStatus('Текст скопирован в буфер обмена');
+            }).catch(function () {
+                errPre.focus();
+                var r = document.createRange();
+                r.selectNodeContents(errPre);
+                var sel = window.getSelection();
+                sel.removeAllRanges();
+                sel.addRange(r);
+            });
+        } else {
+            errPre.focus();
+            var r = document.createRange();
+            r.selectNodeContents(errPre);
+            var sel = window.getSelection();
+            sel.removeAllRanges();
+            sel.addRange(r);
+        }
+    });
 
     function sendResize() {
         if (!ws || ws.readyState !== WebSocket.OPEN) return;
@@ -125,6 +175,7 @@
 
     btnConnect.addEventListener('click', function () {
         if (ws && ws.readyState === WebSocket.OPEN) return;
+        clearErrorPanel();
         term.reset();
         fitAddon.fit();
         setStatus('Подключение…');
@@ -153,8 +204,10 @@
                 try {
                     const j = JSON.parse(ev.data);
                     if (j.type === 'error') {
-                        setStatus('Ошибка: ' + (j.message || ''));
-                        term.writeln('\r\n\x1b[31m' + (j.message || 'ошибка') + '\x1b[0m');
+                        var em = j.message || 'ошибка';
+                        setLastError(em);
+                        setStatus('Ошибка: ' + em);
+                        term.writeln('\r\n\x1b[31m' + em + '\x1b[0m');
                         ws.close();
                         return;
                     }
@@ -184,7 +237,9 @@
             btnConnect.disabled = false;
             btnDisconnect.disabled = true;
             if (ev && ev.code && ev.code !== 1000) {
-                setStatus('WebSocket закрыт: code=' + ev.code + (ev.reason ? (', reason=' + ev.reason) : ''));
+                var tail = 'WebSocket закрыт: code=' + ev.code + (ev.reason ? (', reason=' + ev.reason) : '');
+                setStatus(tail);
+                setLastError((lastErrorText ? lastErrorText + '\n' : '') + tail);
                 return;
             }
             if (!statusEl.textContent.startsWith('Ошибка')) setStatus('');
