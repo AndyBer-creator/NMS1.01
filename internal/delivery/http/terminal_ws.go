@@ -393,8 +393,14 @@ func (h *Handlers) runTerminalSSH(ctx context.Context, conn *websocket.Conn, add
 
 func (h *Handlers) runTerminalTelnet(ctx context.Context, conn *websocket.Conn, addr string, dialTimeout time.Duration, deadline time.Time) error {
 	var writeMu sync.Mutex
+	_ = wsWriteText(conn, &writeMu, terminalJSON("connecting", "dialing "+addr))
+	if dialTimeout <= 0 || dialTimeout > 10*time.Second {
+		dialTimeout = 10 * time.Second
+	}
+	dctx, cancel := context.WithTimeout(ctx, dialTimeout)
+	defer cancel()
 	d := net.Dialer{Timeout: dialTimeout}
-	tcp, err := d.DialContext(ctx, "tcp", addr)
+	tcp, err := d.DialContext(dctx, "tcp", addr)
 	if err != nil {
 		return fmt.Errorf("tcp dial: %w", err)
 	}
