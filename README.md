@@ -2,7 +2,7 @@
 
 SNMP-мониторинг: опрос устройств, приём трапов, метрики в PostgreSQL, алерты в Telegram, дашборд и Prometheus/Grafana.
 
-Операционные материалы (backup, runbook, секреты, SLO, go-live): каталог [`doc/`](doc/README.md).
+Операционные материалы (backup, runbook, секреты, SLO, go-live): каталог [`doc/`](doc/README.md). Целевой **enterprise**-уровень (readiness, OpenAPI, security.txt): [`doc/ENTERPRISE.md`](doc/ENTERPRISE.md).
 
 ## Требования
 
@@ -114,7 +114,8 @@ SMTP env:
 
 - Запуск: `make smoke-test` или `./scripts/smoke_test.sh`
 - Проверяет базовые эндпоинты:
-  - `/health`
+  - `/health` (liveness)
+  - `/ready` (readiness, JSON)
   - `/metrics` (api)
   - `/login`
   - `/devices/list` (если заданы `NMS_ADMIN_USER/NMS_ADMIN_PASS`)
@@ -153,7 +154,7 @@ SMTP env:
 - Включение (production): `NMS_ENFORCE_HTTPS=true`.
 - Поведение:
   - plain HTTP перенаправляется на HTTPS (`308`);
-  - `/health` и `/metrics` остаются доступными по HTTP для probe/scrape совместимости.
+  - `/health`, `/ready`, `/metrics` и `/.well-known/security.txt` остаются доступными по HTTP для probe/scrape/security.txt (при терминации TLS на ingress).
 - Проверка: `make https-policy-check`.
 
 ## Worker chaos check (fault-injection)
@@ -383,7 +384,7 @@ make load-http-readonly
 
 - **lint** — **golangci-lint** v2.6.1 (`golangci/golangci-lint-action`, настройки в **`.golangci.yml`**);
 - **vuln** — **`govulncheck ./...`**; локально для деталей по «уязвимости в зависимостях»: `go run golang.org/x/vuln/cmd/govulncheck@latest -show verbose ./...`;
-- **unit** — тесты с **`-race`**, покрытие, порог **`scripts/check_coverage.sh`** (по умолчанию **15%**, переменная `MIN_COVERAGE_PERCENT`), загрузка в **Codecov** (ошибка загрузки не валит job), артефакт **`coverage-out`**; при push в ту же ветку предыдущий прогон этого workflow **отменяется** (`concurrency`);
+- **unit** — тесты с **`-race`**, покрытие, порог **`scripts/check_coverage.sh`** (по умолчанию **20%**, переменная `MIN_COVERAGE_PERCENT`), загрузка в **Codecov** (ошибка загрузки не валит job), артефакт **`coverage-out`**; при push в ту же ветку предыдущий прогон этого workflow **отменяется** (`concurrency`);
 - **integration** — миграции, Postgres, тесты `Integration` с **`-race`**.
 
 Обновления зависимостей: **Dependabot** (`.github/dependabot.yml`) — еженедельно `gomod` и **GitHub Actions**. Для **приватного** репозитория в Codecov обычно задают секрет **`CODECOV_TOKEN`** (Settings → Secrets → Actions); без токена загрузка отчёта может быть нестабильной, в CI это не валит job.

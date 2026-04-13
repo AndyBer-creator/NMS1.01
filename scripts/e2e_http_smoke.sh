@@ -16,6 +16,7 @@ check_body_regex() {
 }
 
 check_body_regex "/health" '^OK$' "e2e: /health failed"
+check_body_regex "/ready" '"status"' "e2e: /ready failed (expected JSON with status)"
 check_body_regex "/metrics" '^# HELP|nms_' "e2e: /metrics unexpected body"
 
 echo "e2e: OK (BASE_URL=$BASE)"

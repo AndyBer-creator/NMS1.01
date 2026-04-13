@@ -10,6 +10,7 @@ import (
 
 func Router(handlers *Handlers) *chi.Mux {
 	r := chi.NewRouter()
+	r.Use(middleware.RequestID)
 	r.Use(PrometheusMetrics, middleware.Logger, middleware.Recoverer)
 	r.Use(SecurityHeaders)
 	r.Use(EnforceHTTPS)
@@ -17,6 +18,8 @@ func Router(handlers *Handlers) *chi.Mux {
 	// Без авторизации: статика, проверки для оркестраторов, метрики, вход/выход
 	r.Handle("/static/*", http.StripPrefix("/static/", http.FileServer(http.Dir("./static"))))
 	r.Get("/health", handlers.Health)
+	r.Get("/ready", handlers.Ready)
+	r.Get("/.well-known/security.txt", serveWellKnownSecurityTxt)
 	r.Handle("/metrics", promhttp.Handler())
 
 	r.Get("/login", handlers.LoginPage)
@@ -63,6 +66,8 @@ func Router(handlers *Handlers) *chi.Mux {
 
 		r.Get("/events/availability/page", handlers.AvailabilityEventsPage)
 		r.Get("/events/availability", handlers.ListAvailabilityEvents)
+
+		r.Get("/api/openapi.yaml", serveOpenAPISpec)
 
 		r.With(RequireAdmin).Post("/test-alert", handlers.testAlert)
 	})

@@ -1,6 +1,6 @@
 # NMS1 Production Readiness Checklist
 
-Дата обновления: 2026-04-13
+Дата обновления: 2026-04-13 (enterprise: readiness, OpenAPI, security.txt, coverage 20%)
 
 Этот файл фиксирует минимальные требования для безопасного go-live и текущий статус проекта.
 
@@ -85,7 +85,16 @@
 - [x] Интеграционные тесты критичных сценариев
   - HTTP: RBAC/CSRF (viewer vs admin), CRUD устройств, настройки worker/email, discovery/MIB/SNMP/test-alert; `internal/testdb` для ping БД; `make test-integration` и пакет `internal/delivery/http` (`-run Integration`).
   - PostgreSQL/traps: `internal/infrastructure/postgres`, `internal/repository` при `DB_DSN`.
-  - CI: unit + integration (см. `.github/workflows/test.yml`), job **static-css-sync** (Tailwind `app.css` совпадает с билдом), порог покрытия по `scripts/check_coverage.sh` (по умолчанию 15%).
+  - CI: unit + integration (см. `.github/workflows/test.yml`), job **static-css-sync** (Tailwind `app.css` совпадает с билдом), порог покрытия по `scripts/check_coverage.sh` (по умолчанию **20%**).
+
+## 7) Enterprise integration & ops hygiene
+
+- [x] Разделение liveness / readiness
+  - `GET /health` — без БД; `GET /ready` — проверка PostgreSQL (JSON **200** / **503**).
+- [x] Корреляция запросов — заголовок **`X-Request-ID`** (Chi RequestID).
+- [x] **security.txt** — `GET /.well-known/security.txt` (редактируемый шаблон в `internal/delivery/http/spec/security.txt`, исключение в HTTPS-only как у probes).
+- [x] **OpenAPI 3** — `GET /api/openapi.yaml` после авторизации (встроенная спецификация).
+- [x] Документ целевого уровня: [`ENTERPRISE.md`](ENTERPRISE.md).
 
 - [x] Нагрузочные прогоны (k6)
   - Read-only: `make k6-readonly` (GET `/health` / `/metrics`).
@@ -121,5 +130,5 @@
 - История доступности, health/metrics, worker backoff.
 - Настраиваемый интервал опроса устройств через UI.
 
-Это хороший уровень для staging/UAT. Для production — нужен фокус на security hardening, backup/restore и эксплуатационных процессах.
+Репозиторий закрывает заявленные **enterprise hygiene** пункты (см. §7 и `ENTERPRISE.md`). Для регулируемых сред дополнительно нужны организационные меры: комплаенс, DLP, SIEM, пентест и согласованные SLO/SLA.
 

@@ -79,6 +79,16 @@ func TestBuildApp_Health(t *testing.T) {
 	if res.StatusCode != http.StatusOK || string(body) != "OK" {
 		t.Fatalf("health: %d %q", res.StatusCode, body)
 	}
+
+	res2, err := http.Get(srv.URL + "/ready")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = res2.Body.Close() }()
+	body2, _ := io.ReadAll(res2.Body)
+	if res2.StatusCode != http.StatusServiceUnavailable {
+		t.Fatalf("ready with unreachable DB: want 503, got %d %s", res2.StatusCode, body2)
+	}
 }
 
 func TestRun_InvalidListenAddr(t *testing.T) {

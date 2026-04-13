@@ -9,12 +9,13 @@
 | Шаг | Команда / действие |
 |-----|-------------------|
 | Локально как в CI | `make ci-local` (lint, vuln, тесты с `-race`, порог coverage) |
+| Enterprise-чек (обзор) | [ENTERPRISE.md](ENTERPRISE.md) — `/ready` в балансировщике, правка `spec/security.txt`, выдача OpenAPI интеграторам |
 | Статика Tailwind в git | После правок классов в шаблонах: `make static-css` и закоммитить `static/css/app.css`. Проверка: `make check-static-css` (тот же шаг, что job **static-css-sync** в CI). |
 | Интеграция с PostgreSQL | Поднять БД, задать `DB_DSN`, затем `make test-integration`. С хоста при Postgres на `127.0.0.1` при необходимости переопределить `DB_DSN` в командной строке (см. комментарий в `Makefile` — `include .env` может задать `host=postgres`). |
 | Политика HTTPS / SLO / хаос (если используете) | `make https-policy-check`, `make slo-gates`, `make chaos-worker-check` |
 | Логи без секретов (после настройки логирования) | `make log-secrets-check` |
 
-В CI уже есть: lint, **static-css-sync** (совпадение `static/css/app.css` с билдом Tailwind), `govulncheck`, unit с race+coverage, миграции + integration job (см. `.github/workflows/test.yml`).
+В CI уже есть: lint, **static-css-sync** (совпадение `static/css/app.css` с билдом Tailwind), `govulncheck`, unit с race+coverage (**порог 20%** по умолчанию), миграции + integration job (см. `.github/workflows/test.yml`).
 
 ---
 

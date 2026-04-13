@@ -12,11 +12,16 @@ func httpsOnlyEnabled() bool {
 }
 
 func isHTTPSBypassPath(path string) bool {
-	return path == "/health" || path == "/metrics"
+	switch path {
+	case "/health", "/ready", "/metrics", "/.well-known/security.txt":
+		return true
+	default:
+		return false
+	}
 }
 
 // EnforceHTTPS redirects plain HTTP traffic to HTTPS when enabled.
-// Health and metrics are excluded for probe compatibility.
+// Health, readiness, metrics и security.txt исключены для probe и публичного security.txt.
 func EnforceHTTPS(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if !httpsOnlyEnabled() || isHTTPSRequest(r) || isHTTPSBypassPath(r.URL.Path) {

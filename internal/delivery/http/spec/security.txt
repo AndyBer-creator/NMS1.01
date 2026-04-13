@@ -1,0 +1,4 @@
+# Замените Contact на контакт вашей ИБ / NOC перед продакшеном.
+Contact: mailto:security@example.com
+Preferred-Languages: en, ru
+Canonical: https://example.com/.well-known/security.txt

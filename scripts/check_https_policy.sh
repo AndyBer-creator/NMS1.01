@@ -31,6 +31,8 @@ check_ok() {
 check_redirect "/"
 check_redirect "/login"
 check_ok "/health"
+check_ok "/ready"
 check_ok "/metrics"
+check_ok "/.well-known/security.txt"
 
 echo "OK: HTTPS-only policy works (redirects enabled, probes bypassed)."

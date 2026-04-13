@@ -1,6 +1,7 @@
 package http
 
 import (
+	"context"
 	"crypto/sha1"
 	"database/sql"
 	"encoding/hex"
@@ -13,6 +14,7 @@ import (
 	"net/netip"
 	"strconv"
 	"strings"
+	"time"
 
 	"NMS1/internal/domain"
 	"NMS1/internal/infrastructure/postgres"
@@ -844,6 +846,34 @@ func (h *Handlers) DeleteDevice(w http.ResponseWriter, r *http.Request) {
 func (h *Handlers) Health(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write([]byte("OK"))
+}
+
+// Ready — readiness: доступность PostgreSQL (для балансировщиков / Kubernetes).
+func (h *Handlers) Ready(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	if h.repo == nil {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"status": "not_ready",
+			"checks": map[string]string{"database": "unconfigured"},
+		})
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
+	defer cancel()
+	if err := h.repo.Ping(ctx); err != nil {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"status": "not_ready",
+			"checks": map[string]string{"database": err.Error()},
+		})
+		return
+	}
+	w.WriteHeader(http.StatusOK)
+	_ = json.NewEncoder(w).Encode(map[string]any{
+		"status": "ready",
+		"checks": map[string]string{"database": "ok"},
+	})
 }
 
 // LldpTopologyPage отдает HTML страницу с графом LLDP.
