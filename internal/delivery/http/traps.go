@@ -3,75 +3,14 @@ package http
 import (
 	"NMS1/internal/config"
 	"NMS1/internal/domain"
-	"NMS1/internal/repository"
 	"NMS1/internal/services"
 	"encoding/json"
 	"net/http"
 	"strconv"
 	"strings"
 
-	"github.com/go-chi/chi/v5"
 	"go.uber.org/zap"
 )
-
-type TrapHandler struct {
-	repo   *repository.TrapsRepo
-	logger *zap.Logger
-}
-
-func NewTrapHandler(repo *repository.TrapsRepo, logger *zap.Logger) *TrapHandler {
-	return &TrapHandler{
-		repo:   repo,
-		logger: logger, // ← Передаём logger
-	}
-}
-
-func (h *TrapHandler) List(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
-	limitStr := r.URL.Query().Get("limit")
-	limit := 50
-	if limitStr != "" {
-		limit, _ = strconv.Atoi(limitStr)
-	}
-
-	traps, err := h.repo.List(ctx, limit)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(traps)
-}
-
-func (h *TrapHandler) ByDevice(w http.ResponseWriter, r *http.Request) {
-	ip := chi.URLParam(r, "ip")
-	if ip == "" {
-		http.Error(w, "IP required", http.StatusBadRequest)
-		return
-	}
-
-	ctx := r.Context()
-	limitStr := r.URL.Query().Get("limit")
-	limit := 50
-	if limitStr != "" {
-		limit, _ = strconv.Atoi(limitStr)
-		if limit > 1000 {
-			limit = 1000
-		}
-	}
-
-	traps, err := h.repo.ByDevice(ctx, ip, limit)
-	if err != nil {
-		h.logger.Error("Failed to get traps by device",
-			zap.String("ip", ip), zap.Error(err))
-		http.Error(w, "Internal error", http.StatusInternalServerError)
-		return
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(traps)
-}
 
 func (h *Handlers) ListTraps(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()

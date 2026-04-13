@@ -4,6 +4,7 @@
 
 | Документ | Назначение |
 |----------|------------|
+| [API_MIGRATION.md](API_MIGRATION.md) | Переход с URL `/devices/<ip>/…` на `/devices/<id>/…` и трапы `?device_id=` |
 | [BACKUP_RESTORE.md](BACKUP_RESTORE.md) | Резервное копирование и восстановление PostgreSQL |
 | [GO_LIVE_CHECKLIST.md](GO_LIVE_CHECKLIST.md) | Чеклист перед выводом в эксплуатацию |
 | [PROD_CHECKLIST.md](PROD_CHECKLIST.md) | Статус production readiness |

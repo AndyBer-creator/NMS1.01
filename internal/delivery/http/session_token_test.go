@@ -48,7 +48,13 @@ func TestVerifySessionToken_RejectsInvalidSignature(t *testing.T) {
 	if len(parts) == 0 {
 		t.Fatal("unexpected empty token")
 	}
-	parts[len(parts)-1] = 'A'
+	// Должны реально изменить строку (если последний символ уже 'A', подмена на 'A' бессмысленна).
+	last := parts[len(parts)-1]
+	if last == 'A' {
+		parts[len(parts)-1] = 'B'
+	} else {
+		parts[len(parts)-1] = 'A'
+	}
 	if got := verifySessionToken(string(parts)); got != nil {
 		t.Fatalf("expected tampered token to fail verification, got %+v", got)
 	}
