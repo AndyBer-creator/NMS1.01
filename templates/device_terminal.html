@@ -75,6 +75,7 @@
     const wsURL = wsProto + '//' + location.host + wsPathWithQuery;
     const textEnc = new TextEncoder();
     let ws = null;
+    let sessionReady = false;
 
     const term = new Terminal({
         cursorBlink: true,
@@ -87,7 +88,7 @@
     term.open(document.getElementById('terminal-wrap'));
     fitAddon.fit();
     term.onData(function (data) {
-        if (ws && ws.readyState === WebSocket.OPEN) {
+        if (sessionReady && ws && ws.readyState === WebSocket.OPEN) {
             ws.send(textEnc.encode(data));
         }
     });
@@ -163,6 +164,7 @@
     }
 
     btnDisconnect.addEventListener('click', function () {
+        sessionReady = false;
         if (ws) {
             ws.close();
             ws = null;
@@ -175,6 +177,7 @@
 
     btnConnect.addEventListener('click', function () {
         if (ws && ws.readyState === WebSocket.OPEN) return;
+        sessionReady = false;
         clearErrorPanel();
         term.reset();
         fitAddon.fit();
@@ -216,6 +219,7 @@
                         return;
                     }
                     if (j.type === 'ok') {
+                        sessionReady = true;
                         setStatus('Сессия');
                         term.focus();
                         sendResize();
@@ -233,6 +237,7 @@
             setStatus('Ошибка WebSocket (network/upgrade)');
         };
         ws.onclose = function (ev) {
+            sessionReady = false;
             ws = null;
             btnConnect.disabled = false;
             btnDisconnect.disabled = true;
