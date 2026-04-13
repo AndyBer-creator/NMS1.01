@@ -24,11 +24,11 @@ func SecurityHeaders(next http.Handler) http.Handler {
 		// Disable dangerous browser features by default.
 		w.Header().Set("Permissions-Policy", "geolocation=(), microphone=(), camera=()")
 
-		// CSP tuned for current templates (inline scripts + CDN assets).
+		// CSP tuned for current templates (inline scripts; CSS/JS from /static).
 		w.Header().Set(
 			"Content-Security-Policy",
 			"default-src 'self'; "+
-				"script-src 'self' 'unsafe-inline' https://unpkg.com https://cdn.tailwindcss.com; "+
+				"script-src 'self' 'unsafe-inline'; "+
 				"style-src 'self' 'unsafe-inline'; "+
 				"img-src 'self' data:; "+
 				"font-src 'self' data:; "+

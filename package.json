@@ -1,0 +1,10 @@
+{
+  "name": "nms1-assets",
+  "private": true,
+  "scripts": {
+    "build:css": "tailwindcss -i ./assets/tailwind/input.css -o ./static/css/app.css --minify"
+  },
+  "devDependencies": {
+    "tailwindcss": "3.4.17"
+  }
+}
