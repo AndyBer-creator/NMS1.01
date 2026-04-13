@@ -1224,6 +1224,33 @@ func TestIntegration_HTTP_ViewerGetDeviceEditForbidden(t *testing.T) {
 	}
 }
 
+func TestIntegration_HTTP_ViewerGetDeviceTerminalForbidden(t *testing.T) {
+	const (
+		adminUser, adminPass   = "itest-term-admin", "itest-term-admin-secret"
+		viewerUser, viewerPass = "itest-term-viewer", "itest-term-viewer-secret"
+	)
+	srv, _ := newIntegrationServer(t, integrationAuthOpts{
+		AdminUser: adminUser, AdminPass: adminPass,
+		ViewerUser: viewerUser, ViewerPass: viewerPass,
+	})
+
+	u := fmt.Sprintf("%s/devices/%d/terminal", srv.URL, 999005)
+	req, err := http.NewRequest(http.MethodGet, u, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.SetBasicAuth(viewerUser, viewerPass)
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("GET device terminal: %v", err)
+	}
+	defer func() { _ = res.Body.Close() }()
+	b, _ := io.ReadAll(res.Body)
+	if res.StatusCode != http.StatusForbidden {
+		t.Fatalf("expected 403 for viewer on GET device terminal, got %d: %s", res.StatusCode, b)
+	}
+}
+
 func TestIntegration_HTTP_ViewerPostDeviceUpdateForbidden(t *testing.T) {
 	const (
 		adminUser, adminPass   = "itest-upddev-admin", "itest-upddev-admin-secret"

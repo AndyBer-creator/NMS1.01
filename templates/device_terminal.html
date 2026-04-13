@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Терминал — {{.Name}} ({{.IP}})</title>
+    <link rel="stylesheet" href="/static/css/app.css">
+    <link rel="stylesheet" href="/static/css/xterm.css">
+</head>
+<body class="min-h-screen bg-gray-900 text-gray-100">
+<div class="flex flex-col h-screen">
+    <header class="flex flex-wrap items-center gap-3 px-4 py-3 border-b border-gray-700 bg-gray-800/90 shrink-0">
+        <a href="/devices/list" class="text-blue-400 hover:underline text-sm">← Устройства</a>
+        <span class="text-gray-500">|</span>
+        <h1 class="text-lg font-semibold text-white">Терминал: {{.Name}}</h1>
+        <span class="font-mono text-cyan-300/90 text-sm">{{.IP}}</span>
+        <span class="text-xs px-2 py-0.5 rounded bg-gray-700 text-gray-300 uppercase">{{.Kind}}</span>
+    </header>
+    <div id="terminal-toolbar" class="flex flex-wrap items-end gap-3 px-4 py-3 bg-gray-800/50 border-b border-gray-700 shrink-0">
+        {{if eq .Kind "ssh"}}
+        <label class="flex flex-col text-xs text-gray-400 gap-1">
+            SSH user
+            <input id="ssh-user" type="text" autocomplete="username" placeholder="admin"
+                   class="w-48 px-2 py-1.5 rounded bg-gray-800 border border-gray-600 text-white text-sm focus:border-blue-400 focus:outline-none">
+        </label>
+        <label class="flex flex-col text-xs text-gray-400 gap-1">
+            Пароль
+            <input id="ssh-pass" type="password" autocomplete="current-password" placeholder="••••••••"
+                   class="w-48 px-2 py-1.5 rounded bg-gray-800 border border-gray-600 text-white text-sm focus:border-blue-400 focus:outline-none">
+        </label>
+        <label class="flex flex-col text-xs text-gray-400 gap-1">
+            Порт
+            <input id="ssh-port" type="number" value="22" min="1" max="65535"
+                   class="w-24 px-2 py-1.5 rounded bg-gray-800 border border-gray-600 text-white text-sm focus:border-blue-400 focus:outline-none">
+        </label>
+        {{else}}
+        <label class="flex flex-col text-xs text-gray-400 gap-1">
+            Порт Telnet
+            <input id="telnet-port" type="number" value="23" min="1" max="65535"
+                   class="w-24 px-2 py-1.5 rounded bg-gray-800 border border-gray-600 text-white text-sm focus:border-blue-400 focus:outline-none">
+        </label>
+        <p class="text-xs text-amber-400/90 max-w-xl">Telnet без шифрования. Используйте только в доверенной сети.</p>
+        {{end}}
+        <button type="button" id="btn-connect"
+                class="mt-5 px-4 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-medium">
+            Подключиться
+        </button>
+        <button type="button" id="btn-disconnect" disabled
+                class="mt-5 px-4 py-1.5 rounded-lg bg-gray-600 hover:bg-gray-500 text-white text-sm font-medium disabled:opacity-40">
+            Отключить
+        </button>
+        <span id="term-status" class="text-sm text-gray-400 ml-auto"></span>
+    </div>
+    <div id="terminal-wrap" class="flex-1 min-h-0 p-2 bg-black"></div>
+</div>
+<script src="/static/js/xterm.js"></script>
+<script src="/static/js/xterm-addon-fit.js"></script>
+<script>
+(function () {
+    const deviceId = {{.DeviceID}};
+    const kind = {{printf "%q" .Kind}};
+    const wsProto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const wsURL = wsProto + '//' + location.host + '/ws/terminal/' + deviceId + '?kind=' + encodeURIComponent(kind);
+    const textEnc = new TextEncoder();
+    let ws = null;
+
+    const term = new Terminal({
+        cursorBlink: true,
+        fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
+        fontSize: 14,
+        theme: { background: '#0b0f14', foreground: '#e6edf3' }
+    });
+    const fitAddon = new FitAddon.FitAddon();
+    term.loadAddon(fitAddon);
+    term.open(document.getElementById('terminal-wrap'));
+    fitAddon.fit();
+    term.onData(function (data) {
+        if (ws && ws.readyState === WebSocket.OPEN) {
+            ws.send(textEnc.encode(data));
+        }
+    });
+
+    const statusEl = document.getElementById('term-status');
+    const btnConnect = document.getElementById('btn-connect');
+    const btnDisconnect = document.getElementById('btn-disconnect');
+
+    function setStatus(t) { statusEl.textContent = t || ''; }
+
+    function sendResize() {
+        if (!ws || ws.readyState !== WebSocket.OPEN) return;
+        ws.send(JSON.stringify({
+            type: 'resize',
+            cols: term.cols,
+            rows: term.rows
+        }));
+    }
+
+    window.addEventListener('resize', function () {
+        try { fitAddon.fit(); sendResize(); } catch (e) {}
+    });
+
+    function strFromBuf(ab) {
+        const u8 = new Uint8Array(ab);
+        let s = '';
+        const chunk = 8192;
+        for (let i = 0; i < u8.length; i += chunk) {
+            s += String.fromCharCode.apply(null, u8.subarray(i, Math.min(i + chunk, u8.length)));
+        }
+        return s;
+    }
+
+    btnDisconnect.addEventListener('click', function () {
+        if (ws) {
+            ws.close();
+            ws = null;
+        }
+        term.writeln('\r\n\x1b[33mСоединение закрыто.\x1b[0m');
+        btnConnect.disabled = false;
+        btnDisconnect.disabled = true;
+        setStatus('');
+    });
+
+    btnConnect.addEventListener('click', function () {
+        if (ws && ws.readyState === WebSocket.OPEN) return;
+        term.reset();
+        fitAddon.fit();
+        setStatus('Подключение…');
+        btnConnect.disabled = true;
+        btnDisconnect.disabled = false;
+
+        ws = new WebSocket(wsURL);
+        ws.binaryType = 'arraybuffer';
+
+        ws.onopen = function () {
+            let init;
+            if (kind === 'telnet') {
+                const port = parseInt(document.getElementById('telnet-port').value, 10) || 23;
+                init = { type: 'init', port: port };
+            } else {
+                const user = document.getElementById('ssh-user').value.trim();
+                const pass = document.getElementById('ssh-pass').value;
+                const port = parseInt(document.getElementById('ssh-port').value, 10) || 22;
+                init = { type: 'init', username: user, password: pass, port: port };
+            }
+            ws.send(JSON.stringify(init));
+        };
+
+        ws.onmessage = function (ev) {
+            if (typeof ev.data === 'string') {
+                try {
+                    const j = JSON.parse(ev.data);
+                    if (j.type === 'error') {
+                        setStatus('Ошибка: ' + (j.message || ''));
+                        term.writeln('\r\n\x1b[31m' + (j.message || 'ошибка') + '\x1b[0m');
+                        ws.close();
+                        return;
+                    }
+                    if (j.type === 'ok') {
+                        setStatus('Сессия');
+                        term.focus();
+                        sendResize();
+                        return;
+                    }
+                } catch (e) {}
+                return;
+            }
+            if (ev.data instanceof ArrayBuffer) {
+                term.write(strFromBuf(ev.data));
+            }
+        };
+
+        ws.onerror = function () {
+            setStatus('Ошибка WebSocket');
+        };
+        ws.onclose = function () {
+            ws = null;
+            btnConnect.disabled = false;
+            btnDisconnect.disabled = true;
+            if (!statusEl.textContent.startsWith('Ошибка')) setStatus('');
+        };
+    });
+})();
+</script>
+</body>
+</html>
