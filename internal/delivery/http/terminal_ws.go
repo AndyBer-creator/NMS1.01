@@ -213,6 +213,7 @@ func (h *Handlers) TerminalWS(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	kind := terminalKindFromQuery(r)
+	h.logger.Info("terminal ws kind resolved", zap.String("kind", kind), zap.Int("device_id", id))
 
 	dev, err := h.repo.GetDeviceByID(id)
 	if err != nil || dev == nil {
@@ -251,16 +252,19 @@ func (h *Handlers) TerminalWS(w http.ResponseWriter, r *http.Request) {
 	_ = conn.SetReadDeadline(time.Now().Add(5 * time.Minute))
 	_, initRaw, err := conn.ReadMessage()
 	if err != nil {
+		h.logger.Warn("terminal ws init read failed", zap.Error(err), zap.Int("device_id", id), zap.String("kind", kind))
 		_ = wsWriteText(conn, &connWriteMu, terminalJSON("error", "read init: "+err.Error()))
 		wsSendCloseFrame(conn, &connWriteMu, websocket.CloseGoingAway, "no init")
 		return
 	}
 	var init terminalInitMsg
 	if err := json.Unmarshal(initRaw, &init); err != nil || init.Type != "init" {
+		h.logger.Warn("terminal ws bad init", zap.Error(err), zap.ByteString("payload", initRaw), zap.Int("device_id", id), zap.String("kind", kind))
 		_ = wsWriteText(conn, &connWriteMu, terminalJSON("error", "expected init json"))
 		wsSendCloseFrame(conn, &connWriteMu, websocket.CloseUnsupportedData, "bad init")
 		return
 	}
+	h.logger.Info("terminal ws init accepted", zap.Int("device_id", id), zap.String("kind", kind), zap.Int("requested_port", init.Port))
 
 	port := init.Port
 	if port <= 0 {
@@ -472,8 +476,11 @@ func (h *Handlers) runTerminalTelnet(ctx context.Context, conn *websocket.Conn, 
 		return fmt.Errorf("tcp dial: %w", err)
 	}
 	defer tcp.Close()
+	h.logger.Info("terminal telnet dial connected", zap.String("dial_addr", addr))
 
 	_ = wsWriteText(conn, writeMu, terminalJSON("ok", ""))
+	// Явный маркер в терминале: помогает отличить «WS сломан» от «устройство молчит после коннекта».
+	_ = wsWriteBinary(conn, writeMu, []byte("\r\n[connected to "+addr+"]\r\n"))
 	go terminalWSKeepalive(conn, writeMu, pingStop)
 
 	var wg sync.WaitGroup
