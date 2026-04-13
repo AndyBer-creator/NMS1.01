@@ -2,13 +2,38 @@ package http
 
 import (
 	"net/http"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
-func Router(handlers *Handlers) *chi.Mux {
+// Router возвращает корневой HTTP-handler: WebSocket терминала обслуживается отдельной
+// цепочкой без Prometheus/Logger, чтобы Hijack всегда доходил до net.Conn (иначе браузер: 1006).
+func Router(handlers *Handlers) http.Handler {
+	main := mainRouter(handlers)
+	term := terminalWSRouter(handlers)
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/ws/terminal/") {
+			term.ServeHTTP(w, r)
+			return
+		}
+		main.ServeHTTP(w, r)
+	})
+}
+
+func terminalWSRouter(handlers *Handlers) http.Handler {
+	r := chi.NewRouter()
+	r.Use(middleware.RequestID)
+	r.Use(middleware.Recoverer)
+	r.Use(SecurityHeaders)
+	r.Use(EnforceHTTPS)
+	r.Get("/terminal/{id}", handlers.TerminalWS)
+	return http.StripPrefix("/ws", r)
+}
+
+func mainRouter(handlers *Handlers) *chi.Mux {
 	r := chi.NewRouter()
 	r.Use(middleware.RequestID)
 	r.Use(PrometheusMetrics, middleware.Logger, middleware.Recoverer)
@@ -25,8 +50,6 @@ func Router(handlers *Handlers) *chi.Mux {
 	r.Get("/login", handlers.LoginPage)
 	r.Post("/login", handlers.LoginPost)
 	r.Post("/alerts/webhook", handlers.AlertWebhook)
-	// WS terminal auth via short-lived signed token from terminal page.
-	r.Get("/ws/terminal/{id}", handlers.TerminalWS)
 
 	r.Group(func(r chi.Router) {
 		r.Use(RequireAuth)
