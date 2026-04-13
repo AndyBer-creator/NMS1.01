@@ -37,6 +37,11 @@ var terminalUpgrader = websocket.Upgrader{
 }
 
 func terminalCheckOrigin(r *http.Request) bool {
+	// За reverse proxy Host/Origin часто не совпадают (internal host vs public).
+	// Для этого эндпоинта достаточно auth/admin; strict проверку можно включить переменной.
+	if v := strings.TrimSpace(strings.ToLower(os.Getenv("NMS_TERMINAL_STRICT_ORIGIN"))); v != "1" && v != "true" && v != "yes" {
+		return true
+	}
 	o := strings.TrimSpace(r.Header.Get("Origin"))
 	if o == "" {
 		return true
