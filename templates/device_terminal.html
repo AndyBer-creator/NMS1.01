@@ -39,6 +39,24 @@
             <input id="telnet-port" type="number" value="23" min="1" max="65535"
                    class="w-24 px-2 py-1.5 rounded bg-gray-800 border border-gray-600 text-white text-sm focus:border-blue-400 focus:outline-none">
         </label>
+        <label class="flex flex-col text-xs text-gray-400 gap-1">
+            Логин (telnet)
+            <input id="telnet-login" type="text" autocomplete="username" placeholder="admin"
+                   class="w-40 px-2 py-1.5 rounded bg-gray-800 border border-gray-600 text-white text-sm focus:border-blue-400 focus:outline-none">
+        </label>
+        <label class="flex flex-col text-xs text-gray-400 gap-1">
+            Пароль (telnet)
+            <input id="telnet-password" type="password" autocomplete="current-password" placeholder="••••••"
+                   class="w-40 px-2 py-1.5 rounded bg-gray-800 border border-gray-600 text-white text-sm focus:border-blue-400 focus:outline-none">
+        </label>
+        <button type="button" id="btn-send-telnet-login"
+                class="mt-5 px-3 py-1.5 rounded-lg bg-slate-600 hover:bg-slate-500 text-white text-xs font-medium">
+            Отправить логин
+        </button>
+        <button type="button" id="btn-send-telnet-password"
+                class="mt-5 px-3 py-1.5 rounded-lg bg-slate-600 hover:bg-slate-500 text-white text-xs font-medium">
+            Отправить пароль
+        </button>
         <p class="text-xs text-amber-400/90 max-w-xl">Telnet без шифрования. Используйте только в доверенной сети.</p>
         {{end}}
         <button type="button" id="btn-connect"
@@ -67,7 +85,8 @@
 <script>
 (function () {
     const deviceId = {{.DeviceID}};
-    const kind = {{printf "%q" .Kind}};
+    const rawKind = {{printf "%q" .Kind}};
+    const kind = String(rawKind || "").replace(/^[\"']+|[\"']+$/g, "");
     const wsProto = location.protocol === 'https:' ? 'wss:' : 'ws:';
     const wsToken = {{printf "%q" .WSToken}};
     const wsPathWithQuery = '/ws/terminal/' + deviceId +
@@ -107,6 +126,10 @@
     const errPanel = document.getElementById('term-error-panel');
     const errPre = document.getElementById('term-last-error');
     const btnCopyErr = document.getElementById('btn-copy-err');
+    const telnetLoginEl = document.getElementById('telnet-login');
+    const telnetPasswordEl = document.getElementById('telnet-password');
+    const btnSendTelnetLogin = document.getElementById('btn-send-telnet-login');
+    const btnSendTelnetPassword = document.getElementById('btn-send-telnet-password');
     let lastErrorText = '';
 
     function setStatus(t) { statusEl.textContent = t || ''; }
@@ -157,12 +180,49 @@
         }));
     }
 
+    function sendRaw(text) {
+        if (!sessionReady || !ws || ws.readyState !== WebSocket.OPEN) {
+            setStatus('Сессия еще не готова');
+            return;
+        }
+        ws.send(textEnc.encode(text));
+        term.focus();
+    }
+
     window.addEventListener('resize', function () {
         try {
             fitAddon.fit();
             if (sessionReady) sendResize();
         } catch (e) {}
     });
+    document.getElementById('terminal-wrap').addEventListener('click', function () { term.focus(); });
+
+    if (btnSendTelnetLogin) {
+        btnSendTelnetLogin.addEventListener('click', function () {
+            sendRaw((telnetLoginEl && telnetLoginEl.value ? telnetLoginEl.value : '') + '\r');
+        });
+    }
+    if (btnSendTelnetPassword) {
+        btnSendTelnetPassword.addEventListener('click', function () {
+            sendRaw((telnetPasswordEl && telnetPasswordEl.value ? telnetPasswordEl.value : '') + '\r');
+        });
+    }
+    if (telnetLoginEl) {
+        telnetLoginEl.addEventListener('keydown', function (e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                sendRaw((telnetLoginEl.value || '') + '\r');
+            }
+        });
+    }
+    if (telnetPasswordEl) {
+        telnetPasswordEl.addEventListener('keydown', function (e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                sendRaw((telnetPasswordEl.value || '') + '\r');
+            }
+        });
+    }
 
     function strFromBuf(ab) {
         const u8 = new Uint8Array(ab);
