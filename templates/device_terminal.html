@@ -61,8 +61,10 @@
     const kind = {{printf "%q" .Kind}};
     const wsProto = location.protocol === 'https:' ? 'wss:' : 'ws:';
     const wsToken = {{printf "%q" .WSToken}};
-    const wsURL = wsProto + '//' + location.host + '/ws/terminal/' + deviceId +
+    const wsPathWithQuery = '/ws/terminal/' + deviceId +
         '?kind=' + encodeURIComponent(kind) + '&token=' + encodeURIComponent(wsToken);
+    const wsURL = wsProto + '//' + location.host + wsPathWithQuery;
+    const probeURL = location.origin + wsPathWithQuery;
     const textEnc = new TextEncoder();
     let ws = null;
 
@@ -122,13 +124,30 @@
         setStatus('');
     });
 
-    btnConnect.addEventListener('click', function () {
+    btnConnect.addEventListener('click', async function () {
         if (ws && ws.readyState === WebSocket.OPEN) return;
         term.reset();
         fitAddon.fit();
         setStatus('Подключение…');
         btnConnect.disabled = true;
         btnDisconnect.disabled = false;
+
+        try {
+            // Обычный GET до того же URL: если маршрут/токен/прокси сломан, увидим код сразу.
+            const probe = await fetch(probeURL, { method: 'GET', credentials: 'same-origin' });
+            // Для корректного WS-эндпоинта без Upgrade ожидаем 400/426, это нормально.
+            if (!(probe.status === 400 || probe.status === 426)) {
+                setStatus('WS probe HTTP ' + probe.status + ' (маршрут/токен/прокси)');
+                btnConnect.disabled = false;
+                btnDisconnect.disabled = true;
+                return;
+            }
+        } catch (e) {
+            setStatus('WS probe failed (network/CORS/proxy)');
+            btnConnect.disabled = false;
+            btnDisconnect.disabled = true;
+            return;
+        }
 
         ws = new WebSocket(wsURL);
         ws.binaryType = 'arraybuffer';
@@ -178,13 +197,11 @@
             ws = null;
             btnConnect.disabled = false;
             btnDisconnect.disabled = true;
-            if (!statusEl.textContent.startsWith('Ошибка')) {
-                if (ev && ev.code && ev.code !== 1000) {
-                    setStatus('WebSocket закрыт: code=' + ev.code + (ev.reason ? (', reason=' + ev.reason) : ''));
-                } else {
-                    setStatus('');
-                }
+            if (ev && ev.code && ev.code !== 1000) {
+                setStatus('WebSocket закрыт: code=' + ev.code + (ev.reason ? (', reason=' + ev.reason) : ''));
+                return;
             }
+            if (!statusEl.textContent.startsWith('Ошибка')) setStatus('');
         };
     });
 })();

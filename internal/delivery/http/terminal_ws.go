@@ -201,7 +201,13 @@ func (h *Handlers) TerminalWS(w http.ResponseWriter, r *http.Request) {
 
 	conn, err := terminalUpgrader.Upgrade(w, r, nil)
 	if err != nil {
-		h.logger.Debug("terminal ws upgrade", zap.Error(err))
+		h.logger.Warn("terminal ws upgrade failed",
+			zap.Error(err),
+			zap.String("host", r.Host),
+			zap.String("origin", r.Header.Get("Origin")),
+			zap.String("xf_proto", r.Header.Get("X-Forwarded-Proto")),
+			zap.String("remote_addr", r.RemoteAddr),
+		)
 		return
 	}
 	defer conn.Close()
