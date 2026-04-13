@@ -62,7 +62,7 @@ jobs:
       - name: coverage minimum
         run: ./scripts/check_coverage.sh coverage.out
         env:
-          MIN_COVERAGE_PERCENT: "15"
+          MIN_COVERAGE_PERCENT: "20"
       - name: upload coverage to Codecov
         uses: codecov/codecov-action@v5
         with:

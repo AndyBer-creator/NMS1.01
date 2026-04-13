@@ -272,6 +272,33 @@ func TestIntegration_HTTP_HealthAndMetrics(t *testing.T) {
 	if !strings.Contains(string(b2), "# HELP") && !strings.Contains(string(b2), "nms_") {
 		t.Fatalf("metrics body missing expected prometheus exposition")
 	}
+
+	res3, err := http.Get(srv.URL + "/ready")
+	if err != nil {
+		t.Fatalf("GET /ready: %v", err)
+	}
+	defer func() { _ = res3.Body.Close() }()
+	b3, _ := io.ReadAll(res3.Body)
+	if res3.StatusCode != http.StatusOK {
+		t.Fatalf("ready: %d %s", res3.StatusCode, b3)
+	}
+	var ready map[string]any
+	if err := json.Unmarshal(b3, &ready); err != nil {
+		t.Fatalf("ready json: %v", err)
+	}
+	if ready["status"] != "ready" {
+		t.Fatalf("ready status: %v", ready["status"])
+	}
+
+	res4, err := http.Get(srv.URL + "/health")
+	if err != nil {
+		t.Fatalf("GET /health for request-id: %v", err)
+	}
+	defer func() { _ = res4.Body.Close() }()
+	_, _ = io.Copy(io.Discard, res4.Body)
+	if rid := res4.Header.Get("X-Request-ID"); rid == "" {
+		t.Fatal("expected X-Request-ID on /health")
+	}
 }
 
 func TestIntegration_HTTP_HTTPSPolicyRedirectAndBypass(t *testing.T) {
@@ -325,6 +352,29 @@ func TestIntegration_HTTP_HTTPSPolicyRedirectAndBypass(t *testing.T) {
 	}
 	if !strings.Contains(string(metricsBody), "# HELP") && !strings.Contains(string(metricsBody), "nms_") {
 		t.Fatalf("metrics bypass body missing expected prometheus exposition")
+	}
+
+	res4, err := http.Get(srv.URL + "/ready")
+	if err != nil {
+		t.Fatalf("GET /ready bypass: %v", err)
+	}
+	rb, _ := io.ReadAll(res4.Body)
+	_ = res4.Body.Close()
+	if res4.StatusCode != http.StatusOK {
+		t.Fatalf("ready bypass: %d %s", res4.StatusCode, rb)
+	}
+
+	res5, err := http.Get(srv.URL + "/.well-known/security.txt")
+	if err != nil {
+		t.Fatalf("GET security.txt bypass: %v", err)
+	}
+	sb, _ := io.ReadAll(res5.Body)
+	_ = res5.Body.Close()
+	if res5.StatusCode != http.StatusOK {
+		t.Fatalf("security.txt bypass: %d %s", res5.StatusCode, sb)
+	}
+	if !strings.Contains(string(sb), "Contact:") {
+		t.Fatalf("security.txt body unexpected: %q", sb)
 	}
 }
 

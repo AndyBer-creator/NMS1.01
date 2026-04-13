@@ -1,0 +1,271 @@
+openapi: 3.0.3
+info:
+  title: NMS1 API
+  description: |
+    SNMP NMS: устройства, трапы, SNMP GET/SET, MIB. HTML-страницы не описаны здесь полностью.
+
+    **Публично без авторизации:** `GET /health`, `GET /ready`, `GET /metrics`, `GET|POST /login`, `POST /alerts/webhook`.
+
+    Остальные пути — после входа (cookie-сессия или HTTP Basic с теми же учётными данными).
+
+    Спецификация отдаётся как `GET /api/openapi.yaml` (нужна авторизация).
+  version: "1.0.0"
+servers:
+  - url: /
+    description: Текущий хост (замените на базовый URL стенда)
+
+tags:
+  - name: health
+  - name: devices
+  - name: traps
+  - name: snmp
+
+paths:
+  /health:
+    get:
+      tags: [health]
+      summary: Liveness (процесс жив)
+      responses:
+        "200":
+          description: OK
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: OK
+
+  /ready:
+    get:
+      tags: [health]
+      summary: Readiness (БД доступна)
+      responses:
+        "200":
+          description: Готов принимать трафик
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReadyOK"
+        "503":
+          description: БД недоступна
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReadyFail"
+
+  /metrics:
+    get:
+      tags: [health]
+      summary: Prometheus metrics
+      responses:
+        "200":
+          description: text exposition format
+
+  /devices:
+    get:
+      tags: [devices]
+      summary: Список устройств (JSON)
+      security:
+        - sessionOrBasic: []
+      responses:
+        "200":
+          description: Массив устройств
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Device"
+    post:
+      tags: [devices]
+      summary: Создать устройство (admin)
+      security:
+        - sessionOrBasic: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DeviceCreate"
+      responses:
+        "200":
+          description: Создано
+        "400":
+          description: Ошибка валидации
+        "403":
+          description: Не admin
+
+  /devices/{id}:
+    parameters:
+      - $ref: "#/components/parameters/deviceId"
+    delete:
+      tags: [devices]
+      summary: Удалить устройство (admin)
+      security:
+        - sessionOrBasic: []
+      responses:
+        "200":
+          description: HTML-фрагмент таблицы (HTMX)
+        "403": {}
+        "404": {}
+    post:
+      tags: [devices]
+      summary: Обновить устройство — форма (admin)
+      security:
+        - sessionOrBasic: []
+      responses:
+        "200":
+          description: HTML строка таблицы
+
+  /devices/{id}/metric/{oid}:
+    parameters:
+      - $ref: "#/components/parameters/deviceId"
+      - name: oid
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Числовой OID или символьное имя (URL-encode)
+    get:
+      tags: [snmp]
+      summary: SNMP GET одного OID
+      security:
+        - sessionOrBasic: []
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties:
+                  type: string
+
+  /devices/{id}/snmp/set:
+    parameters:
+      - $ref: "#/components/parameters/deviceId"
+    post:
+      tags: [snmp]
+      summary: SNMP SET (admin)
+      security:
+        - sessionOrBasic: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [oid, type]
+              properties:
+                oid:
+                  type: string
+                type:
+                  type: string
+                  example: Integer
+                value: {}
+                validate_only:
+                  type: boolean
+      responses:
+        "200": {}
+        "400": {}
+        "403": {}
+        "404": {}
+
+  /traps:
+    get:
+      tags: [traps]
+      summary: Список трапов
+      security:
+        - sessionOrBasic: []
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+        - name: device_id
+          in: query
+          schema:
+            type: integer
+          description: Фильтр по id устройства в БД
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+
+  /api/openapi.yaml:
+    get:
+      tags: [health]
+      summary: Эта спецификация (YAML)
+      security:
+        - sessionOrBasic: []
+      responses:
+        "200":
+          content:
+            application/yaml:
+              schema:
+                type: string
+
+components:
+  securitySchemes:
+    sessionOrBasic:
+      type: http
+      scheme: basic
+      description: Cookie-сессия после POST /login или тот же логин/пароль через Basic.
+
+  parameters:
+    deviceId:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+        minimum: 1
+      description: Числовой id устройства в БД
+
+  schemas:
+    ReadyOK:
+      type: object
+      properties:
+        status:
+          type: string
+          example: ready
+        checks:
+          type: object
+          additionalProperties:
+            type: string
+    ReadyFail:
+      type: object
+      properties:
+        status:
+          type: string
+          example: not_ready
+        checks:
+          type: object
+    Device:
+      type: object
+      properties:
+        id:
+          type: integer
+        ip:
+          type: string
+        name:
+          type: string
+        snmp_version:
+          type: string
+        status:
+          type: string
+    DeviceCreate:
+      type: object
+      required: [ip, name]
+      properties:
+        ip:
+          type: string
+        name:
+          type: string
+        community:
+          type: string
+        snmp_version:
+          type: string

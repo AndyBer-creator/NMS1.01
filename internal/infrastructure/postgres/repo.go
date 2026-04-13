@@ -41,6 +41,11 @@ func (r *Repo) Close() error {
 	return r.db.Close()
 }
 
+// Ping проверяет доступность БД (readiness probe).
+func (r *Repo) Ping(ctx context.Context) error {
+	return r.db.PingContext(ctx)
+}
+
 // Devices
 func (r *Repo) GetDeviceByIP(ip string) (*domain.Device, error) {
 	device := &domain.Device{}
