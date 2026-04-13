@@ -158,6 +158,10 @@
                         ws.close();
                         return;
                     }
+                    if (j.type === 'connecting') {
+                        setStatus(j.message || 'Подключение к устройству…');
+                        return;
+                    }
                     if (j.type === 'ok') {
                         setStatus('Сессия');
                         term.focus();
