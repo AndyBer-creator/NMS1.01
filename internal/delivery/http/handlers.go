@@ -70,6 +70,7 @@ type Handlers struct {
 	devicesTmpl   *template.Template // devicesTable + devicesPage
 	mibPanelTmpl  *template.Template
 	loginTmpl     *template.Template
+	terminalTmpl  *template.Template
 	mibUploadDir  string
 	mib           *mibresolver.Resolver
 }
@@ -84,6 +85,7 @@ func NewHandlers(repo *postgres.Repo, snmpClient *snmp.Client, scanner *discover
 	))
 	mibPanelTmpl := template.Must(template.ParseFiles("templates/mibs_panel.html"))
 	loginTmpl := template.Must(template.ParseFiles("templates/login.html"))
+	terminalTmpl := template.Must(template.ParseFiles("templates/device_terminal.html"))
 
 	h := &Handlers{
 		repo:          repo,
@@ -95,6 +97,7 @@ func NewHandlers(repo *postgres.Repo, snmpClient *snmp.Client, scanner *discover
 		devicesTmpl:   devicesTmpl,
 		mibPanelTmpl:  mibPanelTmpl,
 		loginTmpl:     loginTmpl,
+		terminalTmpl:  terminalTmpl,
 		mibUploadDir:  mibUploadDir,
 		mib:           mib,
 	}

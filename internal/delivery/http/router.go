@@ -43,6 +43,8 @@ func Router(handlers *Handlers) *chi.Mux {
 		r.With(RequireAdmin).Post("/devices/{id}", handlers.UpdateDevice)
 		r.With(RequireAdmin).Delete("/devices/{id}", handlers.DeleteDevice)
 		r.With(RequireAdmin).Post("/devices/{id}/snmp/set", handlers.SetSNMP)
+		r.With(RequireAdmin).Get("/devices/{id}/terminal", handlers.TerminalPage)
+		r.With(RequireAdmin).Get("/ws/terminal/{id}", handlers.TerminalWS)
 
 		r.With(RequireAdmin).Post("/discovery/scan", handlers.DiscoverScan)
 
