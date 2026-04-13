@@ -93,6 +93,7 @@ type terminalWSClaims struct {
 
 func terminalKindFromQuery(r *http.Request) string {
 	k := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("kind")))
+	k = strings.Trim(k, "\"'")
 	switch k {
 	case "telnet":
 		return "telnet"
@@ -192,6 +193,11 @@ func verifyTerminalWSToken(token string, deviceID int) *authUser {
 // Далее: бинарные кадры — ввод в PTY/TCP; текст JSON {"type":"resize","cols":n,"rows":m} для SSH.
 // С сервера: бинарные кадры — вывод терминала; при ошибке — текст JSON {"type":"error",...}.
 func (h *Handlers) TerminalWS(w http.ResponseWriter, r *http.Request) {
+	h.logger.Info("terminal ws request",
+		zap.String("path", r.URL.Path),
+		zap.String("query_kind", r.URL.Query().Get("kind")),
+		zap.String("remote_addr", r.RemoteAddr),
+	)
 	id, err := deviceIDFromChi(r)
 	if err != nil {
 		http.Error(w, "bad device id", http.StatusBadRequest)

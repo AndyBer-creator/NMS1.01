@@ -26,6 +26,7 @@ func Router(handlers *Handlers) http.Handler {
 func terminalWSRouter(handlers *Handlers) http.Handler {
 	r := chi.NewRouter()
 	r.Use(middleware.RequestID)
+	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
 	r.Use(SecurityHeaders)
 	r.Use(EnforceHTTPS)
