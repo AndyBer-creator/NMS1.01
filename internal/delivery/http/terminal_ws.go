@@ -268,6 +268,9 @@ func (h *Handlers) TerminalWS(w http.ResponseWriter, r *http.Request) {
 	dialTimeout := terminalDialTimeout()
 	deadline := terminalSessionDeadline()
 
+	// Сразу после init — чтобы UI не «висел» молча на долгом Dial (особенно Telnet/SSH).
+	_ = wsWriteText(conn, &connWriteMu, terminalJSON("connecting", "параметры приняты, подключаюсь к "+addr+" ("+kind+")…"))
+
 	nmsUser := u.username
 	h.logger.Info("terminal session start",
 		zap.String("nms_user", nmsUser),

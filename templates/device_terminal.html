@@ -76,6 +76,14 @@
     const textEnc = new TextEncoder();
     let ws = null;
     let sessionReady = false;
+    let hangTimer = null;
+
+    function clearHangTimer() {
+        if (hangTimer) {
+            clearTimeout(hangTimer);
+            hangTimer = null;
+        }
+    }
 
     const term = new Terminal({
         cursorBlink: true,
@@ -141,7 +149,7 @@
     });
 
     function sendResize() {
-        if (!ws || ws.readyState !== WebSocket.OPEN) return;
+        if (!sessionReady || !ws || ws.readyState !== WebSocket.OPEN) return;
         ws.send(JSON.stringify({
             type: 'resize',
             cols: term.cols,
@@ -150,7 +158,10 @@
     }
 
     window.addEventListener('resize', function () {
-        try { fitAddon.fit(); sendResize(); } catch (e) {}
+        try {
+            fitAddon.fit();
+            if (sessionReady) sendResize();
+        } catch (e) {}
     });
 
     function strFromBuf(ab) {
@@ -165,6 +176,7 @@
 
     btnDisconnect.addEventListener('click', function () {
         sessionReady = false;
+        clearHangTimer();
         if (ws) {
             ws.close();
             ws = null;
@@ -178,6 +190,7 @@
     btnConnect.addEventListener('click', function () {
         if (ws && ws.readyState === WebSocket.OPEN) return;
         sessionReady = false;
+        clearHangTimer();
         clearErrorPanel();
         term.reset();
         fitAddon.fit();
@@ -200,35 +213,62 @@
                 init = { type: 'init', username: user, password: pass, port: port };
             }
             ws.send(JSON.stringify(init));
+            setStatus('Ожидание ответа сервера…');
+            clearHangTimer();
+            hangTimer = setTimeout(function () {
+                if (!sessionReady && ws && ws.readyState === WebSocket.OPEN) {
+                    var msg = 'Таймаут: за 150 с нет ответа от сервера. Пересоберите API, проверьте сеть до устройства с хоста, где крутится nms-api.';
+                    setLastError(msg);
+                    setStatus('Таймаут');
+                    try { ws.close(); } catch (e) {}
+                }
+            }, 150000);
         };
+
+        function tryHandleJsonText(s) {
+            if (!s || s.charAt(0) !== '{') return false;
+            try {
+                var j = JSON.parse(s);
+                if (j.type === 'error') {
+                    clearHangTimer();
+                    var em = j.message || 'ошибка';
+                    setLastError(em);
+                    setStatus('Ошибка: ' + em);
+                    term.writeln('\r\n\x1b[31m' + em + '\x1b[0m');
+                    ws.close();
+                    return true;
+                }
+                if (j.type === 'connecting') {
+                    setStatus(j.message || 'Подключение к устройству…');
+                    return true;
+                }
+                if (j.type === 'ok') {
+                    clearHangTimer();
+                    sessionReady = true;
+                    setStatus('Сессия');
+                    term.focus();
+                    sendResize();
+                    return true;
+                }
+            } catch (e) {}
+            return false;
+        }
 
         ws.onmessage = function (ev) {
             if (typeof ev.data === 'string') {
-                try {
-                    const j = JSON.parse(ev.data);
-                    if (j.type === 'error') {
-                        var em = j.message || 'ошибка';
-                        setLastError(em);
-                        setStatus('Ошибка: ' + em);
-                        term.writeln('\r\n\x1b[31m' + em + '\x1b[0m');
-                        ws.close();
-                        return;
-                    }
-                    if (j.type === 'connecting') {
-                        setStatus(j.message || 'Подключение к устройству…');
-                        return;
-                    }
-                    if (j.type === 'ok') {
-                        sessionReady = true;
-                        setStatus('Сессия');
-                        term.focus();
-                        sendResize();
-                        return;
-                    }
-                } catch (e) {}
+                if (tryHandleJsonText(ev.data)) return;
+                return;
+            }
+            if (ev.data instanceof Blob) {
+                ev.data.text().then(function (t) {
+                    if (tryHandleJsonText(t)) return;
+                    term.write(t);
+                });
                 return;
             }
             if (ev.data instanceof ArrayBuffer) {
+                var dec = new TextDecoder('utf-8', { fatal: false }).decode(ev.data);
+                if (tryHandleJsonText(dec)) return;
                 term.write(strFromBuf(ev.data));
             }
         };
@@ -238,6 +278,7 @@
         };
         ws.onclose = function (ev) {
             sessionReady = false;
+            clearHangTimer();
             ws = null;
             btnConnect.disabled = false;
             btnDisconnect.disabled = true;
