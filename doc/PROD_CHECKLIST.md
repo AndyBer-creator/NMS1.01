@@ -1,6 +1,6 @@
 # NMS1 Production Readiness Checklist
 
-Дата обновления: 2026-04-10
+Дата обновления: 2026-04-13
 
 Этот файл фиксирует минимальные требования для безопасного go-live и текущий статус проекта.
 
@@ -14,7 +14,7 @@
 - [x] RBAC (admin/viewer) реализован на сервере
   - `RequireAdmin` стоит на mutating-роутах (`/devices`, `/discovery/scan`, `/devices/{id}/snmp/set`, и т.д.).
   - UI для viewer скрыт (без discovery/add/edit/delete/SNMP SET/кнопок HTTP/HTTPS/SSH/Telnet).
-  - Добавлен и успешно прогнан регрессионный smoke: `scripts/rbac_smoke_test.sh` (`make rbac-smoke`, 2026-04-09).
+  - Добавлен и успешно прогнан регрессионный smoke: `scripts/rbac_smoke_test.sh` (`make rbac-smoke`, в т.ч. `GET /devices/{id}/edit` для viewer → 403).
 
 - [x] Веб-логин реализован (`/login` + cookie session)
   - Есть logout и ограничение прав для viewer.
@@ -85,7 +85,7 @@
 - [x] Интеграционные тесты критичных сценариев
   - HTTP: RBAC/CSRF (viewer vs admin), CRUD устройств, настройки worker/email, discovery/MIB/SNMP/test-alert; `internal/testdb` для ping БД; `make test-integration` и пакет `internal/delivery/http` (`-run Integration`).
   - PostgreSQL/traps: `internal/infrastructure/postgres`, `internal/repository` при `DB_DSN`.
-  - CI: unit + integration (см. `.github/workflows/test.yml`), порог покрытия по `scripts/check_coverage.sh` (по умолчанию 15%).
+  - CI: unit + integration (см. `.github/workflows/test.yml`), job **static-css-sync** (Tailwind `app.css` совпадает с билдом), порог покрытия по `scripts/check_coverage.sh` (по умолчанию 15%).
 
 - [x] Нагрузочные прогоны (k6)
   - Read-only: `make k6-readonly` (GET `/health` / `/metrics`).

@@ -85,6 +85,8 @@ echo "[rbac] viewer must be forbidden on admin routes"
 expect_status "403" "POST" "$BASE_URL/settings/worker-poll-interval" "$viewer_jar" "$viewer_csrf" "interval_sec=60" "application/x-www-form-urlencoded"
 expect_status "403" "POST" "$BASE_URL/discovery/scan" "$viewer_jar" "$viewer_csrf" "{\"cidr\":\"192.0.2.0/24\"}" "application/json"
 expect_status "403" "POST" "$BASE_URL/devices" "$viewer_jar" "$viewer_csrf" "ip=192.0.2.10&name=x&community=public&snmp_version=v2c" "application/x-www-form-urlencoded"
+# Редактирование строки устройства в UI — только admin; id произвольный (403 до поиска в БД).
+expect_status "403" "GET" "$BASE_URL/devices/1/edit" "$viewer_jar" "$viewer_csrf" "" ""
 
 echo "[rbac] admin must be allowed to reach same handlers"
 # Expected non-403: we send minimal/invalid payloads, so 200/400 are both acceptable.
