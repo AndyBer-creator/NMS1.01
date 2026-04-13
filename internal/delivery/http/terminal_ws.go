@@ -252,6 +252,7 @@ func (h *Handlers) TerminalWS(w http.ResponseWriter, r *http.Request) {
 		if err := h.runTerminalTelnet(r.Context(), conn, addr, dialTimeout, deadline); err != nil {
 			h.logger.Warn("terminal telnet ended", zap.Error(err))
 			_ = wsWriteText(conn, nil, terminalJSON("error", err.Error()))
+			_ = conn.WriteControl(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, "telnet ended"), time.Now().Add(2*time.Second))
 		}
 		h.logger.Info("terminal session end",
 			zap.String("nms_user", nmsUser),
@@ -263,12 +264,14 @@ func (h *Handlers) TerminalWS(w http.ResponseWriter, r *http.Request) {
 
 	if strings.TrimSpace(init.Username) == "" {
 		_ = wsWriteText(conn, nil, terminalJSON("error", "ssh username required"))
+		_ = conn.WriteControl(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.ClosePolicyViolation, "ssh username required"), time.Now().Add(2*time.Second))
 		return
 	}
 
 	if err := h.runTerminalSSH(r.Context(), conn, addr, init.Username, init.Password, dialTimeout, deadline); err != nil {
 		h.logger.Warn("terminal ssh ended", zap.Error(err))
 		_ = wsWriteText(conn, nil, terminalJSON("error", err.Error()))
+		_ = conn.WriteControl(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, "ssh ended"), time.Now().Add(2*time.Second))
 	}
 
 	h.logger.Info("terminal session end",
