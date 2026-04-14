@@ -397,6 +397,7 @@ make load-http-readonly
 
 - **`.github/workflows/test.yml`** — **push**/**pull_request**/**workflow_dispatch**: **lint**, **vuln**, **unit** (race, coverage, порог), **integration** (Postgres). Ручной полный прогон: **Actions → test → Run workflow**. У GitHub отключаются **расписания** после длительной неактивности репозитория (~60 дней без коммитов).
 - **`.github/workflows/nightly-lite.yml`** — **ежедневно в 04:15 UTC** только **lint** и **govulncheck** (без тестов и БД). Полный набор тестов по расписанию не гоняется, чтобы экономить минуты раннеров; при необходимости верните `schedule` в `test.yml` или добавьте отдельный workflow.
+- **`.github/workflows/promote.yml`** — ручной **stage → prod promotion**: фиксирует продвигаемый SHA, требует approvals через environments `stage` и `prod`, умеет прогонять `e2e_http_smoke.sh` по `STAGE_BASE_URL`/`PROD_BASE_URL` (или inputs), публикует `promotion-manifest` и `rollback-handoff`.
 
 - **lint** — **golangci-lint** v2.6.1 (`golangci/golangci-lint-action`, настройки в **`.golangci.yml`**);
 - **vuln** — **`govulncheck ./...`**; локально для деталей по «уязвимости в зависимостях»: `go run golang.org/x/vuln/cmd/govulncheck@v1.2.0 -show verbose ./...`;
@@ -406,6 +407,10 @@ make load-http-readonly
 - **compose-security** — policy-check для `docker-compose*.yml` и `Dockerfile` (запрещены `privileged: true`, `:latest`, disabled healthchecks);
 - **unit** — тесты с **`-race`**, покрытие, порог **`scripts/check_coverage.sh`** (по умолчанию **22%**, переменная `MIN_COVERAGE_PERCENT`), загрузка в **Codecov** (ошибка загрузки не валит job), артефакт **`coverage-out`**; при push в ту же ветку предыдущий прогон этого workflow **отменяется** (`concurrency`);
 - **integration** — миграции, Postgres, тесты `Integration` с **`-race`**.
+
+Для корректной работы approval-гейтов в promotion workflow настройте в GitHub Environments:
+- `stage` и `prod` с Required reviewers;
+- при необходимости Repository Variables: `STAGE_BASE_URL`, `PROD_BASE_URL` (например `https://nms-stage.example.com`, `https://nms.example.com`).
 
 Обновления зависимостей: **Dependabot** (`.github/dependabot.yml`) — еженедельно `gomod` и **GitHub Actions**. Для **приватного** репозитория в Codecov обычно задают секрет **`CODECOV_TOKEN`** (Settings → Secrets → Actions); без токена загрузка отчёта может быть нестабильной, в CI это не валит job.
 
