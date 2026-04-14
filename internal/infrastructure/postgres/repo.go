@@ -13,7 +13,8 @@ import (
 )
 
 type Repo struct {
-	db *sql.DB
+	db        *sql.DB
+	protector *secretProtector
 }
 
 type SNMPSetAuditRecord struct {
@@ -34,7 +35,12 @@ func New(dsn string) (*Repo, error) {
 	db.SetMaxOpenConns(25)
 	db.SetMaxIdleConns(25)
 	db.SetConnMaxLifetime(5 * time.Minute)
-	return &Repo{db: db}, nil
+	protector, err := newSecretProtectorFromEnv()
+	if err != nil {
+		_ = db.Close()
+		return nil, err
+	}
+	return &Repo{db: db, protector: protector}, nil
 }
 
 func (r *Repo) Close() error {
@@ -54,13 +60,12 @@ func (r *Repo) GetDeviceByIP(ip string) (*domain.Device, error) {
 	var lastPollOKAt sql.NullTime
 
 	query := `
-        SELECT id, ip, name, community,
+        SELECT id, ip, name, COALESCE(community, ''),
+               community_enc,
                COALESCE(version, 'unknown'),
                COALESCE(snmp_version, 'v2c'),
-               COALESCE(auth_proto, ''),
-               COALESCE(auth_pass, ''),
-               COALESCE(priv_proto, ''),
-               COALESCE(priv_pass, ''),
+               COALESCE(auth_proto, ''), COALESCE(auth_pass, ''), auth_pass_enc,
+               COALESCE(priv_proto, ''), COALESCE(priv_pass, ''), priv_pass_enc,
                COALESCE(status, 'active'),
                COALESCE(created_at, NOW()),
                COALESCE(last_seen, created_at),
@@ -69,17 +74,22 @@ func (r *Repo) GetDeviceByIP(ip string) (*domain.Device, error) {
                last_poll_ok_at
         FROM devices WHERE ip = $1`
 
+	var communityPlain, authPassPlain, privPassPlain string
+	var communityEnc, authPassEnc, privPassEnc sql.NullString
 	err := r.db.QueryRowContext(context.Background(), query, ip).Scan(
 		&device.ID,
 		&device.IP,
 		&device.Name,
-		&device.Community,
+		&communityPlain,
+		&communityEnc,
 		&device.Version,
 		&device.SNMPVersion,
 		&device.AuthProto,
-		&device.AuthPass,
+		&authPassPlain,
+		&authPassEnc,
 		&device.PrivProto,
-		&device.PrivPass,
+		&privPassPlain,
+		&privPassEnc,
 		&device.Status,
 		&device.CreatedAt,
 		&lastSeenSql,
@@ -89,6 +99,21 @@ func (r *Repo) GetDeviceByIP(ip string) (*domain.Device, error) {
 
 	if err == sql.ErrNoRows {
 		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	device.Community, err = r.protector.mergeSecretFromStorage(communityPlain, communityEnc)
+	if err != nil {
+		return nil, err
+	}
+	device.AuthPass, err = r.protector.mergeSecretFromStorage(authPassPlain, authPassEnc)
+	if err != nil {
+		return nil, err
+	}
+	device.PrivPass, err = r.protector.mergeSecretFromStorage(privPassPlain, privPassEnc)
+	if err != nil {
+		return nil, err
 	}
 	if lastSeenSql.Valid {
 		device.LastSeen = lastSeenSql.Time
@@ -113,13 +138,12 @@ func (r *Repo) GetDeviceByID(id int) (*domain.Device, error) {
 	var lastPollOKAt sql.NullTime
 
 	query := `
-        SELECT id, ip, name, community,
+        SELECT id, ip, name, COALESCE(community, ''),
+               community_enc,
                COALESCE(version, 'unknown'),
                COALESCE(snmp_version, 'v2c'),
-               COALESCE(auth_proto, ''),
-               COALESCE(auth_pass, ''),
-               COALESCE(priv_proto, ''),
-               COALESCE(priv_pass, ''),
+               COALESCE(auth_proto, ''), COALESCE(auth_pass, ''), auth_pass_enc,
+               COALESCE(priv_proto, ''), COALESCE(priv_pass, ''), priv_pass_enc,
                COALESCE(status, 'active'),
                COALESCE(created_at, NOW()),
                COALESCE(last_seen, created_at),
@@ -128,17 +152,22 @@ func (r *Repo) GetDeviceByID(id int) (*domain.Device, error) {
                last_poll_ok_at
         FROM devices WHERE id = $1`
 
+	var communityPlain, authPassPlain, privPassPlain string
+	var communityEnc, authPassEnc, privPassEnc sql.NullString
 	err := r.db.QueryRowContext(context.Background(), query, id).Scan(
 		&device.ID,
 		&device.IP,
 		&device.Name,
-		&device.Community,
+		&communityPlain,
+		&communityEnc,
 		&device.Version,
 		&device.SNMPVersion,
 		&device.AuthProto,
-		&device.AuthPass,
+		&authPassPlain,
+		&authPassEnc,
 		&device.PrivProto,
-		&device.PrivPass,
+		&privPassPlain,
+		&privPassEnc,
 		&device.Status,
 		&device.CreatedAt,
 		&lastSeenSql,
@@ -148,6 +177,21 @@ func (r *Repo) GetDeviceByID(id int) (*domain.Device, error) {
 
 	if err == sql.ErrNoRows {
 		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	device.Community, err = r.protector.mergeSecretFromStorage(communityPlain, communityEnc)
+	if err != nil {
+		return nil, err
+	}
+	device.AuthPass, err = r.protector.mergeSecretFromStorage(authPassPlain, authPassEnc)
+	if err != nil {
+		return nil, err
+	}
+	device.PrivPass, err = r.protector.mergeSecretFromStorage(privPassPlain, privPassEnc)
+	if err != nil {
+		return nil, err
 	}
 	if lastSeenSql.Valid {
 		device.LastSeen = lastSeenSql.Time
@@ -166,13 +210,16 @@ func (r *Repo) ListDevices() ([]*domain.Device, error) {
 		`SELECT id,
                  ip,
                  name,
-                 COALESCE(community, 'public'),
+                 COALESCE(community, ''),
+                 community_enc,
                  COALESCE(version, 'unknown'),
                  COALESCE(snmp_version, 'v2c'),
                  COALESCE(auth_proto, '') as auth_proto,
                  COALESCE(auth_pass, '') as auth_pass,
+                 auth_pass_enc,
                  COALESCE(priv_proto, '') as priv_proto,
                  COALESCE(priv_pass, '') as priv_pass,
+                 priv_pass_enc,
                  COALESCE(status, 'active') as status,
                  COALESCE(created_at, NOW()) as created_at,
                  COALESCE(last_seen, created_at) as last_seen,
@@ -190,17 +237,22 @@ func (r *Repo) ListDevices() ([]*domain.Device, error) {
 		device := &domain.Device{}
 		var lastErrorAt sql.NullTime
 		var lastPollOKAt sql.NullTime
+		var communityPlain, authPassPlain, privPassPlain string
+		var communityEnc, authPassEnc, privPassEnc sql.NullString
 		if err := rows.Scan(
 			&device.ID,
 			&device.IP,
 			&device.Name,
-			&device.Community,
+			&communityPlain,
+			&communityEnc,
 			&device.Version,
 			&device.SNMPVersion,
 			&device.AuthProto,
-			&device.AuthPass,
+			&authPassPlain,
+			&authPassEnc,
 			&device.PrivProto,
-			&device.PrivPass,
+			&privPassPlain,
+			&privPassEnc,
 			&device.Status,
 			&device.CreatedAt,
 			&device.LastSeen,
@@ -208,6 +260,18 @@ func (r *Repo) ListDevices() ([]*domain.Device, error) {
 			&lastErrorAt,
 			&lastPollOKAt,
 		); err != nil {
+			return nil, err
+		}
+		device.Community, err = r.protector.mergeSecretFromStorage(communityPlain, communityEnc)
+		if err != nil {
+			return nil, err
+		}
+		device.AuthPass, err = r.protector.mergeSecretFromStorage(authPassPlain, authPassEnc)
+		if err != nil {
+			return nil, err
+		}
+		device.PrivPass, err = r.protector.mergeSecretFromStorage(privPassPlain, privPassEnc)
+		if err != nil {
 			return nil, err
 		}
 		if lastErrorAt.Valid {
@@ -275,36 +339,46 @@ func (r *Repo) UpdateDeviceByIP(ip string, patch *domain.Device) (*domain.Device
 	if authProto.Valid {
 		authProto.String = strings.TrimSpace(patch.AuthProto)
 	}
-	authPass := sql.NullString{Valid: patch.AuthPass != ""}
-	if authPass.Valid {
-		authPass.String = patch.AuthPass
+	authPassPlain, authPassEnc, err := r.protector.splitSecretForStorage(patch.AuthPass)
+	if err != nil {
+		return nil, err
 	}
 	privProto := sql.NullString{Valid: strings.TrimSpace(patch.PrivProto) != ""}
 	if privProto.Valid {
 		privProto.String = strings.TrimSpace(patch.PrivProto)
 	}
-	privPass := sql.NullString{Valid: patch.PrivPass != ""}
-	if privPass.Valid {
-		privPass.String = patch.PrivPass
+	privPassPlain, privPassEnc, err := r.protector.splitSecretForStorage(patch.PrivPass)
+	if err != nil {
+		return nil, err
+	}
+	communityPlain, communityEnc, err := r.protector.splitSecretForStorage(patch.Community)
+	if err != nil {
+		return nil, err
 	}
 
 	_, err = r.db.ExecContext(context.Background(), `
 		UPDATE devices
 		SET name = $1,
 		    community = $2,
-		    snmp_version = $3,
-		    auth_proto = $4,
-		    auth_pass = $5,
-		    priv_proto = $6,
-		    priv_pass = $7
-		WHERE ip = $8`,
+		    community_enc = $3,
+		    snmp_version = $4,
+		    auth_proto = $5,
+		    auth_pass = $6,
+		    auth_pass_enc = $7,
+		    priv_proto = $8,
+		    priv_pass = $9,
+		    priv_pass_enc = $10
+		WHERE ip = $11`,
 		strings.TrimSpace(patch.Name),
-		strings.TrimSpace(patch.Community),
+		communityPlain,
+		communityEnc,
 		snmpVer,
 		authProto,
-		authPass,
+		authPassPlain,
+		authPassEnc,
 		privProto,
-		privPass,
+		privPassPlain,
+		privPassEnc,
 		ip,
 	)
 	if err != nil {
@@ -328,35 +402,45 @@ func (r *Repo) UpdateDeviceByID(id int, patch *domain.Device) (*domain.Device, e
 	if authProto.Valid {
 		authProto.String = strings.TrimSpace(patch.AuthProto)
 	}
-	authPass := sql.NullString{Valid: patch.AuthPass != ""}
-	if authPass.Valid {
-		authPass.String = patch.AuthPass
+	authPassPlain, authPassEnc, err := r.protector.splitSecretForStorage(patch.AuthPass)
+	if err != nil {
+		return nil, err
 	}
 	privProto := sql.NullString{Valid: strings.TrimSpace(patch.PrivProto) != ""}
 	if privProto.Valid {
 		privProto.String = strings.TrimSpace(patch.PrivProto)
 	}
-	privPass := sql.NullString{Valid: patch.PrivPass != ""}
-	if privPass.Valid {
-		privPass.String = patch.PrivPass
+	privPassPlain, privPassEnc, err := r.protector.splitSecretForStorage(patch.PrivPass)
+	if err != nil {
+		return nil, err
+	}
+	communityPlain, communityEnc, err := r.protector.splitSecretForStorage(patch.Community)
+	if err != nil {
+		return nil, err
 	}
 	_, err = r.db.ExecContext(context.Background(), `
 		UPDATE devices
 		SET name = $1,
 		    community = $2,
-		    snmp_version = $3,
-		    auth_proto = $4,
-		    auth_pass = $5,
-		    priv_proto = $6,
-		    priv_pass = $7
-		WHERE id = $8`,
+		    community_enc = $3,
+		    snmp_version = $4,
+		    auth_proto = $5,
+		    auth_pass = $6,
+		    auth_pass_enc = $7,
+		    priv_proto = $8,
+		    priv_pass = $9,
+		    priv_pass_enc = $10
+		WHERE id = $11`,
 		strings.TrimSpace(patch.Name),
-		strings.TrimSpace(patch.Community),
+		communityPlain,
+		communityEnc,
 		snmpVer,
 		authProto,
-		authPass,
+		authPassPlain,
+		authPassEnc,
 		privProto,
-		privPass,
+		privPassPlain,
+		privPassEnc,
 		id,
 	)
 	if err != nil {
@@ -384,26 +468,30 @@ func (r *Repo) CreateDevice(device *domain.Device) error {
 	if authProto.Valid {
 		authProto.String = device.AuthProto
 	}
-	authPass := sql.NullString{Valid: device.AuthPass != ""}
-	if authPass.Valid {
-		authPass.String = device.AuthPass
+	authPassPlain, authPassEnc, err := r.protector.splitSecretForStorage(device.AuthPass)
+	if err != nil {
+		return err
 	}
 	privProto := sql.NullString{Valid: strings.TrimSpace(device.PrivProto) != ""}
 	if privProto.Valid {
 		privProto.String = device.PrivProto
 	}
-	privPass := sql.NullString{Valid: device.PrivPass != ""}
-	if privPass.Valid {
-		privPass.String = device.PrivPass
+	privPassPlain, privPassEnc, err := r.protector.splitSecretForStorage(device.PrivPass)
+	if err != nil {
+		return err
+	}
+	communityPlain, communityEnc, err := r.protector.splitSecretForStorage(device.Community)
+	if err != nil {
+		return err
 	}
 
 	query := `
-        INSERT INTO devices (ip, name, community, snmp_version, auth_proto, auth_pass, priv_proto, priv_pass, status)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'active')
+        INSERT INTO devices (ip, name, community, community_enc, snmp_version, auth_proto, auth_pass, auth_pass_enc, priv_proto, priv_pass, priv_pass_enc, status)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 'active')
         RETURNING id, created_at`
 
 	return r.db.QueryRowContext(context.Background(), query,
-		device.IP, device.Name, device.Community, snmpVer, authProto, authPass, privProto, privPass).
+		device.IP, device.Name, communityPlain, communityEnc, snmpVer, authProto, authPassPlain, authPassEnc, privProto, privPassPlain, privPassEnc).
 		Scan(&device.ID, &device.CreatedAt)
 }
 

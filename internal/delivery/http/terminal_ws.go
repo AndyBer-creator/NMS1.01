@@ -1,6 +1,7 @@
 package http
 
 import (
+	"NMS1/internal/config"
 	"context"
 	"crypto/hmac"
 	"crypto/sha256"
@@ -23,6 +24,7 @@ import (
 	"github.com/gorilla/websocket"
 	"go.uber.org/zap"
 	"golang.org/x/crypto/ssh"
+	"golang.org/x/crypto/ssh/knownhosts"
 )
 
 const (
@@ -44,14 +46,14 @@ var terminalUpgrader = websocket.Upgrader{
 }
 
 func terminalCheckOrigin(r *http.Request) bool {
-	// За reverse proxy Host/Origin часто не совпадают (internal host vs public).
-	// Для этого эндпоинта достаточно auth/admin; strict проверку можно включить переменной.
-	if v := strings.TrimSpace(strings.ToLower(os.Getenv("NMS_TERMINAL_STRICT_ORIGIN"))); v != "1" && v != "true" && v != "yes" {
+	// Legacy override (не рекомендуется): разрешить любые origin для старых reverse-proxy схем.
+	if envBool("NMS_TERMINAL_ALLOW_INSECURE_ORIGIN") {
 		return true
 	}
 	o := strings.TrimSpace(r.Header.Get("Origin"))
 	if o == "" {
-		return true
+		// Требуем Origin по умолчанию для защиты от CSWSH.
+		return false
 	}
 	ou, err := url.Parse(o)
 	if err != nil {
@@ -66,6 +68,21 @@ func terminalCheckOrigin(r *http.Request) bool {
 		return strings.EqualFold(ou.Hostname(), h)
 	}
 	return strings.EqualFold(ou.Host, rh)
+}
+
+func terminalSSHHostKeyCallback() (ssh.HostKeyCallback, error) {
+	if envBool("NMS_TERMINAL_ALLOW_INSECURE_HOSTKEY") {
+		return ssh.InsecureIgnoreHostKey(), nil
+	}
+	knownHostsPath := strings.TrimSpace(config.EnvOrFile("NMS_TERMINAL_SSH_KNOWN_HOSTS"))
+	if knownHostsPath == "" {
+		return nil, errors.New("ssh host key verification is not configured")
+	}
+	cb, err := knownhosts.New(knownHostsPath)
+	if err != nil {
+		return nil, fmt.Errorf("known_hosts: %w", err)
+	}
+	return cb, nil
 }
 
 type terminalInitMsg struct {
@@ -261,7 +278,12 @@ func (h *Handlers) TerminalWS(w http.ResponseWriter, r *http.Request) {
 	}
 	var init terminalInitMsg
 	if err := json.Unmarshal(initRaw, &init); err != nil || init.Type != "init" {
-		h.logger.Warn("terminal ws bad init", zap.Error(err), zap.ByteString("payload", initRaw), zap.Int("device_id", id), zap.String("kind", kind))
+		h.logger.Warn("terminal ws bad init",
+			zap.Error(err),
+			zap.Int("payload_size", len(initRaw)),
+			zap.Int("device_id", id),
+			zap.String("kind", kind),
+		)
 		_ = wsWriteText(conn, &connWriteMu, terminalJSON("error", "expected init json"))
 		wsSendCloseFrame(conn, &connWriteMu, websocket.CloseUnsupportedData, "bad init")
 		return
@@ -354,10 +376,14 @@ func terminalWSKeepalive(conn *websocket.Conn, mu *sync.Mutex, stop <-chan struc
 }
 
 func (h *Handlers) runTerminalSSH(ctx context.Context, conn *websocket.Conn, writeMu *sync.Mutex, addr, user, pass string, dialTimeout time.Duration, deadline time.Time, pingStop <-chan struct{}) error {
+	hostKeyCallback, err := terminalSSHHostKeyCallback()
+	if err != nil {
+		return fmt.Errorf("ssh host key policy: %w", err)
+	}
 	cfg := &ssh.ClientConfig{
 		User:            user,
 		Auth:            []ssh.AuthMethod{ssh.Password(pass)},
-		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
+		HostKeyCallback: hostKeyCallback,
 		Timeout:         dialTimeout,
 	}
 	client, err := ssh.Dial("tcp", addr, cfg)

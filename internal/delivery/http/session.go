@@ -2,6 +2,7 @@ package http
 
 import (
 	"NMS1/internal/config"
+	"crypto/rand"
 	"crypto/hmac"
 	"crypto/sha256"
 	"crypto/subtle"
@@ -9,6 +10,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -23,15 +25,27 @@ type sessionClaims struct {
 	Exp  int64  `json:"exp"`
 }
 
-// sessionSigningKey — 32 байта; при NMS_SESSION_SECRET задаётся явно, иначе стабильный вывод из кредов (без хранения пароля в коде).
+var (
+	fallbackSessionKey     [32]byte
+	fallbackSessionKeyOnce sync.Once
+)
+
+func initFallbackSessionKey() {
+	if _, err := rand.Read(fallbackSessionKey[:]); err != nil {
+		// Крайне маловероятный fallback: сохраняем работоспособность токенов в рамках процесса.
+		fallbackSessionKey = sha256.Sum256([]byte(time.Now().UTC().String() + "-nms-session-fallback"))
+	}
+}
+
+// sessionSigningKey — 32 байта; рекомендуется всегда задавать NMS_SESSION_SECRET.
+// Если секрет не задан, используется случайный ключ процесса (без детерминированного вывода из паролей).
 func sessionSigningKey() [32]byte {
 	secret := strings.TrimSpace(config.EnvOrFile("NMS_SESSION_SECRET"))
 	if secret != "" {
 		return sha256.Sum256([]byte(secret))
 	}
-	admin, viewer := loadCreds()
-	raw := admin.user + "\x00" + admin.pass + "\x00" + viewer.user + "\x00" + viewer.pass + "\x00nms1-session-v1"
-	return sha256.Sum256([]byte(raw))
+	fallbackSessionKeyOnce.Do(initFallbackSessionKey)
+	return fallbackSessionKey
 }
 
 func signSessionToken(user string, rl role) (string, error) {
