@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <link rel="stylesheet" href="/static/css/app.css">
 <script src="/static/js/htmx.min.js"></script>
-<script>
+<script nonce="{{.CSPNonce}}">
     (function () {
         function readCookie(name) {
             const prefix = name + "=";
@@ -95,7 +95,7 @@
                 ▶ Сканировать
             </button>
             <pre id="disc-out" class="mt-4 text-xs text-gray-300 bg-black/30 border border-gray-700 rounded-lg p-4 max-h-64 overflow-auto whitespace-pre-wrap hidden"></pre>
-            <script>
+            <script nonce="{{.CSPNonce}}">
                 (function () {
                     const ver = document.getElementById('disc-version');
                     const v3 = document.getElementById('disc-v3');
@@ -269,7 +269,7 @@
             </p>
         </div>
 
-        <script>
+        <script nonce="{{.CSPNonce}}">
             (function () {
                 const snmpVersion = document.querySelector('select[name="snmp_version"]');
                 const v3Fields = document.getElementById('snmp_v3_fields');
@@ -353,7 +353,7 @@
                 </p>
             </div>
 
-            <script>
+            <script nonce="{{.CSPNonce}}">
                 (function () {
                     const deviceSel = document.getElementById('snmp-device');
                     const actionSel = document.getElementById('snmp-action');

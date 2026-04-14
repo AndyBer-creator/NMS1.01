@@ -34,5 +34,5 @@ func (h *Handlers) ListAvailabilityEvents(w http.ResponseWriter, r *http.Request
 
 func (h *Handlers) AvailabilityEventsPage(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	http.ServeFile(w, r, "templates/events_availability.html")
+	_ = h.eventsPageTmpl.Execute(w, map[string]any{"CSPNonce": cspNonceFromContext(r)})
 }

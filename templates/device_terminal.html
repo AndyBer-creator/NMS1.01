@@ -94,7 +94,7 @@
 </div>
 <script src="/static/js/xterm.js"></script>
 <script src="/static/js/xterm-addon-fit.js"></script>
-<script>
+<script nonce="{{.CSPNonce}}">
 (function () {
     const deviceId = {{.DeviceID}};
     const rawKind = {{printf "%q" .Kind}};

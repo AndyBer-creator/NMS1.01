@@ -28,6 +28,7 @@ func (h *Handlers) LoginPage(w http.ResponseWriter, r *http.Request) {
 	_ = h.loginTmpl.ExecuteTemplate(w, "login.html", map[string]any{
 		"Error": "",
 		"Next":  safeNext(r.URL.Query().Get("next")),
+		"CSPNonce": cspNonceFromContext(r),
 	})
 }
 
@@ -62,6 +63,7 @@ func (h *Handlers) LoginPost(w http.ResponseWriter, r *http.Request) {
 		_ = h.loginTmpl.ExecuteTemplate(w, "login.html", map[string]any{
 			"Error": msg,
 			"Next":  next,
+			"CSPNonce": cspNonceFromContext(r),
 		})
 		h.logger.Warn("login throttled", zap.String("ip", ip), zap.String("user", user), zap.Duration("retry_after", retryAfter))
 		return
@@ -80,6 +82,7 @@ func (h *Handlers) LoginPost(w http.ResponseWriter, r *http.Request) {
 		_ = h.loginTmpl.ExecuteTemplate(w, "login.html", map[string]any{
 			"Error": "Неверный логин или пароль.",
 			"Next":  next,
+			"CSPNonce": cspNonceFromContext(r),
 		})
 		h.logger.Warn("login failed", zap.String("ip", ip), zap.String("user", user))
 		return

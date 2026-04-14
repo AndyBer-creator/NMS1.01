@@ -71,6 +71,9 @@ type Handlers struct {
 	mibPanelTmpl  *template.Template
 	loginTmpl     *template.Template
 	terminalTmpl  *template.Template
+	trapsPageTmpl *template.Template
+	eventsPageTmpl *template.Template
+	topologyTmpl  *template.Template
 	mibUploadDir  string
 	mib           *mibresolver.Resolver
 }
@@ -86,6 +89,9 @@ func NewHandlers(repo *postgres.Repo, snmpClient *snmp.Client, scanner *discover
 	mibPanelTmpl := template.Must(template.ParseFiles("templates/mibs_panel.html"))
 	loginTmpl := template.Must(template.ParseFiles("templates/login.html"))
 	terminalTmpl := template.Must(template.ParseFiles("templates/device_terminal.html"))
+	trapsPageTmpl := template.Must(template.ParseFiles("templates/traps_page.html"))
+	eventsPageTmpl := template.Must(template.ParseFiles("templates/events_availability.html"))
+	topologyTmpl := template.Must(template.ParseFiles("templates/topology_lldp_page.html"))
 
 	h := &Handlers{
 		repo:          repo,
@@ -98,6 +104,9 @@ func NewHandlers(repo *postgres.Repo, snmpClient *snmp.Client, scanner *discover
 		mibPanelTmpl:  mibPanelTmpl,
 		loginTmpl:     loginTmpl,
 		terminalTmpl:  terminalTmpl,
+		trapsPageTmpl: trapsPageTmpl,
+		eventsPageTmpl: eventsPageTmpl,
+		topologyTmpl:  topologyTmpl,
 		mibUploadDir:  mibUploadDir,
 		mib:           mib,
 	}
@@ -138,6 +147,7 @@ type devicesTableViewModel struct {
 	Total     int
 	Admin     bool
 	CSRFToken string
+	CSPNonce  string
 }
 
 var allowedSNMPSetOIDs = map[string]struct{}{
@@ -256,6 +266,7 @@ func (h *Handlers) Dashboard(w http.ResponseWriter, r *http.Request) {
 	_ = h.dashboardTmpl.Execute(w, map[string]any{
 		"Admin":     admin,
 		"CSRFToken": csrfTokenFromContext(r),
+		"CSPNonce":  cspNonceFromContext(r),
 	})
 }
 
@@ -421,6 +432,7 @@ func (h *Handlers) DevicesListPage(w http.ResponseWriter, r *http.Request) {
 	vm := devicesTableViewModelFromDevices(devices)
 	u := userFromContext(r.Context())
 	vm.Admin = u == nil || u.role == roleAdmin
+	vm.CSPNonce = cspNonceFromContext(r)
 	for i := range vm.Devices {
 		vm.Devices[i].Admin = vm.Admin
 	}
@@ -882,7 +894,7 @@ func (h *Handlers) Ready(w http.ResponseWriter, r *http.Request) {
 // LldpTopologyPage отдает HTML страницу с графом LLDP.
 func (h *Handlers) LldpTopologyPage(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	http.ServeFile(w, r, "templates/topology_lldp_page.html")
+	_ = h.topologyTmpl.Execute(w, map[string]any{"CSPNonce": cspNonceFromContext(r)})
 }
 
 type topologyNode struct {
