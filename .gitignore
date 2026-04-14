@@ -40,3 +40,6 @@ Thumbs.db
 desktop.ini
 acme.json
 go.work
+
+# Local planning notes (do not publish)
+doc/NEXT_STEPS_TOMORROW.md
