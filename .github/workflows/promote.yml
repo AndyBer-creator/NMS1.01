@@ -1,0 +1,119 @@
+name: promote
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Git ref to promote (tag, branch, or commit SHA)"
+        required: true
+        default: "main"
+      stage_base_url:
+        description: "Stage base URL for post-deploy smoke (optional)"
+        required: false
+        default: ""
+      prod_base_url:
+        description: "Prod base URL for post-deploy smoke (optional)"
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    outputs:
+      resolved_sha: ${{ steps.resolve.outputs.sha }}
+      stage_url: ${{ steps.urls.outputs.stage_url }}
+      prod_url: ${{ steps.urls.outputs.prod_url }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.inputs.ref }}
+      - id: resolve
+        name: resolve ref
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+      - id: urls
+        name: normalize smoke URLs
+        run: |
+          stage_url="${{ github.event.inputs.stage_base_url }}"
+          prod_url="${{ github.event.inputs.prod_base_url }}"
+          if [ -z "$stage_url" ]; then
+            stage_url="${{ vars.STAGE_BASE_URL }}"
+          fi
+          if [ -z "$prod_url" ]; then
+            prod_url="${{ vars.PROD_BASE_URL }}"
+          fi
+          echo "stage_url=$stage_url" >> "$GITHUB_OUTPUT"
+          echo "prod_url=$prod_url" >> "$GITHUB_OUTPUT"
+      - name: write promotion manifest
+        run: |
+          {
+            echo "requested_ref=${{ github.event.inputs.ref }}"
+            echo "resolved_sha=${{ steps.resolve.outputs.sha }}"
+            echo "run_url=https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          } > promotion-manifest.txt
+      - name: upload promotion manifest
+        uses: actions/upload-artifact@v4
+        with:
+          name: promotion-manifest
+          path: promotion-manifest.txt
+          if-no-files-found: error
+
+  deploy-stage:
+    runs-on: ubuntu-latest
+    needs: prepare
+    environment:
+      name: stage
+    steps:
+      - name: stage approval checkpoint
+        run: |
+          echo "Stage approval received."
+          echo "Promoting SHA: ${{ needs.prepare.outputs.resolved_sha }}"
+      - name: stage smoke test
+        if: needs.prepare.outputs.stage_url != ''
+        env:
+          BASE_URL: ${{ needs.prepare.outputs.stage_url }}
+        run: ./scripts/e2e_http_smoke.sh
+      - name: stage smoke skipped
+        if: needs.prepare.outputs.stage_url == ''
+        run: echo "Stage smoke skipped (set workflow input stage_base_url or repo variable STAGE_BASE_URL)."
+
+  deploy-prod:
+    runs-on: ubuntu-latest
+    needs: [prepare, deploy-stage]
+    environment:
+      name: prod
+    steps:
+      - name: prod approval checkpoint
+        run: |
+          echo "Prod approval received."
+          echo "Promoting SHA: ${{ needs.prepare.outputs.resolved_sha }}"
+      - name: prod smoke test
+        if: needs.prepare.outputs.prod_url != ''
+        env:
+          BASE_URL: ${{ needs.prepare.outputs.prod_url }}
+        run: ./scripts/e2e_http_smoke.sh
+      - name: prod smoke skipped
+        if: needs.prepare.outputs.prod_url == ''
+        run: echo "Prod smoke skipped (set workflow input prod_base_url or repo variable PROD_BASE_URL)."
+
+  rollback-handoff:
+    runs-on: ubuntu-latest
+    needs: [prepare, deploy-stage, deploy-prod]
+    if: always()
+    steps:
+      - name: build rollback handoff
+        run: |
+          {
+            echo "If rollback is required, use doc/ROLLBACK.md."
+            echo "Target rollback baseline SHA: ${{ needs.prepare.outputs.resolved_sha }}"
+            echo "Workflow run: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          } > rollback-handoff.txt
+      - name: upload rollback handoff
+        uses: actions/upload-artifact@v4
+        with:
+          name: rollback-handoff
+          path: rollback-handoff.txt
+          if-no-files-found: error

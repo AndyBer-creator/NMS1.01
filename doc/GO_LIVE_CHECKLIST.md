@@ -15,7 +15,7 @@
 | Политика HTTPS / SLO / хаос (если используете) | `make https-policy-check`, `make slo-gates`, `make chaos-worker-check` |
 | Логи без секретов (после настройки логирования) | `make log-secrets-check` |
 
-В CI уже есть: lint, **static-css-sync** (совпадение `static/css/app.css` с билдом Tailwind), `govulncheck`, unit с race+coverage (**порог 20%** по умолчанию), миграции + integration job (см. `.github/workflows/test.yml`).
+В CI уже есть: lint, **static-css-sync** (совпадение `static/css/app.css` с билдом Tailwind), `govulncheck`, unit с race+coverage (**порог 22%** по умолчанию), миграции + integration job (см. `.github/workflows/test.yml`), а также ручной promotion flow `stage -> prod` (см. `.github/workflows/promote.yml`).
 
 ---
 
