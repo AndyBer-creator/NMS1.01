@@ -5,8 +5,10 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 )
@@ -44,18 +46,17 @@ func TestVerifySessionToken_RejectsInvalidSignature(t *testing.T) {
 		t.Fatal("expected baseline signed token to verify")
 	}
 
-	parts := []byte(ok)
-	if len(parts) == 0 {
-		t.Fatal("unexpected empty token")
+	parts := strings.Split(ok, ".")
+	if len(parts) != 2 {
+		t.Fatalf("unexpected token format: %q", ok)
 	}
-	// Должны реально изменить строку (если последний символ уже 'A', подмена на 'A' бессмысленна).
-	last := parts[len(parts)-1]
-	if last == 'A' {
-		parts[len(parts)-1] = 'B'
-	} else {
-		parts[len(parts)-1] = 'A'
+	sigRaw, err := base64.RawURLEncoding.DecodeString(parts[1])
+	if err != nil || len(sigRaw) == 0 {
+		t.Fatalf("decode signature: %v", err)
 	}
-	if got := verifySessionToken(string(parts)); got != nil {
+	sigRaw[0] ^= 0x01
+	tampered := fmt.Sprintf("%s.%s", parts[0], base64.RawURLEncoding.EncodeToString(sigRaw))
+	if got := verifySessionToken(tampered); got != nil {
 		t.Fatalf("expected tampered token to fail verification, got %+v", got)
 	}
 }

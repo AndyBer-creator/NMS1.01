@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestEqualConstTime(t *testing.T) {
@@ -273,6 +274,13 @@ func TestRequireAuth_AllowsValidSessionCookie(t *testing.T) {
 	}
 }
 
+func resetAuthLimiterForTest(t *testing.T) {
+	t.Helper()
+	prev := authLoginLimiter
+	authLoginLimiter = newLoginLimiter()
+	t.Cleanup(func() { authLoginLimiter = prev })
+}
+
 func TestRequireAuth_NoConfiguredCredsFailsClosed(t *testing.T) {
 	t.Setenv("NMS_ADMIN_USER", "")
 	t.Setenv("NMS_ADMIN_PASS", "")
@@ -298,5 +306,49 @@ func TestRequireAuth_NoConfiguredCredsFailsClosed(t *testing.T) {
 	}
 	if nextCalled {
 		t.Fatal("next must not be called when auth is not configured")
+	}
+}
+
+func TestRequireAuth_BasicAuthThrottled(t *testing.T) {
+	resetAuthLimiterForTest(t)
+	t.Setenv("NMS_ADMIN_USER", "admin")
+	t.Setenv("NMS_ADMIN_PASS", "secret")
+	t.Setenv("NMS_VIEWER_USER", "")
+	t.Setenv("NMS_VIEWER_PASS", "")
+	t.Setenv("NMS_ADMIN_USER_FILE", "")
+	t.Setenv("NMS_ADMIN_PASS_FILE", "")
+	t.Setenv("NMS_VIEWER_USER_FILE", "")
+	t.Setenv("NMS_VIEWER_PASS_FILE", "")
+
+	ip := "203.0.113.50"
+	user := "admin"
+	now := time.Now()
+	for i := 0; i < loginMaxAttemptsUser; i++ {
+		authLoginLimiter.onFailure(ip, user, now.Add(time.Duration(i)*time.Second))
+	}
+
+	nextCalled := false
+	protected := RequireAuth(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		nextCalled = true
+		w.WriteHeader(http.StatusOK)
+	}))
+	req := httptest.NewRequest(http.MethodGet, "/devices", nil)
+	req.RemoteAddr = ip + ":12345"
+	req.Header.Set("Accept", "application/json")
+	req.SetBasicAuth("admin", "secret")
+	rr := httptest.NewRecorder()
+	protected.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusTooManyRequests {
+		t.Fatalf("expected 429, got %d", rr.Code)
+	}
+	if rr.Header().Get("Retry-After") == "" {
+		t.Fatal("expected Retry-After header")
+	}
+	if nextCalled {
+		t.Fatal("next handler must not be called when throttled")
+	}
+	if !strings.Contains(rr.Body.String(), `"error":"too_many_requests"`) {
+		t.Fatalf("unexpected throttled response body: %q", rr.Body.String())
 	}
 }
