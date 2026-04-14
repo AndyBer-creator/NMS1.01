@@ -363,6 +363,7 @@ make lint           # golangci-lint (конфиг .golangci.yml), как в CI
 make vuln           # govulncheck ./...
 make check-coverage # нужен coverage.out (или сначала make test-cover)
 make ci-local        # lint + vuln + go test -race + порог coverage (~2–4 мин)
+make sbom            # SPDX JSON SBOM в ./sbom.spdx.json (через docker + syft)
 make load-http-readonly  # нагрузка /health + /metrics (нужен API)
 make k6-readonly         # то же через k6 (нужен бинарник k6)
 make k6-session-csrf     # k6: Basic viewer + cookie CSRF + POST /mibs/resolve (нужны учётки viewer в env)
@@ -401,6 +402,7 @@ make load-http-readonly
 - **vuln** — **`govulncheck ./...`**; локально для деталей по «уязвимости в зависимостях»: `go run golang.org/x/vuln/cmd/govulncheck@v1.2.0 -show verbose ./...`;
 - **gosec** — SAST для Go-кода (`gosec ./...`);
 - **trivy** — filesystem supply-chain scan по репозиторию (HIGH/CRITICAL, `ignore-unfixed`);
+- **sbom-sign** — генерация **SPDX JSON SBOM** (`sbom.spdx.json`) через **Syft**, keyless подпись + verify через **Cosign** (для push/manual), публикация артефактов `sbom-spdx` и `sbom-signature`;
 - **compose-security** — policy-check для `docker-compose*.yml` и `Dockerfile` (запрещены `privileged: true`, `:latest`, disabled healthchecks);
 - **unit** — тесты с **`-race`**, покрытие, порог **`scripts/check_coverage.sh`** (по умолчанию **22%**, переменная `MIN_COVERAGE_PERCENT`), загрузка в **Codecov** (ошибка загрузки не валит job), артефакт **`coverage-out`**; при push в ту же ветку предыдущий прогон этого workflow **отменяется** (`concurrency`);
 - **integration** — миграции, Postgres, тесты `Integration` с **`-race`**.
