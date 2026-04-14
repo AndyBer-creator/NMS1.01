@@ -327,6 +327,7 @@ docker compose -f docker-compose.bridge.yml up -d
 Для больших флотов можно ограничить нагрузку worker:
 - `NMS_WORKER_POLL_CONCURRENCY` — число параллельных опросов устройств в одном цикле (по умолчанию `4`, max `128`);
 - `NMS_WORKER_POLL_RATE_LIMIT_PER_SEC` — ограничение запуска опросов в секундах (по умолчанию `0`, без лимита; max `1000`).
+В `/metrics` worker дополнительно публикуются: `nms_worker_poll_skipped_backoff_total`, `nms_worker_poll_config_concurrency`, `nms_worker_poll_config_rate_limit_per_sec`.
 
 Локально без Docker: установите **net-snmp** (чтобы в `PATH` был `snmptranslate`) или ограничьтесь числовыми OID.
 
