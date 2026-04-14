@@ -364,6 +364,8 @@ make vuln           # govulncheck ./...
 make check-coverage # нужен coverage.out (или сначала make test-cover)
 make ci-local        # lint + vuln + go test -race + порог coverage (~2–4 мин)
 make sbom            # SPDX JSON SBOM в ./sbom.spdx.json (через docker + syft)
+make e2e-http-smoke  # лёгкий HTTP e2e smoke (/health, /ready, /metrics)
+make contract-http-spec # contract smoke для /api/openapi.yaml и /.well-known/security.txt
 make load-http-readonly  # нагрузка /health + /metrics (нужен API)
 make k6-readonly         # то же через k6 (нужен бинарник k6)
 make k6-session-csrf     # k6: Basic viewer + cookie CSRF + POST /mibs/resolve (нужны учётки viewer в env)
@@ -407,6 +409,8 @@ make load-http-readonly
 - **compose-security** — policy-check для `docker-compose*.yml` и `Dockerfile` (запрещены `privileged: true`, `:latest`, disabled healthchecks);
 - **unit** — тесты с **`-race`**, покрытие, порог **`scripts/check_coverage.sh`** (по умолчанию **22%**, переменная `MIN_COVERAGE_PERCENT`), загрузка в **Codecov** (ошибка загрузки не валит job), артефакт **`coverage-out`**; при push в ту же ветку предыдущий прогон этого workflow **отменяется** (`concurrency`);
 - **integration** — миграции, Postgres, тесты `Integration` с **`-race`**.
+- **e2e-http-smoke** — обязательный HTTP smoke в CI с реальным запуском API (`/health`, `/ready`, `/metrics`) на ephemeral runner.
+- **contract-http-spec** — обязательная contract-проверка встроенных `openapi.yaml` и `security.txt` через поднятый API.
 
 Для корректной работы approval-гейтов в promotion workflow настройте в GitHub Environments:
 - `stage` и `prod` с Required reviewers;
