@@ -13,6 +13,9 @@ import (
 func main() {
 	timezone.InitFromEnv()
 	cfg := config.Load()
+	if err := config.ValidateRuntimeSecurity(); err != nil {
+		panic(err.Error())
+	}
 	logger, _ := zap.NewProduction()
 	defer func() { _ = logger.Sync() }()
 
