@@ -34,19 +34,34 @@ docker compose -f docker-compose.bridge.yml -f docker-compose.secrets.yml up -d
 ## 3) Rotation (плановая)
 
 1. Сгенерировать новые значения (пароли/токены/ключи).
-2. Обновить `.env` и пересоздать `.secrets`:
+2. Для ротации `NMS_DB_ENCRYPTION_KEY` сначала подготовить старый и новый ключ:
+
+```bash
+export NMS_DB_ENCRYPTION_OLD_KEY='<старый ключ>'
+export NMS_DB_ENCRYPTION_KEY='<новый ключ>'
+```
+
+Проверить dry-run и затем применить re-encrypt:
+
+```bash
+go run ./cmd/rotate-db-secrets --dry-run
+go run ./cmd/rotate-db-secrets
+# или make rotate-db-secrets
+```
+
+3. Обновить `.env`/Docker secrets только на новый ключ и пересоздать `.secrets`:
 
 ```bash
 make init-secrets
 ```
 
-3. Перезапустить только затронутые сервисы:
+4. Перезапустить только затронутые сервисы:
 
 ```bash
 docker compose -f docker-compose.yml -f docker-compose.secrets.yml up -d api worker trap-receiver migration
 ```
 
-4. Проверить работоспособность:
+5. Проверить работоспособность:
 
 ```bash
 make smoke-test
