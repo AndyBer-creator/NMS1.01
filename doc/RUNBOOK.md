@@ -43,6 +43,7 @@ curl -sS http://localhost:8081/metrics | head
 Симптомы:
 - `nms_worker_poll_duration_seconds` перестал обновляться
 - рост failed polling / нет новых событий доступности
+- алерты `NMSPollingFailuresSpike`, `NMSPollingFailureRatioHigh`, `NMSPollingBackoffSpike`, `NMSPollingCycleSlow`
 
 Действия:
 1. Проверить worker:
@@ -55,6 +56,10 @@ curl -sS http://localhost:8081/metrics | head
    docker compose up -d --build worker
    ```
 3. Проверить БД/доступность устройств/таймауты SNMP.
+4. Если растёт `NMSPollingBackoffSpike`:
+   - проверить network reachability до проблемных IP;
+   - временно снизить `NMS_WORKER_POLL_CONCURRENCY` и/или `NMS_WORKER_POLL_RATE_LIMIT_PER_SEC`;
+   - после стабилизации вернуть значения по SLO.
 
 ## 3) PostgreSQL недоступна
 
