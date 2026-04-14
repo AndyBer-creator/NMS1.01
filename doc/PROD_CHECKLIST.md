@@ -44,9 +44,11 @@
   - Добавлена поддержка `*_FILE` для критичных секретов в коде (`DB_DSN`, auth/session, Telegram, SMTP).
   - Добавлен Docker-secrets overlay: `docker-compose.secrets.yml`.
   - Добавлен операционный процесс bootstrap/rotation/revoke: `SECRETS_PROCESS.md` + `scripts/init_docker_secrets.sh`.
+  - В production введён fail-fast на слабый session secret: `NMS_SESSION_SECRET` должен быть не короче 12 символов.
   - В production введён fail-fast на слабый ключ: `NMS_DB_ENCRYPTION_KEY` должен быть не короче 8 символов.
-  - В production `*_FILE` для `NMS_SESSION_SECRET`/`NMS_DB_ENCRYPTION_KEY`/`DB_DSN` валидируются как читаемые и непустые (fail-fast на старте).
-  - `NMS_TERMINAL_SSH_KNOWN_HOSTS` валидируется как доступный файл (не директория) в production.
+  - `DB_DSN` в production валидируется на обязательные поля подключения: `user`, `host`, `dbname` (включая URL-формат).
+  - В production `*_FILE` для `NMS_SESSION_SECRET`/`NMS_DB_ENCRYPTION_KEY`/`DB_DSN`/`SMTP_*` валидируются как абсолютные пути к читаемым непустым файлам (fail-fast на старте).
+  - `NMS_TERMINAL_SSH_KNOWN_HOSTS` валидируется как абсолютный путь к доступному непустому файлу (не директория) с хотя бы одной валидной записью host key в production.
 
 ## 3) Data Safety (PostgreSQL)
 
@@ -69,7 +71,7 @@
   - Включена CI-валидация правил: `promtool check rules` + `promtool test rules` (`make alert-rules-check`, workflow job `alert-rules`).
   - Добавлен Alertmanager в compose + webhook `POST /alerts/webhook` (Prometheus -> Alertmanager -> API).
   - Реализована доставка в Telegram (best-effort) и Email через SMTP (получатель настраивается в admin UI).
-  - Добавлена fail-fast валидация SMTP-конфига для production: `SMTP_HOST`/`SMTP_PORT`/`SMTP_FROM` только вместе, `SMTP_PORT` в диапазоне `1..65535` и только `465`/`587`, `NMS_SMTP_ALLOW_PLAINTEXT` запрещён.
+  - Добавлена fail-fast валидация SMTP-конфига для production: `SMTP_HOST`/`SMTP_PORT`/`SMTP_FROM` только вместе, `SMTP_HOST` без URL-схемы/пути/встроенного порта, `SMTP_PORT` в диапазоне `1..65535` и только `465`/`587`, `SMTP_FROM` валидный email, `SMTP_USER`/`SMTP_PASS` только вместе, `NMS_SMTP_ALLOW_PLAINTEXT` запрещён.
   - Подтверждена фактическая email-доставка (`2026-04-09`: письмо получено на целевой адрес).
   - Подтверждён e2e через Alertmanager -> webhook API -> email (`2026-04-09`).
 

@@ -37,6 +37,9 @@ const (
 	telnetSE   = byte(240)
 	telnetOptSGA  = byte(3)  // Suppress Go Ahead
 	telnetOptECHO = byte(1)  // Echo
+	defaultTerminalWSReadLimit = int64(64 * 1024)
+	maxTerminalWSReadLimit     = int64(1024 * 1024)
+	maxTerminalAuthFieldBytes  = 256
 )
 
 var terminalUpgrader = websocket.Upgrader{
@@ -98,6 +101,26 @@ type terminalResizeMsg struct {
 	Rows int    `json:"rows"`
 }
 
+func validateTerminalInitMsg(init terminalInitMsg, kind string) error {
+	if init.Type != "init" {
+		return fmt.Errorf("expected init json")
+	}
+	if len(init.Username) > maxTerminalAuthFieldBytes {
+		return fmt.Errorf("init username too long")
+	}
+	if len(init.Password) > maxTerminalAuthFieldBytes {
+		return fmt.Errorf("init password too long")
+	}
+	// Explicitly reject absurd port values instead of silently defaulting.
+	if init.Port < 0 || init.Port > 65535 {
+		return fmt.Errorf("invalid port")
+	}
+	if kind == "ssh" && strings.TrimSpace(init.Username) == "" {
+		return fmt.Errorf("ssh username required")
+	}
+	return nil
+}
+
 type terminalAckMsg struct {
 	Type    string `json:"type"`
 	Message string `json:"message,omitempty"`
@@ -154,6 +177,18 @@ func terminalWSReadIdle() time.Duration {
 		}
 	}
 	return 30 * time.Minute
+}
+
+// terminalWSReadLimit limits max incoming WS frame size to reduce memory abuse.
+func terminalWSReadLimit() int64 {
+	if v := strings.TrimSpace(os.Getenv("NMS_TERMINAL_WS_READ_LIMIT_BYTES")); v != "" {
+		if n, err := strconv.ParseInt(v, 10, 64); err == nil {
+			if n >= 1024 && n <= maxTerminalWSReadLimit {
+				return n
+			}
+		}
+	}
+	return defaultTerminalWSReadLimit
 }
 
 func signTerminalWSToken(user string, rl role, deviceID int) (string, error) {
@@ -261,6 +296,7 @@ func (h *Handlers) TerminalWS(w http.ResponseWriter, r *http.Request) {
 		)
 		return
 	}
+	conn.SetReadLimit(terminalWSReadLimit())
 
 	pingStop := make(chan struct{})
 	var connWriteMu sync.Mutex
@@ -287,7 +323,7 @@ func (h *Handlers) TerminalWS(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var init terminalInitMsg
-	if err := json.Unmarshal(initRaw, &init); err != nil || init.Type != "init" {
+	if err := json.Unmarshal(initRaw, &init); err != nil {
 		h.logger.Warn("terminal ws bad init",
 			zap.Error(err),
 			zap.Int("payload_size", len(initRaw)),
@@ -296,6 +332,17 @@ func (h *Handlers) TerminalWS(w http.ResponseWriter, r *http.Request) {
 		)
 		_ = wsWriteText(conn, &connWriteMu, terminalJSON("error", "expected init json"))
 		wsSendCloseFrame(conn, &connWriteMu, websocket.CloseUnsupportedData, "bad init")
+		return
+	}
+	if err := validateTerminalInitMsg(init, kind); err != nil {
+		h.logger.Warn("terminal ws invalid init",
+			zap.Error(err),
+			zap.Int("payload_size", len(initRaw)),
+			zap.Int("device_id", id),
+			zap.String("kind", kind),
+		)
+		_ = wsWriteText(conn, &connWriteMu, terminalJSON("error", err.Error()))
+		wsSendCloseFrame(conn, &connWriteMu, websocket.CloseUnsupportedData, "invalid init")
 		return
 	}
 	h.logger.Info("terminal ws init accepted", zap.Int("device_id", id), zap.String("kind", kind), zap.Int("requested_port", init.Port))
@@ -335,12 +382,6 @@ func (h *Handlers) TerminalWS(w http.ResponseWriter, r *http.Request) {
 			zap.Int("device_id", id),
 			zap.String("kind", kind),
 		)
-		return
-	}
-
-	if strings.TrimSpace(init.Username) == "" {
-		_ = wsWriteText(conn, &connWriteMu, terminalJSON("error", "ssh username required"))
-		wsSendCloseFrame(conn, &connWriteMu, websocket.ClosePolicyViolation, "ssh username required")
 		return
 	}
 

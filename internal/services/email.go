@@ -49,7 +49,7 @@ func (c *SMTPClient) Send(to, subject, body string) error {
 	if to == "" {
 		return fmt.Errorf("recipient is empty")
 	}
-	addr := c.Host + ":" + c.Port
+	addr := smtpDialAddr(c.Host, c.Port)
 	headers := []string{
 		"From: " + c.From,
 		"To: " + to,
@@ -130,6 +130,13 @@ func validateSMTPPort(port string) (int, error) {
 		return 0, fmt.Errorf("invalid smtp port %q: must be in range 1..65535", port)
 	}
 	return p, nil
+}
+
+func smtpDialAddr(host, port string) string {
+	h := strings.TrimSpace(host)
+	h = strings.TrimPrefix(h, "[")
+	h = strings.TrimSuffix(h, "]")
+	return net.JoinHostPort(h, strings.TrimSpace(port))
 }
 
 func (c *SMTPClient) sendStartTLS(addr, to string, msg []byte) error {
