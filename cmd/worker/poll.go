@@ -31,6 +31,18 @@ var (
 		},
 		[]string{"status"},
 	)
+	workerPollSkippedBackoffTotal = prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "nms_worker_poll_skipped_backoff_total",
+		Help: "Total devices skipped due to per-device polling backoff",
+	})
+	workerPollConfigConcurrency = prometheus.NewGauge(prometheus.GaugeOpts{
+		Name: "nms_worker_poll_config_concurrency",
+		Help: "Configured worker polling concurrency used in the latest cycle",
+	})
+	workerPollConfigRateLimitPerSec = prometheus.NewGauge(prometheus.GaugeOpts{
+		Name: "nms_worker_poll_config_rate_limit_per_sec",
+		Help: "Configured worker polling start rate limit per second used in the latest cycle",
+	})
 
 	lldpScanDurationSeconds = prometheus.NewHistogram(prometheus.HistogramOpts{
 		Name:    "nms_lldp_scan_duration_seconds",
@@ -192,6 +204,9 @@ func (b *deviceBackoff) onSuccess(ip string) {
 func init() {
 	prometheus.MustRegister(workerPollDurationSeconds)
 	prometheus.MustRegister(workerPollDevicesTotal)
+	prometheus.MustRegister(workerPollSkippedBackoffTotal)
+	prometheus.MustRegister(workerPollConfigConcurrency)
+	prometheus.MustRegister(workerPollConfigRateLimitPerSec)
 	prometheus.MustRegister(lldpScanDurationSeconds)
 	prometheus.MustRegister(lldpLinksFoundGauge)
 	prometheus.MustRegister(lldpLinksInsertedGauge)
@@ -217,6 +232,8 @@ func pollAllDevices(ctx context.Context, repo *postgres.Repo, snmpClient *snmp.C
 	ratePerSec := pollRateLimitPerSec()
 	throttle := newPollThrottle(ratePerSec)
 	defer throttle.stop()
+	workerPollConfigConcurrency.Set(float64(concurrency))
+	workerPollConfigRateLimitPerSec.Set(float64(ratePerSec))
 
 	logger.Info("Starting poll",
 		zap.Int("devices", len(devices)),
@@ -283,6 +300,9 @@ func pollAllDevices(ctx context.Context, repo *postgres.Repo, snmpClient *snmp.C
 		zap.Int("failed", failed),
 		zap.Int("skipped_backoff", skipped),
 		zap.Int("total", len(devices)))
+	if skipped > 0 {
+		workerPollSkippedBackoffTotal.Add(float64(skipped))
+	}
 
 	return success, failed, nil
 }
