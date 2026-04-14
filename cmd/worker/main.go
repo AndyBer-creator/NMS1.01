@@ -17,6 +17,10 @@ import (
 func main() {
 	timezone.InitFromEnv()
 	cfg := config.Load()
+	if err := config.ValidateRuntimeSecurity(); err != nil {
+		fmt.Fprintf(os.Stderr, "nms-worker: %v\n", err)
+		os.Exit(1)
+	}
 
 	logger, err := applog.NewZapFile("nms-worker")
 	if err != nil {
