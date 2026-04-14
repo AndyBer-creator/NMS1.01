@@ -364,13 +364,13 @@ func (h *Handlers) runTerminalSSH(ctx context.Context, conn *websocket.Conn, wri
 	if err != nil {
 		return fmt.Errorf("ssh dial: %w", err)
 	}
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 
 	sess, err := client.NewSession()
 	if err != nil {
 		return fmt.Errorf("ssh session: %w", err)
 	}
-	defer sess.Close()
+	defer func() { _ = sess.Close() }()
 
 	stdin, err := sess.StdinPipe()
 	if err != nil {
@@ -477,7 +477,7 @@ func (h *Handlers) runTerminalTelnet(ctx context.Context, conn *websocket.Conn, 
 	if err != nil {
 		return fmt.Errorf("tcp dial: %w", err)
 	}
-	defer tcp.Close()
+	defer func() { _ = tcp.Close() }()
 	h.logger.Info("terminal telnet dial connected", zap.String("dial_addr", addr))
 	if c, ok := tcp.(*net.TCPConn); ok {
 		_ = c.SetNoDelay(true)
