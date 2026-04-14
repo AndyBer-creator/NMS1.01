@@ -5,6 +5,9 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"os"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -16,6 +19,30 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"go.uber.org/zap"
 )
+
+func envDurationOrDefault(name string, fallback time.Duration) time.Duration {
+	v := strings.TrimSpace(os.Getenv(name))
+	if v == "" {
+		return fallback
+	}
+	d, err := time.ParseDuration(v)
+	if err != nil || d <= 0 {
+		return fallback
+	}
+	return d
+}
+
+func envIntOrDefault(name string, fallback int) int {
+	v := strings.TrimSpace(os.Getenv(name))
+	if v == "" {
+		return fallback
+	}
+	n, err := strconv.Atoi(v)
+	if err != nil || n <= 0 {
+		return fallback
+	}
+	return n
+}
 
 // workerOpts задаёт адрес HTTP /metrics; пустая строка — дефолт ":8081".
 type workerOpts struct {
@@ -142,7 +169,14 @@ func run(ctx context.Context, cfg *config.Config, log *zap.Logger, opts workerOp
 func startMetricsHTTPServer(addr string, log *zap.Logger) (*http.Server, net.Addr, error) {
 	mux := http.NewServeMux()
 	mux.Handle("/metrics", promhttp.Handler())
-	srv := &http.Server{Handler: mux}
+	srv := &http.Server{
+		Handler:           mux,
+		ReadHeaderTimeout: envDurationOrDefault("NMS_WORKER_HTTP_READ_HEADER_TIMEOUT", 5*time.Second),
+		ReadTimeout:       envDurationOrDefault("NMS_WORKER_HTTP_READ_TIMEOUT", 10*time.Second),
+		WriteTimeout:      envDurationOrDefault("NMS_WORKER_HTTP_WRITE_TIMEOUT", 20*time.Second),
+		IdleTimeout:       envDurationOrDefault("NMS_WORKER_HTTP_IDLE_TIMEOUT", 60*time.Second),
+		MaxHeaderBytes:    envIntOrDefault("NMS_WORKER_HTTP_MAX_HEADER_BYTES", 1<<20), // 1 MiB
+	}
 
 	ln, err := net.Listen("tcp", addr)
 	if err != nil {

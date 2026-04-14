@@ -219,7 +219,9 @@ func TestIntegration_DeviceRepo_UpdateDeviceStatus(t *testing.T) {
 }
 
 func TestIntegration_DeviceRepo_CreateDevice_SNMPv3RoundTrip(t *testing.T) {
-	repo, _ := openIntegrationRepo(t)
+	t.Setenv("NMS_DB_ENCRYPTION_KEY", "itest-db-enc-key")
+	t.Setenv("NMS_DB_ENCRYPTION_KEY_FILE", "")
+	repo, db := openIntegrationRepo(t)
 	ip := uniqueInet(t)
 	_ = repo.DeleteByIP(ip)
 	d := &domain.Device{
@@ -246,5 +248,21 @@ func TestIntegration_DeviceRepo_CreateDevice_SNMPv3RoundTrip(t *testing.T) {
 	}
 	if got.PrivProto != "AES" || got.PrivPass != "priv-secret" {
 		t.Fatalf("v3 priv fields: %+v", got)
+	}
+	var communityPlain, authPlain, privPlain sql.NullString
+	var communityEnc, authEnc, privEnc sql.NullString
+	err = db.QueryRowContext(context.Background(),
+		`SELECT community, auth_pass, priv_pass, community_enc, auth_pass_enc, priv_pass_enc
+         FROM devices WHERE ip = $1::inet`,
+		ip,
+	).Scan(&communityPlain, &authPlain, &privPlain, &communityEnc, &authEnc, &privEnc)
+	if err != nil {
+		t.Fatalf("raw secrets query: %v", err)
+	}
+	if communityPlain.Valid || authPlain.Valid || privPlain.Valid {
+		t.Fatalf("expected plaintext secret columns to be NULL, got community=%+v auth=%+v priv=%+v", communityPlain, authPlain, privPlain)
+	}
+	if !communityEnc.Valid || !authEnc.Valid || !privEnc.Valid {
+		t.Fatalf("expected encrypted secret columns to be set, got community=%+v auth=%+v priv=%+v", communityEnc, authEnc, privEnc)
 	}
 }

@@ -7,6 +7,8 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"strconv"
+	"strings"
 	"time"
 
 	"NMS1/internal/config"
@@ -21,6 +23,30 @@ import (
 
 	"go.uber.org/zap"
 )
+
+func envDurationOrDefault(name string, fallback time.Duration) time.Duration {
+	v := strings.TrimSpace(os.Getenv(name))
+	if v == "" {
+		return fallback
+	}
+	d, err := time.ParseDuration(v)
+	if err != nil || d <= 0 {
+		return fallback
+	}
+	return d
+}
+
+func envIntOrDefault(name string, fallback int) int {
+	v := strings.TrimSpace(os.Getenv(name))
+	if v == "" {
+		return fallback
+	}
+	n, err := strconv.Atoi(v)
+	if err != nil || n <= 0 {
+		return fallback
+	}
+	return n
+}
 
 // buildApp собирает HTTP-handler и cleanup (два отдельных *sql.DB: repo + traps).
 func buildApp(cfg *config.Config, log *zap.Logger) (http.Handler, func(), error) {
@@ -75,7 +101,14 @@ func run(ctx context.Context, cfg *config.Config, log *zap.Logger, onListen func
 		onListen(ln.Addr())
 	}
 
-	srv := &http.Server{Handler: handler}
+	srv := &http.Server{
+		Handler:           handler,
+		ReadHeaderTimeout: envDurationOrDefault("NMS_HTTP_READ_HEADER_TIMEOUT", 5*time.Second),
+		ReadTimeout:       envDurationOrDefault("NMS_HTTP_READ_TIMEOUT", 15*time.Second),
+		WriteTimeout:      envDurationOrDefault("NMS_HTTP_WRITE_TIMEOUT", 30*time.Second),
+		IdleTimeout:       envDurationOrDefault("NMS_HTTP_IDLE_TIMEOUT", 60*time.Second),
+		MaxHeaderBytes:    envIntOrDefault("NMS_HTTP_MAX_HEADER_BYTES", 1<<20), // 1 MiB
+	}
 	errCh := make(chan error, 1)
 	go func() {
 		errCh <- srv.Serve(ln)

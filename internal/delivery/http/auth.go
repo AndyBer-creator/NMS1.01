@@ -6,6 +6,7 @@ import (
 	"crypto/subtle"
 	"net/http"
 	"net/url"
+	"os"
 	"strings"
 )
 
@@ -78,14 +79,26 @@ func prefersJSONAPI(r *http.Request) bool {
 		!strings.Contains(accept, "text/html")
 }
 
-// RequireAuth: cookie-сессия (форма /login) или HTTP Basic. Если креды не заданы — доступ открыт.
+func envBool(name string) bool {
+	v := strings.TrimSpace(strings.ToLower(os.Getenv(name)))
+	return v == "1" || v == "true" || v == "yes" || v == "on"
+}
+
+// RequireAuth: cookie-сессия (форма /login) или HTTP Basic.
+// По умолчанию отсутствие сконфигурированных кредов считается ошибкой конфигурации (fail-closed).
 func RequireAuth(next http.Handler) http.Handler {
 	admin, viewer := loadCreds()
-	if admin.user == "" && viewer.user == "" {
-		return next
-	}
 
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if admin.user == "" && viewer.user == "" {
+			if envBool("NMS_ALLOW_NO_AUTH") {
+				next.ServeHTTP(w, r)
+				return
+			}
+			http.Error(w, "auth is not configured", http.StatusServiceUnavailable)
+			return
+		}
+
 		if u := sessionUserFromCookie(r); u != nil {
 			next.ServeHTTP(w, withUser(r, u))
 			return
@@ -139,8 +152,12 @@ func RequireAdmin(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		u := userFromContext(r.Context())
 		if u == nil {
-			// если авторизация отключена, user nil — разрешаем (dev)
-			next.ServeHTTP(w, r)
+			// Запрещаем fail-open на admin-маршрутах; legacy-режим можно включить явно.
+			if envBool("NMS_ALLOW_NO_AUTH") {
+				next.ServeHTTP(w, r)
+				return
+			}
+			http.Error(w, "Forbidden", http.StatusForbidden)
 			return
 		}
 		if u.role != roleAdmin {

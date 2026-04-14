@@ -58,7 +58,10 @@ func run(ctx context.Context, log *zap.Logger, dsn string, udpPort uint16) error
 		}
 
 		uptime := int64(packet.Timestamp)
-		if err := repo.Insert(context.Background(), addr.IP.String(), trapOID, uptime, vars, false); err != nil {
+		insertCtx, insertCancel := context.WithTimeout(ctx, 5*time.Second)
+		err := repo.Insert(insertCtx, addr.IP.String(), trapOID, uptime, vars, false)
+		insertCancel()
+		if err != nil {
 			log.Error("Failed to persist trap",
 				zap.String("from", addr.IP.String()),
 				zap.String("oid", trapOID),

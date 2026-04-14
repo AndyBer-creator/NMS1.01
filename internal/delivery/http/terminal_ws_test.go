@@ -40,3 +40,66 @@ func TestDeviceDialAddr(t *testing.T) {
 		}
 	}
 }
+
+func TestTerminalCheckOrigin_DefaultStrict(t *testing.T) {
+	t.Setenv("NMS_TERMINAL_ALLOW_INSECURE_ORIGIN", "")
+	req := &http.Request{
+		Host:   "nms.example.com",
+		Header: make(http.Header),
+	}
+	req.Header.Set("Origin", "https://nms.example.com")
+	if !terminalCheckOrigin(req) {
+		t.Fatal("expected same-origin websocket request to pass")
+	}
+
+	req2 := &http.Request{
+		Host:   "nms.example.com",
+		Header: make(http.Header),
+	}
+	req2.Header.Set("Origin", "https://evil.example.com")
+	if terminalCheckOrigin(req2) {
+		t.Fatal("expected cross-origin websocket request to be blocked")
+	}
+}
+
+func TestTerminalCheckOrigin_EmptyOriginBlockedByDefault(t *testing.T) {
+	t.Setenv("NMS_TERMINAL_ALLOW_INSECURE_ORIGIN", "")
+	req := &http.Request{
+		Host:   "nms.example.com",
+		Header: make(http.Header),
+	}
+	if terminalCheckOrigin(req) {
+		t.Fatal("expected missing origin to be blocked by default")
+	}
+}
+
+func TestTerminalCheckOrigin_AllowInsecureOverride(t *testing.T) {
+	t.Setenv("NMS_TERMINAL_ALLOW_INSECURE_ORIGIN", "true")
+	req := &http.Request{
+		Host:   "nms.example.com",
+		Header: make(http.Header),
+	}
+	if !terminalCheckOrigin(req) {
+		t.Fatal("expected insecure origin override to allow request")
+	}
+}
+
+func TestTerminalSSHHostKeyCallback_RequiresPolicy(t *testing.T) {
+	t.Setenv("NMS_TERMINAL_ALLOW_INSECURE_HOSTKEY", "")
+	t.Setenv("NMS_TERMINAL_SSH_KNOWN_HOSTS", "")
+	if _, err := terminalSSHHostKeyCallback(); err == nil {
+		t.Fatal("expected error when host key verification policy is not configured")
+	}
+}
+
+func TestTerminalSSHHostKeyCallback_AllowsExplicitInsecure(t *testing.T) {
+	t.Setenv("NMS_TERMINAL_ALLOW_INSECURE_HOSTKEY", "true")
+	t.Setenv("NMS_TERMINAL_SSH_KNOWN_HOSTS", "")
+	cb, err := terminalSSHHostKeyCallback()
+	if err != nil {
+		t.Fatalf("expected insecure callback without error, got %v", err)
+	}
+	if cb == nil {
+		t.Fatal("expected non-nil callback")
+	}
+}

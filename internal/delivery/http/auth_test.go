@@ -119,7 +119,27 @@ func TestRequireAuth_UnauthorizedJSONReturnsJSON(t *testing.T) {
 	}
 }
 
-func TestRequireAdmin_AllowsWhenUserMissing(t *testing.T) {
+func TestRequireAdmin_BlocksWhenUserMissing(t *testing.T) {
+	nextCalled := false
+	protected := RequireAdmin(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		nextCalled = true
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	req := httptest.NewRequest(http.MethodGet, "/admin-op", nil)
+	rr := httptest.NewRecorder()
+	protected.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusForbidden {
+		t.Fatalf("expected 403, got %d", rr.Code)
+	}
+	if nextCalled {
+		t.Fatal("next handler must not be called when user is nil")
+	}
+}
+
+func TestRequireAdmin_AllowsWhenNoAuthExplicitlyEnabled(t *testing.T) {
+	t.Setenv("NMS_ALLOW_NO_AUTH", "true")
 	nextCalled := false
 	protected := RequireAdmin(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		nextCalled = true
@@ -134,7 +154,7 @@ func TestRequireAdmin_AllowsWhenUserMissing(t *testing.T) {
 		t.Fatalf("expected 200, got %d", rr.Code)
 	}
 	if !nextCalled {
-		t.Fatal("expected next handler to be called when user is nil")
+		t.Fatal("expected next handler to be called when no-auth is explicitly enabled")
 	}
 }
 
@@ -250,5 +270,33 @@ func TestRequireAuth_AllowsValidSessionCookie(t *testing.T) {
 	protected.ServeHTTP(rr, req)
 	if rr.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d", rr.Code)
+	}
+}
+
+func TestRequireAuth_NoConfiguredCredsFailsClosed(t *testing.T) {
+	t.Setenv("NMS_ADMIN_USER", "")
+	t.Setenv("NMS_ADMIN_PASS", "")
+	t.Setenv("NMS_VIEWER_USER", "")
+	t.Setenv("NMS_VIEWER_PASS", "")
+	t.Setenv("NMS_ADMIN_USER_FILE", "")
+	t.Setenv("NMS_ADMIN_PASS_FILE", "")
+	t.Setenv("NMS_VIEWER_USER_FILE", "")
+	t.Setenv("NMS_VIEWER_PASS_FILE", "")
+	t.Setenv("NMS_ALLOW_NO_AUTH", "")
+
+	nextCalled := false
+	protected := RequireAuth(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		nextCalled = true
+		w.WriteHeader(http.StatusOK)
+	}))
+	req := httptest.NewRequest(http.MethodGet, "/devices", nil)
+	rr := httptest.NewRecorder()
+	protected.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusServiceUnavailable {
+		t.Fatalf("expected 503, got %d", rr.Code)
+	}
+	if nextCalled {
+		t.Fatal("next must not be called when auth is not configured")
 	}
 }
