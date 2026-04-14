@@ -1,6 +1,6 @@
 SHELL := /bin/bash
 
-.PHONY: migrate rotate-db-secrets sbom server worker traps dev docker-up clean backup-db restore-db smoke-test rbac-smoke init-secrets log-secrets-check slo-gates alert-rules-check https-policy-check compose-security-check chaos-worker-check test test-race test-cover test-integration lint vuln gosec check-coverage e2e-http-smoke e2e-auth-smoke contract-http-spec load-http-readonly k6-readonly k6-session-csrf k6-logout-csrf k6-admin-csrf ci-local static-css check-static-css vendor-js
+.PHONY: migrate rotate-db-secrets sbom server worker traps dev docker-up clean backup-db restore-db smoke-test rbac-smoke init-secrets log-secrets-check slo-gates alert-rules-check shell-syntax-check https-policy-check compose-security-check chaos-worker-check test test-race test-cover test-integration lint vuln gosec check-coverage e2e-http-smoke e2e-auth-smoke contract-http-spec load-http-readonly k6-readonly k6-session-csrf k6-logout-csrf k6-admin-csrf ci-local static-css check-static-css vendor-js
 
 # Если .env есть — подхватываем (docker, migrate, smoke). Без файла цели вроде `make test` всё равно работают.
 ifneq (,$(wildcard .env))
@@ -76,6 +76,9 @@ slo-gates:
 alert-rules-check:
 	./scripts/check_alert_rules.sh
 
+shell-syntax-check:
+	./scripts/check_shell_syntax.sh
+
 https-policy-check:
 	./scripts/check_https_policy.sh
 
@@ -136,8 +139,8 @@ k6-admin-csrf:
 	@PATH="$(HOME)/.local/bin:$$PATH" command -v k6 >/dev/null 2>&1 || { echo "k6 not found (ожидался в PATH или $(HOME)/.local/bin): https://k6.io/docs/get-started/installation/"; exit 1; }
 	PATH="$(HOME)/.local/bin:$$PATH" k6 run scripts/k6_admin_csrf.js
 
-# Локальная проверка перед пушем (без интеграции с БД): lint, vuln, gosec, compose policy, тесты -race, порог coverage.
-ci-local: lint vuln gosec compose-security-check
+# Локальная проверка перед пушем (без интеграции с БД): lint, vuln, gosec, compose policy, alert rules, shell syntax, тесты -race, порог coverage.
+ci-local: lint vuln gosec compose-security-check alert-rules-check shell-syntax-check
 	go test ./... -count=1 -race -coverprofile=coverage.out -covermode=atomic
 	./scripts/check_coverage.sh coverage.out
 
