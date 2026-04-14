@@ -12,6 +12,7 @@ concurrency:
 
 permissions:
   contents: read
+  id-token: write
 
 jobs:
   lint:
@@ -82,6 +83,60 @@ jobs:
           severity: CRITICAL,HIGH
           ignore-unfixed: true
           exit-code: "1"
+
+  sbom-sign:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: generate SBOM (SPDX JSON)
+        run: ./scripts/generate_sbom.sh sbom.spdx.json
+      - name: sign SBOM with keyless cosign
+        if: github.event_name != 'pull_request'
+        env:
+          COSIGN_IMAGE: gcr.io/projectsigstore/cosign:v2.4.1
+        run: |
+          docker run --rm \
+            -e COSIGN_EXPERIMENTAL=1 \
+            -e ACTIONS_ID_TOKEN_REQUEST_TOKEN \
+            -e ACTIONS_ID_TOKEN_REQUEST_URL \
+            -v "$PWD:/work" \
+            -w /work \
+            "$COSIGN_IMAGE" \
+            sign-blob --yes \
+            --output-signature sbom.spdx.json.sig \
+            --output-certificate sbom.spdx.json.pem \
+            sbom.spdx.json
+      - name: verify signed SBOM
+        if: github.event_name != 'pull_request'
+        env:
+          COSIGN_IMAGE: gcr.io/projectsigstore/cosign:v2.4.1
+        run: |
+          docker run --rm \
+            -v "$PWD:/work" \
+            -w /work \
+            "$COSIGN_IMAGE" \
+            verify-blob \
+            --certificate sbom.spdx.json.pem \
+            --signature sbom.spdx.json.sig \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+            --certificate-identity-regexp 'https://github.com/.+' \
+            sbom.spdx.json
+      - name: upload SBOM artifact
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: sbom-spdx
+          path: sbom.spdx.json
+          if-no-files-found: error
+      - name: upload SBOM signature artifacts
+        uses: actions/upload-artifact@v4
+        if: github.event_name != 'pull_request'
+        with:
+          name: sbom-signature
+          path: |
+            sbom.spdx.json.sig
+            sbom.spdx.json.pem
+          if-no-files-found: error
 
   unit:
     runs-on: ubuntu-latest
