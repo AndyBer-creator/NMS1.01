@@ -63,6 +63,19 @@ jobs:
       - name: gosec
         run: $(go env GOPATH)/bin/gosec ./...
 
+  trivy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Trivy filesystem scan
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          scan-type: fs
+          scan-ref: .
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+          exit-code: "1"
+
   unit:
     runs-on: ubuntu-latest
     steps:
