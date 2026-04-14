@@ -1,6 +1,6 @@
 SHELL := /bin/bash
 
-.PHONY: migrate server worker traps dev docker-up clean backup-db restore-db smoke-test rbac-smoke init-secrets log-secrets-check slo-gates https-policy-check compose-security-check chaos-worker-check test test-race test-cover test-integration lint vuln check-coverage e2e-http-smoke load-http-readonly k6-readonly k6-session-csrf k6-logout-csrf k6-admin-csrf ci-local static-css check-static-css vendor-js
+.PHONY: migrate server worker traps dev docker-up clean backup-db restore-db smoke-test rbac-smoke init-secrets log-secrets-check slo-gates https-policy-check compose-security-check chaos-worker-check test test-race test-cover test-integration lint vuln gosec check-coverage e2e-http-smoke load-http-readonly k6-readonly k6-session-csrf k6-logout-csrf k6-admin-csrf ci-local static-css check-static-css vendor-js
 
 # Если .env есть — подхватываем (docker, migrate, smoke). Без файла цели вроде `make test` всё равно работают.
 ifneq (,$(wildcard .env))
@@ -84,7 +84,10 @@ lint:
 	go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.6.1 run ./... --timeout=5m
 
 vuln:
-	go run golang.org/x/vuln/cmd/govulncheck@latest ./...
+	go run golang.org/x/vuln/cmd/govulncheck@v1.2.0 ./...
+
+gosec:
+	go run github.com/securego/gosec/v2/cmd/gosec@latest ./...
 
 check-coverage:
 	@test -f coverage.out || $(MAKE) test-cover
@@ -118,8 +121,8 @@ k6-admin-csrf:
 	@PATH="$(HOME)/.local/bin:$$PATH" command -v k6 >/dev/null 2>&1 || { echo "k6 not found (ожидался в PATH или $(HOME)/.local/bin): https://k6.io/docs/get-started/installation/"; exit 1; }
 	PATH="$(HOME)/.local/bin:$$PATH" k6 run scripts/k6_admin_csrf.js
 
-# Локальная проверка перед пушем (без интеграции с БД): lint, vuln, тесты -race, порог coverage.
-ci-local: lint vuln
+# Локальная проверка перед пушем (без интеграции с БД): lint, vuln, gosec, compose policy, тесты -race, порог coverage.
+ci-local: lint vuln gosec compose-security-check
 	go test ./... -count=1 -race -coverprofile=coverage.out -covermode=atomic
 	./scripts/check_coverage.sh coverage.out
 
