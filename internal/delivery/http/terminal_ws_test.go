@@ -1,12 +1,17 @@
 package http
 
 import (
+	"context"
 	"encoding/base64"
 	"net"
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/go-chi/chi/v5"
+	"go.uber.org/zap"
 )
 
 func TestTerminalKindFromQuery(t *testing.T) {
@@ -186,5 +191,38 @@ func TestTerminalWSTokenRejectsInvalidCases(t *testing.T) {
 	tampered := parts[0] + "." + base64.RawURLEncoding.EncodeToString(sig)
 	if got := verifyTerminalWSToken(tampered, 7); got != nil {
 		t.Fatal("tampered signature token must be rejected")
+	}
+}
+
+func TestTerminalWS_ThrottledBasicAuthReturns429(t *testing.T) {
+	resetAuthLimiterForTest(t)
+	t.Setenv("NMS_ADMIN_USER", "admin")
+	t.Setenv("NMS_ADMIN_PASS", "secret")
+	t.Setenv("NMS_ADMIN_USER_FILE", "")
+	t.Setenv("NMS_ADMIN_PASS_FILE", "")
+
+	ip := "203.0.113.77"
+	user := "admin"
+	now := time.Now()
+	for i := 0; i < loginMaxAttemptsUser; i++ {
+		authLoginLimiter.onFailure(ip, user, now.Add(time.Duration(i)*time.Second))
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/terminal/1?kind=ssh", nil)
+	req.RemoteAddr = ip + ":44321"
+	req.SetBasicAuth("admin", "secret")
+	routeCtx := chi.NewRouteContext()
+	routeCtx.URLParams.Add("id", "1")
+	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, routeCtx))
+
+	rr := httptest.NewRecorder()
+	h := &Handlers{logger: zap.NewNop()}
+	h.TerminalWS(rr, req)
+
+	if rr.Code != http.StatusTooManyRequests {
+		t.Fatalf("expected 429, got %d body=%q", rr.Code, rr.Body.String())
+	}
+	if rr.Header().Get("Retry-After") == "" {
+		t.Fatal("expected Retry-After header")
 	}
 }

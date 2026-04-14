@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net"
 	"net/smtp"
+	"strconv"
 	"os"
 	"strings"
 	"time"
@@ -40,6 +41,9 @@ func allowPlainSMTP() bool {
 func (c *SMTPClient) Send(to, subject, body string) error {
 	if !c.Enabled() {
 		return fmt.Errorf("smtp is not configured")
+	}
+	if _, err := validateSMTPPort(c.Port); err != nil {
+		return err
 	}
 	to = strings.TrimSpace(to)
 	if to == "" {
@@ -115,6 +119,17 @@ func (c *SMTPClient) sendTLS(addr, to string, msg []byte) error {
 		return err
 	}
 	return client.Quit()
+}
+
+func validateSMTPPort(port string) (int, error) {
+	p, err := strconv.Atoi(strings.TrimSpace(port))
+	if err != nil {
+		return 0, fmt.Errorf("invalid smtp port %q: must be numeric", port)
+	}
+	if p < 1 || p > 65535 {
+		return 0, fmt.Errorf("invalid smtp port %q: must be in range 1..65535", port)
+	}
+	return p, nil
 }
 
 func (c *SMTPClient) sendStartTLS(addr, to string, msg []byte) error {
