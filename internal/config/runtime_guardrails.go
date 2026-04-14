@@ -42,6 +42,12 @@ func ValidateRuntimeSecurity() error {
 	if dsn != "" && strings.Contains(dsn, "sslmode=disable") {
 		return fmt.Errorf("production guardrail: DB_DSN must not use sslmode=disable")
 	}
+	if strings.TrimSpace(EnvOrFile("NMS_TERMINAL_SSH_KNOWN_HOSTS")) == "" {
+		return fmt.Errorf("production guardrail: NMS_TERMINAL_SSH_KNOWN_HOSTS must be set")
+	}
+	if !envEnabled("NMS_ENFORCE_HTTPS") {
+		return fmt.Errorf("production guardrail: NMS_ENFORCE_HTTPS must be enabled")
+	}
 
 	return nil
 }
