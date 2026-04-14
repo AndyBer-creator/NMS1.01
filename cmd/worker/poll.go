@@ -2,12 +2,15 @@ package main
 
 import (
 	"context"
+	"os"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 
 	"NMS1/internal/config"
+	"NMS1/internal/domain"
 	"NMS1/internal/infrastructure/postgres"
 	"NMS1/internal/infrastructure/snmp"
 
@@ -51,6 +54,87 @@ var (
 
 	pollBackoff = newDeviceBackoff()
 )
+
+func pollWorkerConcurrency() int {
+	v := strings.TrimSpace(os.Getenv("NMS_WORKER_POLL_CONCURRENCY"))
+	if v == "" {
+		return 4
+	}
+	n, err := strconv.Atoi(v)
+	if err != nil || n <= 0 {
+		return 4
+	}
+	if n > 128 {
+		return 128
+	}
+	return n
+}
+
+func pollRateLimitPerSec() int {
+	v := strings.TrimSpace(os.Getenv("NMS_WORKER_POLL_RATE_LIMIT_PER_SEC"))
+	if v == "" {
+		return 0
+	}
+	n, err := strconv.Atoi(v)
+	if err != nil || n <= 0 {
+		return 0
+	}
+	if n > 1000 {
+		return 1000
+	}
+	return n
+}
+
+type pollThrottle struct {
+	ch   <-chan struct{}
+	stop func()
+}
+
+type pollResult int
+
+const (
+	pollResultSuccess pollResult = iota
+	pollResultFailed
+	pollResultSkipped
+)
+
+func newPollThrottle(ratePerSec int) pollThrottle {
+	if ratePerSec <= 0 {
+		return pollThrottle{
+			ch:   nil,
+			stop: func() {},
+		}
+	}
+	interval := time.Second / time.Duration(ratePerSec)
+	if interval <= 0 {
+		interval = time.Millisecond
+	}
+	ticker := time.NewTicker(interval)
+	ch := make(chan struct{}, 1)
+	ch <- struct{}{} // allow one immediate request
+	done := make(chan struct{})
+	go func() {
+		defer close(ch)
+		for {
+			select {
+			case <-done:
+				return
+			case <-ticker.C:
+				select {
+				case ch <- struct{}{}:
+				default:
+				}
+			}
+		}
+	}()
+	return pollThrottle{
+		ch: ch,
+		stop: func() {
+			close(done)
+			ticker.Stop()
+		},
+	}
+}
 
 type backoffState struct {
 	failures int
@@ -129,99 +213,69 @@ func pollAllDevices(ctx context.Context, repo *postgres.Repo, snmpClient *snmp.C
 	}
 
 	baseOids := config.StandardOIDs()
+	concurrency := pollWorkerConcurrency()
+	ratePerSec := pollRateLimitPerSec()
+	throttle := newPollThrottle(ratePerSec)
+	defer throttle.stop()
+
 	logger.Info("Starting poll",
 		zap.Int("devices", len(devices)),
-		zap.Int("oids", len(baseOids)))
+		zap.Int("oids", len(baseOids)),
+		zap.Int("workers", concurrency),
+		zap.Int("rate_limit_per_sec", ratePerSec))
 
-	skipped := 0
-	for _, device := range devices {
-		select {
-		case <-ctx.Done():
-			logger.Info("Polling interrupted",
-				zap.Int("processed", success+failed))
-			return success, failed, ctx.Err()
-		default:
-		}
-
-		now := time.Now()
-		if skip, wait := pollBackoff.shouldSkip(device.IP, now); skip {
-			skipped++
-			logger.Info("Polling skipped by backoff",
-				zap.Int("id", device.ID),
-				zap.String("ip", device.IP),
-				zap.Duration("retry_in", wait))
-			continue
-		}
-
-		logger.Info("Polling device",
-			zap.Int("id", device.ID),
-			zap.String("ip", device.IP),
-			zap.String("name", device.Name),
-			zap.String("version", device.SNMPVersion))
-
-		result, err := snmpClient.GetDevice(device, baseOids)
-		if err != nil {
-			status := "failed_transport"
-			switch snmp.GetErrorKind(err) {
-			case snmp.ErrorKindTimeout:
-				status = "failed_timeout"
-			case snmp.ErrorKindAuth:
-				status = "failed_auth"
-			case snmp.ErrorKindNoSuch:
-				status = "failed_no_such_name"
-			case snmp.ErrorKindTransport:
-				status = "failed_transport"
-			}
-			if snmpPollWasOK(device.Status) {
-				detail := status + ": " + err.Error()
-				if errEv := repo.InsertAvailabilityEvent(device.ID, "unavailable", detail); errEv != nil {
-					logger.Warn("availability event insert failed", zap.Int("device_id", device.ID), zap.Error(errEv))
+	var successN, failedN, skippedN atomic.Int64
+	jobs := make(chan *domain.Device, concurrency*2)
+	var wg sync.WaitGroup
+	for i := 0; i < concurrency; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for device := range jobs {
+				if throttle.ch != nil {
+					select {
+					case <-ctx.Done():
+						return
+					case _, ok := <-throttle.ch:
+						if !ok {
+							return
+						}
+					}
+				}
+				switch pollOneDevice(repo, snmpClient, logger, device, baseOids) {
+				case pollResultSuccess:
+					successN.Add(1)
+				case pollResultSkipped:
+					skippedN.Add(1)
+				default:
+					failedN.Add(1)
 				}
 			}
-			logger.Warn("SNMP failed",
-				zap.Int("id", device.ID),
-				zap.String("ip", device.IP),
-				zap.String("version", device.SNMPVersion),
-				zap.String("error_kind", status),
-				zap.Error(err))
+		}()
+	}
 
-			retryAfter := pollBackoff.onFailure(device.IP, err.Error(), time.Now())
-			_ = repo.UpdateDeviceError(device.ID, status, err.Error())
-			logger.Warn("Backoff scheduled",
-				zap.String("ip", device.IP),
-				zap.Duration("retry_after", retryAfter))
-			failed++
-			continue
+	interrupted := false
+	for _, d := range devices {
+		select {
+		case <-ctx.Done():
+			interrupted = true
+		case jobs <- d:
 		}
-
-		if snmpPollWasFailure(device.Status) {
-			if errEv := repo.InsertAvailabilityEvent(device.ID, "available", "SNMP опрос восстановлен"); errEv != nil {
-				logger.Warn("availability event insert failed", zap.Int("device_id", device.ID), zap.Error(errEv))
-			}
+		if interrupted {
+			break
 		}
+	}
+	close(jobs)
+	wg.Wait()
 
-		metricsSaved := 0
-		for oid, value := range result {
-			if err := repo.SaveMetric(device.ID, oid, value); err != nil {
-				logger.Warn("Save metric failed",
-					zap.String("ip", device.IP),
-					zap.String("oid", oid),
-					zap.Error(err))
-			} else {
-				metricsSaved++
-			}
-		}
+	success = int(successN.Load())
+	failed = int(failedN.Load())
+	skipped := int(skippedN.Load())
 
-		_ = repo.MarkDevicePollSuccess(device.ID)
-		pollBackoff.onSuccess(device.IP)
-		success++
-
-		sysDescr := getValue(result, "1.3.6.1.2.1.1.1.0")
-		logger.Info("✅ Device polled OK",
-			zap.String("ip", device.IP),
-			zap.String("sysDescr", sysDescr),
-			zap.Int("metrics", len(result)),
-			zap.Int("saved", metricsSaved))
+	if interrupted || ctx.Err() != nil {
+		logger.Info("Polling interrupted",
+			zap.Int("processed", success+failed+skipped))
+		return success, failed, ctx.Err()
 	}
 
 	logger.Info("Polling stats",
@@ -231,6 +285,91 @@ func pollAllDevices(ctx context.Context, repo *postgres.Repo, snmpClient *snmp.C
 		zap.Int("total", len(devices)))
 
 	return success, failed, nil
+}
+
+func pollOneDevice(
+	repo *postgres.Repo,
+	snmpClient *snmp.Client,
+	logger *zap.Logger,
+	device *domain.Device,
+	baseOids []string,
+) pollResult {
+	now := time.Now()
+	if skip, wait := pollBackoff.shouldSkip(device.IP, now); skip {
+		logger.Info("Polling skipped by backoff",
+			zap.Int("id", device.ID),
+			zap.String("ip", device.IP),
+			zap.Duration("retry_in", wait))
+		return pollResultSkipped
+	}
+
+	logger.Info("Polling device",
+		zap.Int("id", device.ID),
+		zap.String("ip", device.IP),
+		zap.String("name", device.Name),
+		zap.String("version", device.SNMPVersion))
+	result, err := snmpClient.GetDevice(device, baseOids)
+	if err != nil {
+		status := "failed_transport"
+		switch snmp.GetErrorKind(err) {
+		case snmp.ErrorKindTimeout:
+			status = "failed_timeout"
+		case snmp.ErrorKindAuth:
+			status = "failed_auth"
+		case snmp.ErrorKindNoSuch:
+			status = "failed_no_such_name"
+		case snmp.ErrorKindTransport:
+			status = "failed_transport"
+		}
+		if snmpPollWasOK(device.Status) {
+			detail := status + ": " + err.Error()
+			if errEv := repo.InsertAvailabilityEvent(device.ID, "unavailable", detail); errEv != nil {
+				logger.Warn("availability event insert failed", zap.Int("device_id", device.ID), zap.Error(errEv))
+			}
+		}
+		logger.Warn("SNMP failed",
+			zap.Int("id", device.ID),
+			zap.String("ip", device.IP),
+			zap.String("version", device.SNMPVersion),
+			zap.String("error_kind", status),
+			zap.Error(err))
+
+		retryAfter := pollBackoff.onFailure(device.IP, err.Error(), time.Now())
+		_ = repo.UpdateDeviceError(device.ID, status, err.Error())
+		logger.Warn("Backoff scheduled",
+			zap.String("ip", device.IP),
+			zap.Duration("retry_after", retryAfter))
+		return pollResultFailed
+	}
+
+	if snmpPollWasFailure(device.Status) {
+		if errEv := repo.InsertAvailabilityEvent(device.ID, "available", "SNMP опрос восстановлен"); errEv != nil {
+			logger.Warn("availability event insert failed", zap.Int("device_id", device.ID), zap.Error(errEv))
+		}
+	}
+
+	metricsSaved := 0
+	for oid, value := range result {
+		if err := repo.SaveMetric(device.ID, oid, value); err != nil {
+			logger.Warn("Save metric failed",
+				zap.String("ip", device.IP),
+				zap.String("oid", oid),
+				zap.Error(err))
+		} else {
+			metricsSaved++
+		}
+	}
+
+	_ = repo.MarkDevicePollSuccess(device.ID)
+	pollBackoff.onSuccess(device.IP)
+
+	sysDescr := getValue(result, "1.3.6.1.2.1.1.1.0")
+	logger.Info("✅ Device polled OK",
+		zap.String("ip", device.IP),
+		zap.String("sysDescr", sysDescr),
+		zap.Int("metrics", len(result)),
+		zap.Int("saved", metricsSaved))
+	return pollResultSuccess
 }
 
 func getValue(result map[string]string, oid string) string {
