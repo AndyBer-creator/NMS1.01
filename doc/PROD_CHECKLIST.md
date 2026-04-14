@@ -1,6 +1,6 @@
 # NMS1 Production Readiness Checklist
 
-Дата обновления: 2026-04-13 (enterprise: readiness, OpenAPI, security.txt, coverage 20%)
+Дата обновления: 2026-04-14 (enterprise: readiness, OpenAPI, security.txt, coverage 25%, strict CI gates)
 
 Этот файл фиксирует минимальные требования для безопасного go-live и текущий статус проекта.
 
@@ -61,7 +61,8 @@
   - Добавлены формальные SLO-gates и автоматическая проверка через Prometheus API: `SLO_GATES.md`, `scripts/check_slo_gates.sh` (`make slo-gates`).
 
 - [x] Алертинг (Alertmanager / Telegram route / и т.д.)
-  - Добавлены базовые Prometheus rules: `alerts/nms-alerts.yml` (API down, worker down, high 5xx, polling failures spike).
+  - Добавлены расширенные Prometheus rules: `alerts/nms-alerts.yml` (API/worker down, high 5xx, polling failure spike/ratio, backoff spike, slow polling cycle).
+  - Включена CI-валидация правил: `promtool check rules` + `promtool test rules` (`make alert-rules-check`, workflow job `alert-rules`).
   - Добавлен Alertmanager в compose + webhook `POST /alerts/webhook` (Prometheus -> Alertmanager -> API).
   - Реализована доставка в Telegram (best-effort) и Email через SMTP (получатель настраивается в admin UI).
   - Подтверждена фактическая email-доставка (`2026-04-09`: письмо получено на целевой адрес).
@@ -85,7 +86,9 @@
 - [x] Интеграционные тесты критичных сценариев
   - HTTP: RBAC/CSRF (viewer vs admin), CRUD устройств, настройки worker/email, discovery/MIB/SNMP/test-alert; `internal/testdb` для ping БД; `make test-integration` и пакет `internal/delivery/http` (`-run Integration`).
   - PostgreSQL/traps: `internal/infrastructure/postgres`, `internal/repository` при `DB_DSN`.
-  - CI: unit + integration (см. `.github/workflows/test.yml`), job **static-css-sync** (Tailwind `app.css` совпадает с билдом), порог покрытия по `scripts/check_coverage.sh` (по умолчанию **20%**).
+  - CI: unit + integration + e2e/contract gates (см. `.github/workflows/test.yml`), job **static-css-sync** (Tailwind `app.css` совпадает с билдом), порог покрытия по `scripts/check_coverage.sh` (по умолчанию **25%**).
+  - Добавлены обязательные gates: `e2e-http-smoke`, `e2e-auth-smoke`, `contract-http-spec` (auth-aware OpenAPI + public security.txt), `alert-rules`, `compose-security`, `trivy`, `gosec`, `sbom-sign`.
+  - Добавлен manual promotion flow `stage -> prod` с environment approvals и rollback handoff (`.github/workflows/promote.yml`).
 
 ## 7) Enterprise integration & ops hygiene
 
