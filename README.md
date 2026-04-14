@@ -324,6 +324,10 @@ docker compose -f docker-compose.bridge.yml up -d
 
 Периодический опрос **worker** использует только **числовые OID** из `internal/config/oids.go` (без MIB-парсера на лету).
 
+Для больших флотов можно ограничить нагрузку worker:
+- `NMS_WORKER_POLL_CONCURRENCY` — число параллельных опросов устройств в одном цикле (по умолчанию `4`, max `128`);
+- `NMS_WORKER_POLL_RATE_LIMIT_PER_SEC` — ограничение запуска опросов в секундах (по умолчанию `0`, без лимита; max `1000`).
+
 Локально без Docker: установите **net-snmp** (чтобы в `PATH` был `snmptranslate`) или ограничьтесь числовыми OID.
 
 ## Локальная разработка
