@@ -89,7 +89,7 @@ services:
     network_mode: host
     environment:
       TZ: ${TZ:-UTC}
-      DB_DSN: "host=127.0.0.1 port=5432 user=nms-user password=${POSTGRES_PASSWORD} dbname=NMS sslmode=disable"
+      DB_DSN: "host=127.0.0.1 port=5432 user=nms-user password=${POSTGRES_PASSWORD} dbname=NMS sslmode=${DB_SSLMODE:-disable}"
       TELEGRAM_TOKEN: "${TELEGRAM_TOKEN}"
       TELEGRAM_CHAT_ID: "${TELEGRAM_CHAT_ID}"
       SMTP_HOST: "${SMTP_HOST}"
@@ -199,7 +199,7 @@ services:
     network_mode: host
     environment:
       TZ: ${TZ:-UTC}
-      DB_DSN: "host=127.0.0.1 port=5432 user=nms-user password=${POSTGRES_PASSWORD} dbname=NMS sslmode=disable"
+      DB_DSN: "host=127.0.0.1 port=5432 user=nms-user password=${POSTGRES_PASSWORD} dbname=NMS sslmode=${DB_SSLMODE:-disable}"
     volumes:
       - ./logs:/app/logs:delegated
       - ./config.yaml:/app/config.yaml
