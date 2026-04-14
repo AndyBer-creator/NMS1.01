@@ -60,6 +60,7 @@ curl -sS http://localhost:8081/metrics | head
    - проверить network reachability до проблемных IP;
    - временно снизить `NMS_WORKER_POLL_CONCURRENCY` и/или `NMS_WORKER_POLL_RATE_LIMIT_PER_SEC`;
    - после стабилизации вернуть значения по SLO.
+5. Для выбора target-значений и PromQL-панелей использовать `doc/WORKER_TUNING.md`.
 
 ## 3) PostgreSQL недоступна
 

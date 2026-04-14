@@ -65,6 +65,7 @@
 | Шаг | Действие |
 |-----|----------|
 | Prometheus / Grafana | URL и datasource как в [`README.md`](../README.md); правила в `alerts/nms-alerts.yml`, Alertmanager — `alertmanager.yml` или `alertmanager.bridge.yml` |
+| Worker scaling baseline | Перед go-live зафиксировать baseline/панели из [`WORKER_TUNING.md`](WORKER_TUNING.md) (failure ratio, backoff skips, cycle duration, config gauges) |
 | Проверка цепочки алертов | См. раздел в [`README.md`](../README.md) (Alerting) и [`RUNBOOK.md`](RUNBOOK.md) § про доставку уведомлений |
 
 ---
