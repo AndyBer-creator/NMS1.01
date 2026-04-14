@@ -34,3 +34,14 @@ func TestSMTPClient_Send_validation(t *testing.T) {
 		t.Fatalf("want whitespace recipient: %v", err)
 	}
 }
+
+func TestAllowPlainSMTPEnv(t *testing.T) {
+	t.Setenv("NMS_SMTP_ALLOW_PLAINTEXT", "")
+	if allowPlainSMTP() {
+		t.Fatal("plaintext SMTP must be disabled by default")
+	}
+	t.Setenv("NMS_SMTP_ALLOW_PLAINTEXT", "true")
+	if !allowPlainSMTP() {
+		t.Fatal("plaintext SMTP override must be enabled for true")
+	}
+}
