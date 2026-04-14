@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net"
 	"net/smtp"
+	"os"
 	"strings"
 	"time"
 )
@@ -31,6 +32,11 @@ func (c *SMTPClient) Enabled() bool {
 	return c.Host != "" && c.Port != "" && c.From != ""
 }
 
+func allowPlainSMTP() bool {
+	v := strings.TrimSpace(strings.ToLower(os.Getenv("NMS_SMTP_ALLOW_PLAINTEXT")))
+	return v == "1" || v == "true" || v == "yes" || v == "on"
+}
+
 func (c *SMTPClient) Send(to, subject, body string) error {
 	if !c.Enabled() {
 		return fmt.Errorf("smtp is not configured")
@@ -53,11 +59,11 @@ func (c *SMTPClient) Send(to, subject, body string) error {
 	if c.Port == "465" {
 		return c.sendTLS(addr, to, []byte(msg))
 	}
-	// For submission port (587), use STARTTLS.
-	if c.Port == "587" {
+	// For all non-465 ports, require STARTTLS by default.
+	// Legacy plaintext SMTP is allowed only with explicit override.
+	if c.Port == "587" || !allowPlainSMTP() {
 		return c.sendStartTLS(addr, to, []byte(msg))
 	}
-	// Fallback (legacy plain SMTP; may fail on strict providers).
 	var auth smtp.Auth
 	if c.User != "" || c.Pass != "" {
 		auth = smtp.PlainAuth("", c.User, c.Pass, c.Host)
@@ -127,6 +133,8 @@ func (c *SMTPClient) sendStartTLS(addr, to string, msg []byte) error {
 		if err := client.StartTLS(&tls.Config{ServerName: c.Host, MinVersion: tls.VersionTLS12}); err != nil {
 			return err
 		}
+	} else if !allowPlainSMTP() {
+		return fmt.Errorf("smtp server does not support STARTTLS")
 	}
 	if c.User != "" || c.Pass != "" {
 		if err := client.Auth(smtp.PlainAuth("", c.User, c.Pass, c.Host)); err != nil {
