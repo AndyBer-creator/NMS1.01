@@ -205,6 +205,7 @@ SMTP env:
 - `NMS_ALLOW_NO_AUTH=true` включает legacy no-auth режим (только для локальной отладки, не для production).
 - `NMS_TERMINAL_SSH_KNOWN_HOSTS` — путь к known_hosts для проверки host key в web-terminal SSH.
 - `NMS_DB_ENCRYPTION_KEY` — ключ шифрования SNMP credential-полей в PostgreSQL.
+- `NMS_DB_ENCRYPTION_OLD_KEY` — временный старый ключ для процедуры re-encrypt (`go run ./cmd/rotate-db-secrets`), после ротации должен быть удалён из окружения.
 
 ## HTTP API (REST)
 
@@ -401,7 +402,7 @@ make load-http-readonly
 - **gosec** — SAST для Go-кода (`gosec ./...`);
 - **trivy** — filesystem supply-chain scan по репозиторию (HIGH/CRITICAL, `ignore-unfixed`);
 - **compose-security** — policy-check для `docker-compose*.yml` и `Dockerfile` (запрещены `privileged: true`, `:latest`, disabled healthchecks);
-- **unit** — тесты с **`-race`**, покрытие, порог **`scripts/check_coverage.sh`** (по умолчанию **20%**, переменная `MIN_COVERAGE_PERCENT`), загрузка в **Codecov** (ошибка загрузки не валит job), артефакт **`coverage-out`**; при push в ту же ветку предыдущий прогон этого workflow **отменяется** (`concurrency`);
+- **unit** — тесты с **`-race`**, покрытие, порог **`scripts/check_coverage.sh`** (по умолчанию **22%**, переменная `MIN_COVERAGE_PERCENT`), загрузка в **Codecov** (ошибка загрузки не валит job), артефакт **`coverage-out`**; при push в ту же ветку предыдущий прогон этого workflow **отменяется** (`concurrency`);
 - **integration** — миграции, Postgres, тесты `Integration` с **`-race`**.
 
 Обновления зависимостей: **Dependabot** (`.github/dependabot.yml`) — еженедельно `gomod` и **GitHub Actions**. Для **приватного** репозитория в Codecov обычно задают секрет **`CODECOV_TOKEN`** (Settings → Secrets → Actions); без токена загрузка отчёта может быть нестабильной, в CI это не валит job.

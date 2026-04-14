@@ -1,6 +1,6 @@
 SHELL := /bin/bash
 
-.PHONY: migrate server worker traps dev docker-up clean backup-db restore-db smoke-test rbac-smoke init-secrets log-secrets-check slo-gates https-policy-check compose-security-check chaos-worker-check test test-race test-cover test-integration lint vuln gosec check-coverage e2e-http-smoke load-http-readonly k6-readonly k6-session-csrf k6-logout-csrf k6-admin-csrf ci-local static-css check-static-css vendor-js
+.PHONY: migrate rotate-db-secrets server worker traps dev docker-up clean backup-db restore-db smoke-test rbac-smoke init-secrets log-secrets-check slo-gates https-policy-check compose-security-check chaos-worker-check test test-race test-cover test-integration lint vuln gosec check-coverage e2e-http-smoke load-http-readonly k6-readonly k6-session-csrf k6-logout-csrf k6-admin-csrf ci-local static-css check-static-css vendor-js
 
 # Если .env есть — подхватываем (docker, migrate, smoke). Без файла цели вроде `make test` всё равно работают.
 ifneq (,$(wildcard .env))
@@ -23,6 +23,9 @@ vendor-js:
 
 migrate:
 	go run ./cmd/migration/
+
+rotate-db-secrets:
+	go run ./cmd/rotate-db-secrets/
 
 server:
 	go run ./cmd/server/

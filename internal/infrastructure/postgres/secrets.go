@@ -21,6 +21,11 @@ type secretProtector struct {
 
 func newSecretProtectorFromEnv() (*secretProtector, error) {
 	secret := strings.TrimSpace(config.EnvOrFile("NMS_DB_ENCRYPTION_KEY"))
+	return newSecretProtector(secret)
+}
+
+func newSecretProtector(secret string) (*secretProtector, error) {
+	secret = strings.TrimSpace(secret)
 	if secret == "" {
 		return &secretProtector{enabled: false}, nil
 	}
