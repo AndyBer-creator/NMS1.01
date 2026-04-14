@@ -63,3 +63,15 @@ func TestValidateSMTPPort(t *testing.T) {
 		}
 	})
 }
+
+func TestSMTPDialAddr(t *testing.T) {
+	if got := smtpDialAddr("smtp.example.com", "587"); got != "smtp.example.com:587" {
+		t.Fatalf("smtpDialAddr dns: got %q", got)
+	}
+	if got := smtpDialAddr("2001:db8::1", "587"); got != "[2001:db8::1]:587" {
+		t.Fatalf("smtpDialAddr ipv6: got %q", got)
+	}
+	if got := smtpDialAddr("[2001:db8::1]", "587"); got != "[2001:db8::1]:587" {
+		t.Fatalf("smtpDialAddr bracketed ipv6: got %q", got)
+	}
+}

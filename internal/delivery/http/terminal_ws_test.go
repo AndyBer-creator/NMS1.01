@@ -116,11 +116,15 @@ func TestTerminalTimeoutEnvHelpers(t *testing.T) {
 	t.Setenv("NMS_TERMINAL_DIAL_TIMEOUT", "")
 	t.Setenv("NMS_TERMINAL_SESSION_MAX", "")
 	t.Setenv("NMS_TERMINAL_WS_READ_IDLE", "")
+	t.Setenv("NMS_TERMINAL_WS_READ_LIMIT_BYTES", "")
 	if got := terminalDialTimeout(); got != 20*time.Second {
 		t.Fatalf("terminalDialTimeout default: got %v", got)
 	}
 	if got := terminalWSReadIdle(); got != 30*time.Minute {
 		t.Fatalf("terminalWSReadIdle default: got %v", got)
+	}
+	if got := terminalWSReadLimit(); got != defaultTerminalWSReadLimit {
+		t.Fatalf("terminalWSReadLimit default: got %d", got)
 	}
 	deadline := terminalSessionDeadline()
 	if diff := time.Until(deadline); diff < 7*time.Hour || diff > 9*time.Hour {
@@ -130,16 +134,84 @@ func TestTerminalTimeoutEnvHelpers(t *testing.T) {
 	t.Setenv("NMS_TERMINAL_DIAL_TIMEOUT", "7s")
 	t.Setenv("NMS_TERMINAL_SESSION_MAX", "1h")
 	t.Setenv("NMS_TERMINAL_WS_READ_IDLE", "45s")
+	t.Setenv("NMS_TERMINAL_WS_READ_LIMIT_BYTES", "131072")
 	if got := terminalDialTimeout(); got != 7*time.Second {
 		t.Fatalf("terminalDialTimeout override: got %v", got)
 	}
 	if got := terminalWSReadIdle(); got != 45*time.Second {
 		t.Fatalf("terminalWSReadIdle override: got %v", got)
 	}
+	if got := terminalWSReadLimit(); got != 131072 {
+		t.Fatalf("terminalWSReadLimit override: got %d", got)
+	}
 	deadline = terminalSessionDeadline()
 	if diff := time.Until(deadline); diff < 59*time.Minute || diff > 61*time.Minute {
 		t.Fatalf("terminalSessionDeadline override out of range: %v", diff)
 	}
+}
+
+func TestTerminalWSReadLimit_InvalidOrOutOfRangeFallsBack(t *testing.T) {
+	t.Setenv("NMS_TERMINAL_WS_READ_LIMIT_BYTES", "abc")
+	if got := terminalWSReadLimit(); got != defaultTerminalWSReadLimit {
+		t.Fatalf("invalid value must fallback, got %d", got)
+	}
+	t.Setenv("NMS_TERMINAL_WS_READ_LIMIT_BYTES", "512")
+	if got := terminalWSReadLimit(); got != defaultTerminalWSReadLimit {
+		t.Fatalf("too small value must fallback, got %d", got)
+	}
+	t.Setenv("NMS_TERMINAL_WS_READ_LIMIT_BYTES", "2097152")
+	if got := terminalWSReadLimit(); got != defaultTerminalWSReadLimit {
+		t.Fatalf("too large value must fallback, got %d", got)
+	}
+}
+
+func TestValidateTerminalInitMsg(t *testing.T) {
+	t.Run("valid ssh", func(t *testing.T) {
+		err := validateTerminalInitMsg(terminalInitMsg{
+			Type:     "init",
+			Username: "admin",
+			Password: "secret",
+			Port:     22,
+		}, "ssh")
+		if err != nil {
+			t.Fatalf("expected valid init, got %v", err)
+		}
+	})
+	t.Run("invalid type", func(t *testing.T) {
+		err := validateTerminalInitMsg(terminalInitMsg{Type: "resize", Username: "u"}, "ssh")
+		if err == nil {
+			t.Fatal("expected error for non-init type")
+		}
+	})
+	t.Run("ssh username required", func(t *testing.T) {
+		err := validateTerminalInitMsg(terminalInitMsg{Type: "init", Username: "   "}, "ssh")
+		if err == nil {
+			t.Fatal("expected error for empty ssh username")
+		}
+	})
+	t.Run("telnet username optional", func(t *testing.T) {
+		err := validateTerminalInitMsg(terminalInitMsg{Type: "init", Username: "   "}, "telnet")
+		if err != nil {
+			t.Fatalf("expected telnet init to allow empty username, got %v", err)
+		}
+	})
+	t.Run("invalid port", func(t *testing.T) {
+		err := validateTerminalInitMsg(terminalInitMsg{Type: "init", Username: "u", Port: 70000}, "ssh")
+		if err == nil {
+			t.Fatal("expected error for invalid port")
+		}
+	})
+	t.Run("too long credentials", func(t *testing.T) {
+		long := strings.Repeat("a", maxTerminalAuthFieldBytes+1)
+		err := validateTerminalInitMsg(terminalInitMsg{Type: "init", Username: long}, "telnet")
+		if err == nil {
+			t.Fatal("expected error for long username")
+		}
+		err = validateTerminalInitMsg(terminalInitMsg{Type: "init", Username: "u", Password: long}, "ssh")
+		if err == nil {
+			t.Fatal("expected error for long password")
+		}
+	})
 }
 
 func TestTerminalWSTokenSignVerify(t *testing.T) {
