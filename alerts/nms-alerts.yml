@@ -39,3 +39,30 @@ groups:
           summary: "Worker polling failures spike"
           description: "Failed device polls increased by more than 20 during 10 minutes."
 
+      - alert: NMSPollingFailureRatioHigh
+        expr: sum(increase(nms_worker_poll_devices_total{status="failed"}[15m])) / clamp_min(sum(increase(nms_worker_poll_devices_total{status=~"failed|active"}[15m])), 1) > 0.30
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High worker polling failure ratio"
+          description: "More than 30% of worker polling results are failed during the last 15 minutes."
+
+      - alert: NMSPollingBackoffSpike
+        expr: increase(nms_worker_poll_skipped_backoff_total[15m]) > 50
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Worker backoff skips spike"
+          description: "More than 50 device polls were skipped by worker backoff over 15 minutes."
+
+      - alert: NMSPollingCycleSlow
+        expr: sum(increase(nms_worker_poll_duration_seconds_sum[15m])) / clamp_min(sum(increase(nms_worker_poll_duration_seconds_count[15m])), 1) > 180
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Worker polling cycle is slow"
+          description: "Average worker polling cycle duration exceeds 180 seconds for 10 minutes."
+
