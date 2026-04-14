@@ -412,7 +412,7 @@ make load-http-readonly
 
 - **lint** — **golangci-lint** v2.6.1 (`golangci/golangci-lint-action`, настройки в **`.golangci.yml`**);
 - **vuln** — **`govulncheck ./...`**; локально для деталей по «уязвимости в зависимостях»: `go run golang.org/x/vuln/cmd/govulncheck@v1.2.0 -show verbose ./...`;
-- **gosec** — SAST для Go-кода (`gosec ./...`);
+- **gosec** — SAST для Go-кода (зафиксированная версия `v2.25.0` в CI/Makefile);
 - **trivy** — filesystem supply-chain scan по репозиторию (HIGH/CRITICAL, `ignore-unfixed`);
 - **sbom-sign** — генерация **SPDX JSON SBOM** (`sbom.spdx.json`) через **Syft**, keyless подпись + verify через **Cosign** (для push/manual), публикация артефактов `sbom-spdx` и `sbom-signature`;
 - **compose-security** — policy-check для `docker-compose*.yml` и `Dockerfile` (запрещены `privileged: true`, `:latest`, disabled healthchecks);
