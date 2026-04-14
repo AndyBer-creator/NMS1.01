@@ -145,6 +145,7 @@ SMTP env:
 
 - Запуск: `make slo-gates` или `./scripts/check_slo_gates.sh`
 - Документ порогов и выражений: [`doc/SLO_GATES.md`](doc/SLO_GATES.md)
+- Гейты включают API 5xx ratio и worker-критерии: failed count/ratio, backoff skips, avg poll cycle duration.
 - По умолчанию в основном compose Prometheus не публикуется на хост (`expose`, без `ports`).
 - Рекомендуемо для production: запускать через ingress-домен:
 
