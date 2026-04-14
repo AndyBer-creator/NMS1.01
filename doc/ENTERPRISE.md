@@ -30,7 +30,7 @@
 
 | Элемент | Назначение |
 |---------|------------|
-| Порог **coverage** в CI | По умолчанию **22%** (`MIN_COVERAGE_PERCENT`, `scripts/check_coverage.sh`). |
+| Порог **coverage** в CI | По умолчанию **23%** (`MIN_COVERAGE_PERCENT`, `scripts/check_coverage.sh`). |
 | **static-css-sync** | Закоммиченный Tailwind совпадает с билдом. |
 | **Интеграционные тесты** | PostgreSQL в CI; локально — `make test-integration`. |
 | **Smoke / RBAC** | `make smoke-test`, `make rbac-smoke`. |
