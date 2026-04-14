@@ -191,3 +191,103 @@ jobs:
         run: go run ./cmd/migration
       - name: integration tests
         run: go test ./internal/infrastructure/postgres/ ./internal/repository/ ./internal/delivery/http/ -count=1 -race -v -run Integration
+
+  e2e-http-smoke:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: nms-user
+          POSTGRES_PASSWORD: testpass
+          POSTGRES_DB: NMS
+        options: >-
+          --health-cmd "pg_isready -U nms-user -d NMS"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DB_DSN: host=postgres port=5432 user=nms-user password=testpass dbname=NMS sslmode=disable
+      NMS_ALLOW_NO_AUTH: "true"
+      NMS_SESSION_SECRET: ci-e2e-session-secret
+      BASE_URL: http://127.0.0.1:8080
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: migrations
+        run: go run ./cmd/migration
+      - name: start api server
+        run: |
+          go run ./cmd/server > /tmp/nms-api.log 2>&1 &
+          echo $! > /tmp/nms-api.pid
+      - name: wait for api
+        run: |
+          for i in $(seq 1 60); do
+            if curl -fsS "$BASE_URL/health" >/dev/null; then
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "api did not become ready in time" >&2
+          exit 1
+      - name: e2e smoke
+        run: ./scripts/e2e_http_smoke.sh
+      - name: upload api log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-http-smoke-api-log
+          path: /tmp/nms-api.log
+          if-no-files-found: ignore
+
+  contract-http-spec:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: nms-user
+          POSTGRES_PASSWORD: testpass
+          POSTGRES_DB: NMS
+        options: >-
+          --health-cmd "pg_isready -U nms-user -d NMS"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DB_DSN: host=postgres port=5432 user=nms-user password=testpass dbname=NMS sslmode=disable
+      NMS_ALLOW_NO_AUTH: "true"
+      NMS_SESSION_SECRET: ci-contract-session-secret
+      BASE_URL: http://127.0.0.1:8080
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: migrations
+        run: go run ./cmd/migration
+      - name: start api server
+        run: |
+          go run ./cmd/server > /tmp/nms-api-contract.log 2>&1 &
+          echo $! > /tmp/nms-api-contract.pid
+      - name: wait for api
+        run: |
+          for i in $(seq 1 60); do
+            if curl -fsS "$BASE_URL/health" >/dev/null; then
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "api did not become ready in time" >&2
+          exit 1
+      - name: contract spec checks
+        run: ./scripts/contract_http_spec.sh
+      - name: upload api log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: contract-http-spec-api-log
+          path: /tmp/nms-api-contract.log
+          if-no-files-found: ignore
