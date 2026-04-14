@@ -2,6 +2,7 @@ package main
 
 import (
 	"database/sql"
+	"errors"
 	"log"
 
 	"NMS1/internal/config"
@@ -13,9 +14,9 @@ import (
 
 func main() {
 	timezone.InitFromEnv()
-	dsn := config.EnvOrFile("DB_DSN")
-	if dsn == "" {
-		log.Fatal("DB_DSN must be set (see .env)")
+	dsn, err := migrationDSN()
+	if err != nil {
+		log.Fatal(err)
 	}
 
 	db, err := sql.Open("pgx", dsn)
@@ -30,4 +31,12 @@ func main() {
 	if err := goose.Up(db, "migrations"); err != nil {
 		log.Fatal(err)
 	}
+}
+
+func migrationDSN() (string, error) {
+	dsn := config.EnvOrFile("DB_DSN")
+	if dsn == "" {
+		return "", errors.New("DB_DSN must be set (see .env)")
+	}
+	return dsn, nil
 }
