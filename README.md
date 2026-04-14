@@ -397,6 +397,7 @@ make load-http-readonly
 - **vuln** — **`govulncheck ./...`**; локально для деталей по «уязвимости в зависимостях»: `go run golang.org/x/vuln/cmd/govulncheck@v1.2.0 -show verbose ./...`;
 - **gosec** — SAST для Go-кода (`gosec ./...`);
 - **trivy** — filesystem supply-chain scan по репозиторию (HIGH/CRITICAL, `ignore-unfixed`);
+- **compose-security** — policy-check для `docker-compose*.yml` и `Dockerfile` (запрещены `privileged: true`, `:latest`, disabled healthchecks);
 - **unit** — тесты с **`-race`**, покрытие, порог **`scripts/check_coverage.sh`** (по умолчанию **20%**, переменная `MIN_COVERAGE_PERCENT`), загрузка в **Codecov** (ошибка загрузки не валит job), артефакт **`coverage-out`**; при push в ту же ветку предыдущий прогон этого workflow **отменяется** (`concurrency`);
 - **integration** — миграции, Postgres, тесты `Integration` с **`-race`**.
 
