@@ -45,3 +45,21 @@ func TestAllowPlainSMTPEnv(t *testing.T) {
 		t.Fatal("plaintext SMTP override must be enabled for true")
 	}
 }
+
+func TestValidateSMTPPort(t *testing.T) {
+	t.Run("valid", func(t *testing.T) {
+		if _, err := validateSMTPPort("587"); err != nil {
+			t.Fatalf("expected valid port, got %v", err)
+		}
+	})
+	t.Run("non numeric", func(t *testing.T) {
+		if _, err := validateSMTPPort("abc"); err == nil {
+			t.Fatal("expected error for non-numeric port")
+		}
+	})
+	t.Run("out of range", func(t *testing.T) {
+		if _, err := validateSMTPPort("70000"); err == nil {
+			t.Fatal("expected error for out-of-range port")
+		}
+	})
+}

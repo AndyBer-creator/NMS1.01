@@ -27,6 +27,7 @@
 - [x] Ограничение brute-force на login
   - Добавлен throttling/lockout по IP и username.
   - Логируются события `login failed` и `login throttled`.
+  - Throttling распространён на admin BasicAuth в web-terminal (`TerminalWS`): при превышении лимита возвращается `429` + `Retry-After`.
 
 - [x] Security headers
   - Добавлены: `X-Frame-Options`, `X-Content-Type-Options`, `Referrer-Policy`, `Permissions-Policy`, `Content-Security-Policy`.
@@ -43,6 +44,9 @@
   - Добавлена поддержка `*_FILE` для критичных секретов в коде (`DB_DSN`, auth/session, Telegram, SMTP).
   - Добавлен Docker-secrets overlay: `docker-compose.secrets.yml`.
   - Добавлен операционный процесс bootstrap/rotation/revoke: `SECRETS_PROCESS.md` + `scripts/init_docker_secrets.sh`.
+  - В production введён fail-fast на слабый ключ: `NMS_DB_ENCRYPTION_KEY` должен быть не короче 8 символов.
+  - В production `*_FILE` для `NMS_SESSION_SECRET`/`NMS_DB_ENCRYPTION_KEY`/`DB_DSN` валидируются как читаемые и непустые (fail-fast на старте).
+  - `NMS_TERMINAL_SSH_KNOWN_HOSTS` валидируется как доступный файл (не директория) в production.
 
 ## 3) Data Safety (PostgreSQL)
 
@@ -65,6 +69,7 @@
   - Включена CI-валидация правил: `promtool check rules` + `promtool test rules` (`make alert-rules-check`, workflow job `alert-rules`).
   - Добавлен Alertmanager в compose + webhook `POST /alerts/webhook` (Prometheus -> Alertmanager -> API).
   - Реализована доставка в Telegram (best-effort) и Email через SMTP (получатель настраивается в admin UI).
+  - Добавлена fail-fast валидация SMTP-конфига для production: `SMTP_HOST`/`SMTP_PORT`/`SMTP_FROM` только вместе, `SMTP_PORT` в диапазоне `1..65535` и только `465`/`587`, `NMS_SMTP_ALLOW_PLAINTEXT` запрещён.
   - Подтверждена фактическая email-доставка (`2026-04-09`: письмо получено на целевой адрес).
   - Подтверждён e2e через Alertmanager -> webhook API -> email (`2026-04-09`).
 
