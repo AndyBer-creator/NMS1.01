@@ -190,7 +190,10 @@ SMTP env:
 
 - `NMS_ADMIN_USER`, `NMS_ADMIN_PASS`
 - `NMS_VIEWER_USER`, `NMS_VIEWER_PASS`
-- `NMS_SESSION_SECRET` (опционально) — секрет подписи cookie; если не задан, ключ выводится из заданных пар (для продакшена лучше задать явно).
+- `NMS_SESSION_SECRET` — секрет подписи cookie (для production обязателен).
+- `NMS_ALLOW_NO_AUTH=true` включает legacy no-auth режим (только для локальной отладки, не для production).
+- `NMS_TERMINAL_SSH_KNOWN_HOSTS` — путь к known_hosts для проверки host key в web-terminal SSH.
+- `NMS_DB_ENCRYPTION_KEY` — ключ шифрования SNMP credential-полей в PostgreSQL.
 
 ## HTTP API (REST)
 
@@ -383,7 +386,7 @@ make load-http-readonly
 - **`.github/workflows/nightly-lite.yml`** — **ежедневно в 04:15 UTC** только **lint** и **govulncheck** (без тестов и БД). Полный набор тестов по расписанию не гоняется, чтобы экономить минуты раннеров; при необходимости верните `schedule` в `test.yml` или добавьте отдельный workflow.
 
 - **lint** — **golangci-lint** v2.6.1 (`golangci/golangci-lint-action`, настройки в **`.golangci.yml`**);
-- **vuln** — **`govulncheck ./...`**; локально для деталей по «уязвимости в зависимостях»: `go run golang.org/x/vuln/cmd/govulncheck@latest -show verbose ./...`;
+- **vuln** — **`govulncheck ./...`**; локально для деталей по «уязвимости в зависимостях»: `go run golang.org/x/vuln/cmd/govulncheck@v1.2.0 -show verbose ./...`;
 - **unit** — тесты с **`-race`**, покрытие, порог **`scripts/check_coverage.sh`** (по умолчанию **20%**, переменная `MIN_COVERAGE_PERCENT`), загрузка в **Codecov** (ошибка загрузки не валит job), артефакт **`coverage-out`**; при push в ту же ветку предыдущий прогон этого workflow **отменяется** (`concurrency`);
 - **integration** — миграции, Postgres, тесты `Integration` с **`-race`**.
 

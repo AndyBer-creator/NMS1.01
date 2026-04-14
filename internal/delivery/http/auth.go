@@ -4,10 +4,12 @@ import (
 	"NMS1/internal/config"
 	"context"
 	"crypto/subtle"
+	"fmt"
 	"net/http"
 	"net/url"
 	"os"
 	"strings"
+	"time"
 )
 
 type role string
@@ -106,14 +108,34 @@ func RequireAuth(next http.Handler) http.Handler {
 
 		user, pass, ok := r.BasicAuth()
 		if ok {
+			ip := clientIP(r)
+			now := time.Now()
+			if allowed, retryAfter := authLoginLimiter.check(ip, user, now); !allowed {
+				retrySec := int(retryAfter.Seconds()) + 1
+				if retrySec < 1 {
+					retrySec = 1
+				}
+				w.Header().Set("Retry-After", fmt.Sprintf("%d", retrySec))
+				if prefersJSONAPI(r) {
+					w.Header().Set("Content-Type", "application/json; charset=utf-8")
+					w.WriteHeader(http.StatusTooManyRequests)
+					_, _ = w.Write([]byte(`{"error":"too_many_requests","retry_after_seconds":` + fmt.Sprintf("%d", retrySec) + `}`))
+				} else {
+					http.Error(w, "Too many authentication attempts", http.StatusTooManyRequests)
+				}
+				return
+			}
 			switch {
 			case basicMatch(admin, user, pass):
+				authLoginLimiter.onSuccess(ip, user)
 				next.ServeHTTP(w, withUser(r, &authUser{username: user, role: roleAdmin}))
 				return
 			case basicMatch(viewer, user, pass):
+				authLoginLimiter.onSuccess(ip, user)
 				next.ServeHTTP(w, withUser(r, &authUser{username: user, role: roleViewer}))
 				return
 			}
+			authLoginLimiter.onFailure(ip, user, now)
 		}
 
 		nextURL := "/login?next=" + url.QueryEscape(safeNext(r.URL.RequestURI()))
