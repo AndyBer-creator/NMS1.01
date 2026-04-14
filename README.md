@@ -146,6 +146,7 @@ SMTP env:
 - Запуск: `make slo-gates` или `./scripts/check_slo_gates.sh`
 - Документ порогов и выражений: [`doc/SLO_GATES.md`](doc/SLO_GATES.md)
 - Гейты включают API 5xx ratio и worker-критерии: failed count/ratio, backoff skips, avg poll cycle duration.
+- Валидация Prometheus alert rules: `make alert-rules-check` (`promtool check rules` + `promtool test rules` через Docker).
 - По умолчанию в основном compose Prometheus не публикуется на хост (`expose`, без `ports`).
 - Рекомендуемо для production: запускать через ingress-домен:
 
@@ -415,6 +416,7 @@ make load-http-readonly
 - **trivy** — filesystem supply-chain scan по репозиторию (HIGH/CRITICAL, `ignore-unfixed`);
 - **sbom-sign** — генерация **SPDX JSON SBOM** (`sbom.spdx.json`) через **Syft**, keyless подпись + verify через **Cosign** (для push/manual), публикация артефактов `sbom-spdx` и `sbom-signature`;
 - **compose-security** — policy-check для `docker-compose*.yml` и `Dockerfile` (запрещены `privileged: true`, `:latest`, disabled healthchecks);
+- **alert-rules** — проверка `alerts/nms-alerts.yml` через `promtool check rules` + rule-unit-tests `alerts/nms-alerts.test.yml` (обязательный CI gate);
 - **unit** — тесты с **`-race`**, покрытие, порог **`scripts/check_coverage.sh`** (по умолчанию **25%**, переменная `MIN_COVERAGE_PERCENT`), загрузка в **Codecov** (ошибка загрузки не валит job), артефакт **`coverage-out`**; при push в ту же ветку предыдущий прогон этого workflow **отменяется** (`concurrency`);
 - **integration** — миграции, Postgres, тесты `Integration` с **`-race`**.
 - **e2e-http-smoke** — обязательный HTTP smoke в CI с реальным запуском API (`/health`, `/ready`, `/metrics`) на ephemeral runner.

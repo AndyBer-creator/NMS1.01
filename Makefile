@@ -1,6 +1,6 @@
 SHELL := /bin/bash
 
-.PHONY: migrate rotate-db-secrets sbom server worker traps dev docker-up clean backup-db restore-db smoke-test rbac-smoke init-secrets log-secrets-check slo-gates https-policy-check compose-security-check chaos-worker-check test test-race test-cover test-integration lint vuln gosec check-coverage e2e-http-smoke e2e-auth-smoke contract-http-spec load-http-readonly k6-readonly k6-session-csrf k6-logout-csrf k6-admin-csrf ci-local static-css check-static-css vendor-js
+.PHONY: migrate rotate-db-secrets sbom server worker traps dev docker-up clean backup-db restore-db smoke-test rbac-smoke init-secrets log-secrets-check slo-gates alert-rules-check https-policy-check compose-security-check chaos-worker-check test test-race test-cover test-integration lint vuln gosec check-coverage e2e-http-smoke e2e-auth-smoke contract-http-spec load-http-readonly k6-readonly k6-session-csrf k6-logout-csrf k6-admin-csrf ci-local static-css check-static-css vendor-js
 
 # Если .env есть — подхватываем (docker, migrate, smoke). Без файла цели вроде `make test` всё равно работают.
 ifneq (,$(wildcard .env))
@@ -72,6 +72,9 @@ log-secrets-check:
 
 slo-gates:
 	./scripts/check_slo_gates.sh
+
+alert-rules-check:
+	./scripts/check_alert_rules.sh
 
 https-policy-check:
 	./scripts/check_https_policy.sh
