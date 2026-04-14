@@ -36,6 +36,13 @@ jobs:
       - name: validate Prometheus alert rules
         run: ./scripts/check_alert_rules.sh
 
+  tool-version-policy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: validate pinned tool versions policy
+        run: ./scripts/check_tool_versions.sh
+
   vuln:
     runs-on: ubuntu-latest
     steps:

@@ -32,6 +32,7 @@ func ValidateRuntimeSecurity() error {
 		"NMS_ALLOW_NO_AUTH",
 		"NMS_TERMINAL_ALLOW_INSECURE_ORIGIN",
 		"NMS_TERMINAL_ALLOW_INSECURE_HOSTKEY",
+		"NMS_SMTP_ALLOW_PLAINTEXT",
 	} {
 		if envEnabled(name) {
 			return fmt.Errorf("production guardrail: %s must be disabled", name)
@@ -39,8 +40,8 @@ func ValidateRuntimeSecurity() error {
 	}
 
 	dsn := strings.ToLower(strings.TrimSpace(EnvOrFile("DB_DSN")))
-	if dsn != "" && strings.Contains(dsn, "sslmode=disable") {
-		return fmt.Errorf("production guardrail: DB_DSN must not use sslmode=disable")
+	if dsn != "" && !hasSafeDBSSLMode(dsn) {
+		return fmt.Errorf("production guardrail: DB_DSN must set sslmode=require|verify-ca|verify-full")
 	}
 	if strings.TrimSpace(EnvOrFile("NMS_TERMINAL_SSH_KNOWN_HOSTS")) == "" {
 		return fmt.Errorf("production guardrail: NMS_TERMINAL_SSH_KNOWN_HOSTS must be set")
@@ -50,4 +51,14 @@ func ValidateRuntimeSecurity() error {
 	}
 
 	return nil
+}
+
+func hasSafeDBSSLMode(dsn string) bool {
+	// Covers key=value DSN and URL query DSN forms.
+	for _, mode := range []string{"sslmode=require", "sslmode=verify-ca", "sslmode=verify-full"} {
+		if strings.Contains(dsn, mode) {
+			return true
+		}
+	}
+	return false
 }

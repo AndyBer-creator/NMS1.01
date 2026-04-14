@@ -87,8 +87,9 @@
   - HTTP: RBAC/CSRF (viewer vs admin), CRUD устройств, настройки worker/email, discovery/MIB/SNMP/test-alert; `internal/testdb` для ping БД; `make test-integration` и пакет `internal/delivery/http` (`-run Integration`).
   - PostgreSQL/traps: `internal/infrastructure/postgres`, `internal/repository` при `DB_DSN`.
   - CI: unit + integration + e2e/contract gates (см. `.github/workflows/test.yml`), job **static-css-sync** (Tailwind `app.css` совпадает с билдом), порог покрытия по `scripts/check_coverage.sh` (по умолчанию **25%**).
-  - Добавлены обязательные gates: `e2e-http-smoke`, `e2e-auth-smoke`, `contract-http-spec` (auth-aware OpenAPI + public security.txt), `alert-rules`, `compose-security`, `trivy`, `gosec`, `sbom-sign`.
+  - Добавлены обязательные gates: `e2e-http-smoke`, `e2e-auth-smoke`, `contract-http-spec` (auth-aware OpenAPI + public security.txt), `alert-rules`, `compose-security`, `shell-syntax`, `tool-version-policy`, `trivy`, `gosec`, `sbom-sign`.
   - Добавлен manual promotion flow `stage -> prod` с environment approvals и rollback handoff (`.github/workflows/promote.yml`).
+  - В nightly-lite добавлены регулярные guardrails: `lint`, `govulncheck`, `alert-rules`, `tool-version-policy`.
 
 ## 7) Enterprise integration & ops hygiene
 

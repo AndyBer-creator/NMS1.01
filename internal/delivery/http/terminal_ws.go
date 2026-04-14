@@ -225,7 +225,17 @@ func (h *Handlers) TerminalWS(w http.ResponseWriter, r *http.Request) {
 	token := strings.TrimSpace(r.URL.Query().Get("token"))
 	u := verifyTerminalWSToken(token, id)
 	if u == nil {
-		u = adminUserFromRequest(r)
+		authRes := adminUserFromRequest(r)
+		if authRes.retryAfter > 0 {
+			retrySec := int(authRes.retryAfter.Seconds()) + 1
+			if retrySec < 1 {
+				retrySec = 1
+			}
+			w.Header().Set("Retry-After", fmt.Sprintf("%d", retrySec))
+			http.Error(w, "Too many authentication attempts", http.StatusTooManyRequests)
+			return
+		}
+		u = authRes.user
 	}
 	if u == nil {
 		http.Error(w, "forbidden", http.StatusForbidden)
