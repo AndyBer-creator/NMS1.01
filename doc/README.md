@@ -14,3 +14,4 @@
 | [SECRETS_POLICY.md](SECRETS_POLICY.md) | Политика секретов |
 | [SECRETS_PROCESS.md](SECRETS_PROCESS.md) | Процесс Docker-secrets |
 | [SLO_GATES.md](SLO_GATES.md) | Пороги SLO и проверки |
+| [WORKER_TUNING.md](WORKER_TUNING.md) | PromQL-панели и tuning-памятка для polling worker |
