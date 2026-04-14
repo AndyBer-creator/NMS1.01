@@ -266,3 +266,45 @@ func TestIntegration_DeviceRepo_CreateDevice_SNMPv3RoundTrip(t *testing.T) {
 		t.Fatalf("expected encrypted secret columns to be set, got community=%+v auth=%+v priv=%+v", communityEnc, authEnc, privEnc)
 	}
 }
+
+func TestIntegration_DeviceRepo_LegacyPlainSecretsAutoMigratedOnRead(t *testing.T) {
+	t.Setenv("NMS_DB_ENCRYPTION_KEY", "itest-db-enc-key")
+	t.Setenv("NMS_DB_ENCRYPTION_KEY_FILE", "")
+	repo, db := openIntegrationRepo(t)
+	ip := uniqueInet(t)
+	t.Cleanup(func() { _ = repo.DeleteByIP(ip) })
+
+	_, err := db.ExecContext(context.Background(), `
+		INSERT INTO devices (ip, name, community, snmp_version, auth_proto, auth_pass, priv_proto, priv_pass, status)
+		VALUES ($1::inet, $2, $3, 'v3', 'SHA', $4, 'AES', $5, 'active')`,
+		ip, "legacy-plain", "public", "auth-legacy", "priv-legacy",
+	)
+	if err != nil {
+		t.Fatalf("insert legacy row: %v", err)
+	}
+
+	got, err := repo.GetDeviceByIP(ip)
+	if err != nil || got == nil {
+		t.Fatalf("GetDeviceByIP: %v %+v", err, got)
+	}
+	if got.Community != "public" || got.AuthPass != "auth-legacy" || got.PrivPass != "priv-legacy" {
+		t.Fatalf("unexpected decoded values: %+v", got)
+	}
+
+	var communityPlain, authPlain, privPlain sql.NullString
+	var communityEnc, authEnc, privEnc sql.NullString
+	err = db.QueryRowContext(context.Background(),
+		`SELECT community, auth_pass, priv_pass, community_enc, auth_pass_enc, priv_pass_enc
+         FROM devices WHERE ip = $1::inet`,
+		ip,
+	).Scan(&communityPlain, &authPlain, &privPlain, &communityEnc, &authEnc, &privEnc)
+	if err != nil {
+		t.Fatalf("raw secrets query: %v", err)
+	}
+	if communityPlain.Valid || authPlain.Valid || privPlain.Valid {
+		t.Fatalf("expected legacy plaintext to be cleared, got community=%+v auth=%+v priv=%+v", communityPlain, authPlain, privPlain)
+	}
+	if !communityEnc.Valid || !authEnc.Valid || !privEnc.Valid {
+		t.Fatalf("expected encrypted columns after lazy migration, got community=%+v auth=%+v priv=%+v", communityEnc, authEnc, privEnc)
+	}
+}

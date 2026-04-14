@@ -27,6 +27,15 @@ type SNMPSetAuditRecord struct {
 	Error    string
 }
 
+type deviceSecretSnapshot struct {
+	communityPlain string
+	communityEnc   sql.NullString
+	authPassPlain  string
+	authPassEnc    sql.NullString
+	privPassPlain  string
+	privPassEnc    sql.NullString
+}
+
 func New(dsn string) (*Repo, error) {
 	db, err := sql.Open("pgx", dsn)
 	if err != nil {
@@ -74,22 +83,21 @@ func (r *Repo) GetDeviceByIP(ip string) (*domain.Device, error) {
                last_poll_ok_at
         FROM devices WHERE ip = $1`
 
-	var communityPlain, authPassPlain, privPassPlain string
-	var communityEnc, authPassEnc, privPassEnc sql.NullString
+	var secrets deviceSecretSnapshot
 	err := r.db.QueryRowContext(context.Background(), query, ip).Scan(
 		&device.ID,
 		&device.IP,
 		&device.Name,
-		&communityPlain,
-		&communityEnc,
+		&secrets.communityPlain,
+		&secrets.communityEnc,
 		&device.Version,
 		&device.SNMPVersion,
 		&device.AuthProto,
-		&authPassPlain,
-		&authPassEnc,
+		&secrets.authPassPlain,
+		&secrets.authPassEnc,
 		&device.PrivProto,
-		&privPassPlain,
-		&privPassEnc,
+		&secrets.privPassPlain,
+		&secrets.privPassEnc,
 		&device.Status,
 		&device.CreatedAt,
 		&lastSeenSql,
@@ -103,16 +111,19 @@ func (r *Repo) GetDeviceByIP(ip string) (*domain.Device, error) {
 	if err != nil {
 		return nil, err
 	}
-	device.Community, err = r.protector.mergeSecretFromStorage(communityPlain, communityEnc)
+	device.Community, err = r.protector.mergeSecretFromStorage(secrets.communityPlain, secrets.communityEnc)
 	if err != nil {
 		return nil, err
 	}
-	device.AuthPass, err = r.protector.mergeSecretFromStorage(authPassPlain, authPassEnc)
+	device.AuthPass, err = r.protector.mergeSecretFromStorage(secrets.authPassPlain, secrets.authPassEnc)
 	if err != nil {
 		return nil, err
 	}
-	device.PrivPass, err = r.protector.mergeSecretFromStorage(privPassPlain, privPassEnc)
+	device.PrivPass, err = r.protector.mergeSecretFromStorage(secrets.privPassPlain, secrets.privPassEnc)
 	if err != nil {
+		return nil, err
+	}
+	if err := r.migrateDeviceSecretsIfNeeded(device.ID, secrets); err != nil {
 		return nil, err
 	}
 	if lastSeenSql.Valid {
@@ -152,22 +163,21 @@ func (r *Repo) GetDeviceByID(id int) (*domain.Device, error) {
                last_poll_ok_at
         FROM devices WHERE id = $1`
 
-	var communityPlain, authPassPlain, privPassPlain string
-	var communityEnc, authPassEnc, privPassEnc sql.NullString
+	var secrets deviceSecretSnapshot
 	err := r.db.QueryRowContext(context.Background(), query, id).Scan(
 		&device.ID,
 		&device.IP,
 		&device.Name,
-		&communityPlain,
-		&communityEnc,
+		&secrets.communityPlain,
+		&secrets.communityEnc,
 		&device.Version,
 		&device.SNMPVersion,
 		&device.AuthProto,
-		&authPassPlain,
-		&authPassEnc,
+		&secrets.authPassPlain,
+		&secrets.authPassEnc,
 		&device.PrivProto,
-		&privPassPlain,
-		&privPassEnc,
+		&secrets.privPassPlain,
+		&secrets.privPassEnc,
 		&device.Status,
 		&device.CreatedAt,
 		&lastSeenSql,
@@ -181,16 +191,19 @@ func (r *Repo) GetDeviceByID(id int) (*domain.Device, error) {
 	if err != nil {
 		return nil, err
 	}
-	device.Community, err = r.protector.mergeSecretFromStorage(communityPlain, communityEnc)
+	device.Community, err = r.protector.mergeSecretFromStorage(secrets.communityPlain, secrets.communityEnc)
 	if err != nil {
 		return nil, err
 	}
-	device.AuthPass, err = r.protector.mergeSecretFromStorage(authPassPlain, authPassEnc)
+	device.AuthPass, err = r.protector.mergeSecretFromStorage(secrets.authPassPlain, secrets.authPassEnc)
 	if err != nil {
 		return nil, err
 	}
-	device.PrivPass, err = r.protector.mergeSecretFromStorage(privPassPlain, privPassEnc)
+	device.PrivPass, err = r.protector.mergeSecretFromStorage(secrets.privPassPlain, secrets.privPassEnc)
 	if err != nil {
+		return nil, err
+	}
+	if err := r.migrateDeviceSecretsIfNeeded(device.ID, secrets); err != nil {
 		return nil, err
 	}
 	if lastSeenSql.Valid {
@@ -283,6 +296,48 @@ func (r *Repo) ListDevices() ([]*domain.Device, error) {
 		devices = append(devices, device)
 	}
 	return devices, nil
+}
+
+func (r *Repo) migrateDeviceSecretsIfNeeded(deviceID int, s deviceSecretSnapshot) error {
+	if !r.protector.enabled || deviceID <= 0 {
+		return nil
+	}
+	needsCommunity := strings.TrimSpace(s.communityPlain) != "" && !s.communityEnc.Valid
+	needsAuth := strings.TrimSpace(s.authPassPlain) != "" && !s.authPassEnc.Valid
+	needsPriv := strings.TrimSpace(s.privPassPlain) != "" && !s.privPassEnc.Valid
+	if !needsCommunity && !needsAuth && !needsPriv {
+		return nil
+	}
+	communityPlain, communityEnc, err := r.protector.splitSecretForStorage(s.communityPlain)
+	if err != nil {
+		return err
+	}
+	authPlain, authEnc, err := r.protector.splitSecretForStorage(s.authPassPlain)
+	if err != nil {
+		return err
+	}
+	privPlain, privEnc, err := r.protector.splitSecretForStorage(s.privPassPlain)
+	if err != nil {
+		return err
+	}
+	_, err = r.db.ExecContext(context.Background(), `
+		UPDATE devices
+		SET community = $1,
+		    community_enc = $2,
+		    auth_pass = $3,
+		    auth_pass_enc = $4,
+		    priv_pass = $5,
+		    priv_pass_enc = $6
+		WHERE id = $7`,
+		communityPlain,
+		communityEnc,
+		authPlain,
+		authEnc,
+		privPlain,
+		privEnc,
+		deviceID,
+	)
+	return err
 }
 
 func (r *Repo) DeleteByIP(ip string) error {
