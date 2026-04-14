@@ -418,7 +418,7 @@ make load-http-readonly
 - **integration** — миграции, Postgres, тесты `Integration` с **`-race`**.
 - **e2e-http-smoke** — обязательный HTTP smoke в CI с реальным запуском API (`/health`, `/ready`, `/metrics`) на ephemeral runner.
 - **e2e-auth-smoke** — обязательный auth-aware smoke в CI: login admin/viewer, cookie-сессия, доступ к `/devices`, проверка `403` для viewer на admin-only UI route.
-- **contract-http-spec** — обязательная contract-проверка встроенных `openapi.yaml` и `security.txt` через поднятый API.
+- **contract-http-spec** — обязательная contract-проверка встроенных `openapi.yaml` и `security.txt` через поднятый API (включая проверку, что `openapi.yaml` требует auth, а `security.txt` доступен анонимно).
 
 Для корректной работы approval-гейтов в promotion workflow настройте в GitHub Environments:
 - `stage` и `prod` с Required reviewers;

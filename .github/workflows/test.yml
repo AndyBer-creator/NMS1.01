@@ -311,7 +311,10 @@ jobs:
           --health-retries 10
     env:
       DB_DSN: host=postgres port=5432 user=nms-user password=testpass dbname=NMS sslmode=disable
-      NMS_ALLOW_NO_AUTH: "true"
+      NMS_ADMIN_USER: admin
+      NMS_ADMIN_PASS: test-admin-pass
+      NMS_VIEWER_USER: viewer
+      NMS_VIEWER_PASS: test-viewer-pass
       NMS_SESSION_SECRET: ci-contract-session-secret
       BASE_URL: http://127.0.0.1:8080
     steps:
