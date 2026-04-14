@@ -56,6 +56,13 @@ jobs:
       - name: validate Prometheus alert rules
         run: ./scripts/check_alert_rules.sh
 
+  shell-syntax:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: validate shell scripts syntax
+        run: ./scripts/check_shell_syntax.sh
+
   vuln:
     runs-on: ubuntu-latest
     steps:

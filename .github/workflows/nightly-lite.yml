@@ -1,4 +1,4 @@
-# Ежедневно только lint + govulncheck (без тестов с БД и без race/coverage).
+# Ежедневно: lint + govulncheck + alert-rules (без тестов с БД и без race/coverage).
 # Полный прогон: push/PR и workflow_dispatch в test.yml.
 # GitHub может отключить schedule после ~60 дней неактивности репозитория.
 name: nightly-lite
@@ -28,6 +28,13 @@ jobs:
         with:
           version: v2.6.1
           args: --timeout=5m
+
+  alert-rules:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: validate Prometheus alert rules
+        run: ./scripts/check_alert_rules.sh
 
   vuln:
     runs-on: ubuntu-latest

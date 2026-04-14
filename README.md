@@ -370,7 +370,7 @@ make test-cover   # coverage.out + итоговая строка go tool cover -
 make lint           # golangci-lint (конфиг .golangci.yml), как в CI
 make vuln           # govulncheck ./...
 make check-coverage # нужен coverage.out (или сначала make test-cover)
-make ci-local        # lint + vuln + go test -race + порог coverage (~2–4 мин)
+make ci-local        # lint + vuln + gosec + compose + alert-rules + shell-syntax + go test -race + coverage gate
 make sbom            # SPDX JSON SBOM в ./sbom.spdx.json (через docker + syft)
 make e2e-http-smoke  # лёгкий HTTP e2e smoke (/health, /ready, /metrics)
 make e2e-auth-smoke  # e2e smoke с login/cookie/RBAC на защищённых маршрутах
@@ -407,7 +407,7 @@ make load-http-readonly
 В CI:
 
 - **`.github/workflows/test.yml`** — **push**/**pull_request**/**workflow_dispatch**: **lint**, **vuln**, **unit** (race, coverage, порог), **integration** (Postgres). Ручной полный прогон: **Actions → test → Run workflow**. У GitHub отключаются **расписания** после длительной неактивности репозитория (~60 дней без коммитов).
-- **`.github/workflows/nightly-lite.yml`** — **ежедневно в 04:15 UTC** только **lint** и **govulncheck** (без тестов и БД). Полный набор тестов по расписанию не гоняется, чтобы экономить минуты раннеров; при необходимости верните `schedule` в `test.yml` или добавьте отдельный workflow.
+- **`.github/workflows/nightly-lite.yml`** — **ежедневно в 04:15 UTC**: **lint**, **govulncheck**, **alert-rules** (без тестов и БД). Полный набор тестов по расписанию не гоняется, чтобы экономить минуты раннеров; при необходимости верните `schedule` в `test.yml` или добавьте отдельный workflow.
 - **`.github/workflows/promote.yml`** — ручной **stage → prod promotion**: фиксирует продвигаемый SHA, требует approvals через environments `stage` и `prod`, умеет прогонять `e2e_http_smoke.sh` по `STAGE_BASE_URL`/`PROD_BASE_URL` (или inputs), публикует `promotion-manifest` и `rollback-handoff`.
 
 - **lint** — **golangci-lint** v2.6.1 (`golangci/golangci-lint-action`, настройки в **`.golangci.yml`**);
@@ -417,6 +417,7 @@ make load-http-readonly
 - **sbom-sign** — генерация **SPDX JSON SBOM** (`sbom.spdx.json`) через **Syft**, keyless подпись + verify через **Cosign** (для push/manual), публикация артефактов `sbom-spdx` и `sbom-signature`;
 - **compose-security** — policy-check для `docker-compose*.yml` и `Dockerfile` (запрещены `privileged: true`, `:latest`, disabled healthchecks);
 - **alert-rules** — проверка `alerts/nms-alerts.yml` через `promtool check rules` + rule-unit-tests `alerts/nms-alerts.test.yml` (обязательный CI gate);
+- **shell-syntax** — `bash -n` проверка всех `scripts/*.sh` (обязательный CI gate);
 - **unit** — тесты с **`-race`**, покрытие, порог **`scripts/check_coverage.sh`** (по умолчанию **25%**, переменная `MIN_COVERAGE_PERCENT`), загрузка в **Codecov** (ошибка загрузки не валит job), артефакт **`coverage-out`**; при push в ту же ветку предыдущий прогон этого workflow **отменяется** (`concurrency`);
 - **integration** — миграции, Postgres, тесты `Integration` с **`-race`**.
 - **e2e-http-smoke** — обязательный HTTP smoke в CI с реальным запуском API (`/health`, `/ready`, `/metrics`) на ephemeral runner.
