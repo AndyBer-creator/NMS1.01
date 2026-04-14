@@ -352,3 +352,53 @@ func TestRequireAuth_BasicAuthThrottled(t *testing.T) {
 		t.Fatalf("unexpected throttled response body: %q", rr.Body.String())
 	}
 }
+
+func TestAdminUserFromRequest_BasicAuthThrottled(t *testing.T) {
+	resetAuthLimiterForTest(t)
+	t.Setenv("NMS_ADMIN_USER", "admin")
+	t.Setenv("NMS_ADMIN_PASS", "secret")
+	t.Setenv("NMS_ADMIN_USER_FILE", "")
+	t.Setenv("NMS_ADMIN_PASS_FILE", "")
+
+	ip := "203.0.113.51"
+	user := "admin"
+	now := time.Now()
+	for i := 0; i < loginMaxAttemptsUser; i++ {
+		authLoginLimiter.onFailure(ip, user, now.Add(time.Duration(i)*time.Second))
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/ws/terminal", nil)
+	req.RemoteAddr = ip + ":9999"
+	req.SetBasicAuth("admin", "secret")
+
+	res := adminUserFromRequest(req)
+	if res.user != nil {
+		t.Fatal("expected no user when throttled")
+	}
+	if res.retryAfter <= 0 {
+		t.Fatal("expected positive retryAfter when throttled")
+	}
+}
+
+func TestAdminUserFromRequest_BasicAuthSuccess(t *testing.T) {
+	resetAuthLimiterForTest(t)
+	t.Setenv("NMS_ADMIN_USER", "admin")
+	t.Setenv("NMS_ADMIN_PASS", "secret")
+	t.Setenv("NMS_ADMIN_USER_FILE", "")
+	t.Setenv("NMS_ADMIN_PASS_FILE", "")
+
+	req := httptest.NewRequest(http.MethodGet, "/ws/terminal", nil)
+	req.RemoteAddr = "203.0.113.52:9999"
+	req.SetBasicAuth("admin", "secret")
+
+	res := adminUserFromRequest(req)
+	if res.user == nil {
+		t.Fatal("expected admin user")
+	}
+	if res.user.role != roleAdmin {
+		t.Fatalf("expected role %q, got %q", roleAdmin, res.user.role)
+	}
+	if res.retryAfter != 0 {
+		t.Fatalf("expected zero retryAfter, got %v", res.retryAfter)
+	}
+}

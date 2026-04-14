@@ -156,18 +156,32 @@ func RequireAuth(next http.Handler) http.Handler {
 }
 
 // adminUserFromRequest — только admin: cookie-сессия или HTTP Basic (как RequireAuth, но без viewer).
-func adminUserFromRequest(r *http.Request) *authUser {
+type adminAuthOutcome struct {
+	user       *authUser
+	retryAfter time.Duration
+}
+
+func adminUserFromRequest(r *http.Request) adminAuthOutcome {
 	admin, _ := loadCreds()
 	if admin.user == "" {
-		return nil
+		return adminAuthOutcome{}
 	}
 	if u := sessionUserFromCookie(r); u != nil && u.role == roleAdmin {
-		return u
+		return adminAuthOutcome{user: u}
 	}
-	if user, pass, ok := r.BasicAuth(); ok && basicMatch(admin, user, pass) {
-		return &authUser{username: user, role: roleAdmin}
+	if user, pass, ok := r.BasicAuth(); ok {
+		ip := clientIP(r)
+		now := time.Now()
+		if allowed, retryAfter := authLoginLimiter.check(ip, user, now); !allowed {
+			return adminAuthOutcome{retryAfter: retryAfter}
+		}
+		if basicMatch(admin, user, pass) {
+			authLoginLimiter.onSuccess(ip, user)
+			return adminAuthOutcome{user: &authUser{username: user, role: roleAdmin}}
+		}
+		authLoginLimiter.onFailure(ip, user, now)
 	}
-	return nil
+	return adminAuthOutcome{}
 }
 
 func RequireAdmin(next http.Handler) http.Handler {
