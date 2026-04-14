@@ -7,7 +7,7 @@
     <link rel="stylesheet" href="/static/css/app.css">
     <script src="/static/js/htmx.min.js"></script>
     <script src="/static/js/vis-network.min.js"></script>
-    <style>
+    <style nonce="{{.CSPNonce}}">
         /* vis-network */
         #topology-canvas {
             height: 70vh;
@@ -61,7 +61,7 @@
         </div>
     </div>
 
-    <script>
+    <script nonce="{{.CSPNonce}}">
         (function () {
             const nodes = new vis.DataSet();
             const edges = new vis.DataSet();

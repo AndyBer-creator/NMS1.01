@@ -57,7 +57,7 @@ func (h *Handlers) ListTraps(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handlers) TrapsPage(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	http.ServeFile(w, r, "templates/traps_page.html")
+	_ = h.trapsPageTmpl.Execute(w, map[string]any{"CSPNonce": cspNonceFromContext(r)})
 }
 
 func (h *Handlers) testAlert(w http.ResponseWriter, r *http.Request) {

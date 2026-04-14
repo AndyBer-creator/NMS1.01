@@ -754,12 +754,14 @@ func (h *Handlers) TerminalPage(w http.ResponseWriter, r *http.Request) {
 		IP       string
 		Kind     string
 		WSToken  string
+		CSPNonce string
 	}{
 		DeviceID: id,
 		Name:     dev.Name,
 		IP:       dev.IP,
 		Kind:     kind,
 		WSToken:  wsToken,
+		CSPNonce: cspNonceFromContext(r),
 	}
 	if err := h.terminalTmpl.Execute(w, data); err != nil {
 		h.logger.Error("terminal page", zap.Error(err))
