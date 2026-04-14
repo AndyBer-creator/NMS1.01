@@ -1,9 +1,12 @@
 package http
 
 import (
+	"encoding/base64"
 	"net"
 	"net/http"
+	"strings"
 	"testing"
+	"time"
 )
 
 func TestTerminalKindFromQuery(t *testing.T) {
@@ -101,5 +104,87 @@ func TestTerminalSSHHostKeyCallback_AllowsExplicitInsecure(t *testing.T) {
 	}
 	if cb == nil {
 		t.Fatal("expected non-nil callback")
+	}
+}
+
+func TestTerminalTimeoutEnvHelpers(t *testing.T) {
+	t.Setenv("NMS_TERMINAL_DIAL_TIMEOUT", "")
+	t.Setenv("NMS_TERMINAL_SESSION_MAX", "")
+	t.Setenv("NMS_TERMINAL_WS_READ_IDLE", "")
+	if got := terminalDialTimeout(); got != 20*time.Second {
+		t.Fatalf("terminalDialTimeout default: got %v", got)
+	}
+	if got := terminalWSReadIdle(); got != 30*time.Minute {
+		t.Fatalf("terminalWSReadIdle default: got %v", got)
+	}
+	deadline := terminalSessionDeadline()
+	if diff := time.Until(deadline); diff < 7*time.Hour || diff > 9*time.Hour {
+		t.Fatalf("terminalSessionDeadline default out of range: %v", diff)
+	}
+
+	t.Setenv("NMS_TERMINAL_DIAL_TIMEOUT", "7s")
+	t.Setenv("NMS_TERMINAL_SESSION_MAX", "1h")
+	t.Setenv("NMS_TERMINAL_WS_READ_IDLE", "45s")
+	if got := terminalDialTimeout(); got != 7*time.Second {
+		t.Fatalf("terminalDialTimeout override: got %v", got)
+	}
+	if got := terminalWSReadIdle(); got != 45*time.Second {
+		t.Fatalf("terminalWSReadIdle override: got %v", got)
+	}
+	deadline = terminalSessionDeadline()
+	if diff := time.Until(deadline); diff < 59*time.Minute || diff > 61*time.Minute {
+		t.Fatalf("terminalSessionDeadline override out of range: %v", diff)
+	}
+}
+
+func TestTerminalWSTokenSignVerify(t *testing.T) {
+	t.Setenv("NMS_SESSION_SECRET", "terminal-token-test-secret")
+	t.Setenv("NMS_SESSION_SECRET_FILE", "")
+
+	token, err := signTerminalWSToken("admin", roleAdmin, 42)
+	if err != nil {
+		t.Fatalf("signTerminalWSToken: %v", err)
+	}
+	u := verifyTerminalWSToken(token, 42)
+	if u == nil {
+		t.Fatal("verifyTerminalWSToken returned nil for valid token")
+	}
+	if u.username != "admin" || u.role != roleAdmin {
+		t.Fatalf("unexpected user: %+v", u)
+	}
+}
+
+func TestTerminalWSTokenRejectsInvalidCases(t *testing.T) {
+	t.Setenv("NMS_SESSION_SECRET", "terminal-token-test-secret")
+	t.Setenv("NMS_SESSION_SECRET_FILE", "")
+
+	token, err := signTerminalWSToken("viewer", roleViewer, 7)
+	if err != nil {
+		t.Fatalf("signTerminalWSToken viewer: %v", err)
+	}
+	if got := verifyTerminalWSToken(token, 7); got != nil {
+		t.Fatal("viewer role token must be rejected")
+	}
+
+	adminToken, err := signTerminalWSToken("admin", roleAdmin, 7)
+	if err != nil {
+		t.Fatalf("signTerminalWSToken admin: %v", err)
+	}
+	if got := verifyTerminalWSToken(adminToken, 8); got != nil {
+		t.Fatal("token for another device must be rejected")
+	}
+
+	parts := strings.Split(adminToken, ".")
+	if len(parts) != 2 {
+		t.Fatalf("unexpected token format: %q", adminToken)
+	}
+	sig, err := base64.RawURLEncoding.DecodeString(parts[1])
+	if err != nil || len(sig) == 0 {
+		t.Fatalf("decode signature: %v", err)
+	}
+	sig[0] ^= 0xFF
+	tampered := parts[0] + "." + base64.RawURLEncoding.EncodeToString(sig)
+	if got := verifyTerminalWSToken(tampered, 7); got != nil {
+		t.Fatal("tampered signature token must be rejected")
 	}
 }
