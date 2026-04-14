@@ -1,0 +1,46 @@
+rule_files:
+  - alerts/nms-alerts.yml
+
+evaluation_interval: 1m
+
+tests:
+  - name: api-down-alert-fires
+    interval: 1m
+    input_series:
+      - series: up{job="nms-api"}
+        values: 0+0x5
+    alert_rule_test:
+      - alertname: NMSApiDown
+        eval_time: 3m
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              job: nms-api
+
+  - name: polling-failure-ratio-alert-fires
+    interval: 1m
+    input_series:
+      - series: nms_worker_poll_devices_total{status="failed"}
+        values: 0+30x40
+      - series: nms_worker_poll_devices_total{status="active"}
+        values: 0+10x40
+    alert_rule_test:
+      - alertname: NMSPollingFailureRatioHigh
+        eval_time: 25m
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+
+  - name: polling-cycle-slow-alert-fires
+    interval: 1m
+    input_series:
+      - series: nms_worker_poll_duration_seconds_sum
+        values: 0+400x40
+      - series: nms_worker_poll_duration_seconds_count
+        values: 0+1x40
+    alert_rule_test:
+      - alertname: NMSPollingCycleSlow
+        eval_time: 25m
+        exp_alerts:
+          - exp_labels:
+              severity: warning

@@ -49,6 +49,13 @@ jobs:
       - name: compose security policy
         run: ./scripts/check_compose_security.sh
 
+  alert-rules:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: validate Prometheus alert rules
+        run: ./scripts/check_alert_rules.sh
+
   vuln:
     runs-on: ubuntu-latest
     steps:
