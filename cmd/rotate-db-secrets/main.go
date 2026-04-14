@@ -5,6 +5,7 @@ import (
 	"NMS1/internal/infrastructure/postgres"
 	"context"
 	"database/sql"
+	"errors"
 	"flag"
 	"fmt"
 	"log"
@@ -20,19 +21,10 @@ func main() {
 	flag.Parse()
 
 	dsn := config.EnvOrFile("DB_DSN")
-	if dsn == "" {
-		log.Fatal("DB_DSN must be set")
-	}
 	oldKey := config.EnvOrFile("NMS_DB_ENCRYPTION_OLD_KEY")
 	newKey := config.EnvOrFile("NMS_DB_ENCRYPTION_KEY")
-	if oldKey == "" {
-		log.Fatal("NMS_DB_ENCRYPTION_OLD_KEY must be set for rotation")
-	}
-	if newKey == "" {
-		log.Fatal("NMS_DB_ENCRYPTION_KEY must be set for rotation")
-	}
-	if oldKey == newKey {
-		log.Fatal("old and new DB encryption keys must differ")
+	if err := validateRotateEnv(dsn, oldKey, newKey); err != nil {
+		log.Fatal(err)
 	}
 
 	db, err := sql.Open("pgx", dsn)
@@ -48,9 +40,29 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	mode := "applied"
-	if *dryRun {
-		mode = "dry-run"
-	}
+	mode := rotationMode(*dryRun)
 	_, _ = fmt.Fprintf(os.Stdout, "db-secret-rotation (%s): scanned=%d updated=%d skipped=%d\n", mode, stats.Scanned, stats.Updated, stats.Skipped)
+}
+
+func validateRotateEnv(dsn, oldKey, newKey string) error {
+	if dsn == "" {
+		return errors.New("DB_DSN must be set")
+	}
+	if oldKey == "" {
+		return errors.New("NMS_DB_ENCRYPTION_OLD_KEY must be set for rotation")
+	}
+	if newKey == "" {
+		return errors.New("NMS_DB_ENCRYPTION_KEY must be set for rotation")
+	}
+	if oldKey == newKey {
+		return errors.New("old and new DB encryption keys must differ")
+	}
+	return nil
+}
+
+func rotationMode(dryRun bool) string {
+	if dryRun {
+		return "dry-run"
+	}
+	return "applied"
 }

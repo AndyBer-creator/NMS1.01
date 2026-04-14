@@ -411,7 +411,7 @@ make load-http-readonly
 - **trivy** — filesystem supply-chain scan по репозиторию (HIGH/CRITICAL, `ignore-unfixed`);
 - **sbom-sign** — генерация **SPDX JSON SBOM** (`sbom.spdx.json`) через **Syft**, keyless подпись + verify через **Cosign** (для push/manual), публикация артефактов `sbom-spdx` и `sbom-signature`;
 - **compose-security** — policy-check для `docker-compose*.yml` и `Dockerfile` (запрещены `privileged: true`, `:latest`, disabled healthchecks);
-- **unit** — тесты с **`-race`**, покрытие, порог **`scripts/check_coverage.sh`** (по умолчанию **23%**, переменная `MIN_COVERAGE_PERCENT`), загрузка в **Codecov** (ошибка загрузки не валит job), артефакт **`coverage-out`**; при push в ту же ветку предыдущий прогон этого workflow **отменяется** (`concurrency`);
+- **unit** — тесты с **`-race`**, покрытие, порог **`scripts/check_coverage.sh`** (по умолчанию **24%**, переменная `MIN_COVERAGE_PERCENT`), загрузка в **Codecov** (ошибка загрузки не валит job), артефакт **`coverage-out`**; при push в ту же ветку предыдущий прогон этого workflow **отменяется** (`concurrency`);
 - **integration** — миграции, Postgres, тесты `Integration` с **`-race`**.
 - **e2e-http-smoke** — обязательный HTTP smoke в CI с реальным запуском API (`/health`, `/ready`, `/metrics`) на ephemeral runner.
 - **contract-http-spec** — обязательная contract-проверка встроенных `openapi.yaml` и `security.txt` через поднятый API.
