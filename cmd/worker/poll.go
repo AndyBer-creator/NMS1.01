@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"strconv"
 	"strings"
@@ -66,6 +67,18 @@ var (
 
 	pollBackoff = newDeviceBackoff()
 )
+
+func pollingIncidentSuppressionWindow() time.Duration {
+	raw := strings.TrimSpace(config.EnvOrFile("NMS_POLL_INCIDENT_SUPPRESSION_WINDOW"))
+	if raw == "" {
+		return 10 * time.Minute
+	}
+	d, err := time.ParseDuration(raw)
+	if err != nil || d <= 0 {
+		return 10 * time.Minute
+	}
+	return d
+}
 
 func pollWorkerConcurrency() int {
 	v := strings.TrimSpace(os.Getenv("NMS_WORKER_POLL_CONCURRENCY"))
@@ -346,6 +359,23 @@ func pollOneDevice(
 			if errEv := repo.InsertAvailabilityEvent(device.ID, "unavailable", detail); errEv != nil {
 				logger.Warn("availability event insert failed", zap.Int("device_id", device.ID), zap.Error(errEv))
 			}
+			details, _ := json.Marshal(map[string]any{
+				"status": status,
+				"error":  err.Error(),
+				"ip":     device.IP,
+				"name":   device.Name,
+			})
+			_, _, ierr := repo.CreateOrTouchOpenIncident(
+				&device.ID,
+				"SNMP device unavailable",
+				"critical",
+				"polling",
+				details,
+				pollingIncidentSuppressionWindow(),
+			)
+			if ierr != nil {
+				logger.Warn("incident correlate failed", zap.Int("device_id", device.ID), zap.Error(ierr))
+			}
 		}
 		logger.Warn("SNMP failed",
 			zap.Int("id", device.ID),
@@ -365,6 +395,9 @@ func pollOneDevice(
 	if snmpPollWasFailure(device.Status) {
 		if errEv := repo.InsertAvailabilityEvent(device.ID, "available", "SNMP опрос восстановлен"); errEv != nil {
 			logger.Warn("availability event insert failed", zap.Int("device_id", device.ID), zap.Error(errEv))
+		}
+		if _, errRes := repo.ResolveOpenIncidentsBySource(device.ID, "polling", "system", "auto-resolved: SNMP poll restored"); errRes != nil {
+			logger.Warn("incident auto-resolve failed", zap.Int("device_id", device.ID), zap.Error(errRes))
 		}
 	}
 

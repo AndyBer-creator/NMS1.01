@@ -25,6 +25,7 @@
 |-----|----------|
 | Секреты не в git | `.env` из `.env.example`, права на файлы; для Docker — `make init-secrets` и overlay `docker-compose.secrets.yml` (см. [`README.md`](../README.md), [`SECRETS_POLICY.md`](SECRETS_POLICY.md), [`SECRETS_PROCESS.md`](SECRETS_PROCESS.md)) |
 | Сеть и режим compose | Выбрать основной compose или `docker-compose.bridge.yml` под вашу ОС/доступ SNMP к LAN (см. [`README.md`](../README.md)) |
+| Production overrides | Для прод-стенда запускать с `docker-compose.prod.yml` (строгие env/security defaults): `docker compose -f docker-compose.yml -f docker-compose.prod.yml -f docker-compose.secrets.yml up -d` |
 | БД | `POSTGRES_PASSWORD` и `DB_DSN` согласованы; для миграций с хоста — `host=localhost` (или ваш хост БД) |
 
 ---

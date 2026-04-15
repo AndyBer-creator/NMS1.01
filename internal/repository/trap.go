@@ -5,6 +5,9 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"strconv"
+	"strings"
+	"time"
 )
 
 type TrapsRepo struct {
@@ -81,4 +84,322 @@ func (r *TrapsRepo) Insert(ctx context.Context, deviceIP, oid string, uptime int
 		deviceIP, oid, uptime, varsJSON, isCritical,
 	)
 	return err
+}
+
+type trapSignalKind int
+
+const (
+	trapSignalGeneric trapSignalKind = iota
+	trapSignalLinkDown
+	trapSignalLinkUp
+	trapSignalBFDDown
+	trapSignalBFDUp
+)
+
+type trapClassification struct {
+	SignalKind trapSignalKind
+	Title      string
+	Severity   string
+	Recovery   bool
+}
+
+type trapOIDMappingRow struct {
+	SignalKind string
+	Title      string
+	Severity   string
+	Recovery   bool
+}
+
+func trapSignalFromOID(oid string) trapSignalKind {
+	o := strings.ToLower(strings.TrimSpace(oid))
+	switch {
+	case strings.Contains(o, "linkdown"):
+		return trapSignalLinkDown
+	case strings.Contains(o, "linkup"):
+		return trapSignalLinkUp
+	case strings.Contains(o, "bfddown"), strings.Contains(o, "bfd.down"), strings.Contains(o, "bfd_down"):
+		return trapSignalBFDDown
+	case strings.Contains(o, "bfdup"), strings.Contains(o, "bfd.up"), strings.Contains(o, "bfd_up"):
+		return trapSignalBFDUp
+	default:
+		return trapSignalGeneric
+	}
+}
+
+func trapSignalKindFromString(v string) trapSignalKind {
+	switch strings.ToLower(strings.TrimSpace(v)) {
+	case "link_down":
+		return trapSignalLinkDown
+	case "link_up":
+		return trapSignalLinkUp
+	case "bfd_down":
+		return trapSignalBFDDown
+	case "bfd_up":
+		return trapSignalBFDUp
+	default:
+		return trapSignalGeneric
+	}
+}
+
+func trapSignalKindString(v trapSignalKind) string {
+	switch v {
+	case trapSignalLinkDown:
+		return "link_down"
+	case trapSignalLinkUp:
+		return "link_up"
+	case trapSignalBFDDown:
+		return "bfd_down"
+	case trapSignalBFDUp:
+		return "bfd_up"
+	default:
+		return "generic"
+	}
+}
+
+func defaultTrapClassification(oid string) trapClassification {
+	return trapClassification{
+		SignalKind: trapSignalFromOID(oid),
+		Title:      trapIncidentTitle(oid),
+		Severity:   trapIncidentSeverity(oid),
+		Recovery:   trapIsRecoverySignal(oid),
+	}
+}
+
+func normalizeIncidentSeverityInput(v string) string {
+	switch strings.ToLower(strings.TrimSpace(v)) {
+	case "critical":
+		return "critical"
+	case "info":
+		return "info"
+	default:
+		return "warning"
+	}
+}
+
+func classificationFromMapping(oid string, row trapOIDMappingRow) trapClassification {
+	base := defaultTrapClassification(oid)
+	title := strings.TrimSpace(row.Title)
+	if title == "" {
+		title = base.Title
+	}
+	return trapClassification{
+		SignalKind: trapSignalKindFromString(row.SignalKind),
+		Title:      title,
+		Severity:   normalizeIncidentSeverityInput(row.Severity),
+		Recovery:   row.Recovery,
+	}
+}
+
+func (r *TrapsRepo) trapOIDMappingLookup(ctx context.Context, oid string) (*trapOIDMappingRow, error) {
+	o := strings.TrimSpace(strings.ToLower(oid))
+	if o == "" {
+		return nil, nil
+	}
+	var row trapOIDMappingRow
+	err := r.db.QueryRowContext(ctx, `
+		SELECT signal_kind, title, severity, is_recovery
+		  FROM trap_oid_mappings
+		 WHERE enabled = TRUE
+		   AND $1 ILIKE oid_pattern
+		 ORDER BY priority DESC, id ASC
+		 LIMIT 1`,
+		o,
+	).Scan(&row.SignalKind, &row.Title, &row.Severity, &row.Recovery)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &row, nil
+}
+
+func trapIncidentSeverity(oid string) string {
+	switch trapSignalFromOID(oid) {
+	case trapSignalLinkDown, trapSignalBFDDown:
+		return "critical"
+	case trapSignalLinkUp, trapSignalBFDUp:
+		return "info"
+	default:
+		o := strings.ToLower(strings.TrimSpace(oid))
+		if strings.Contains(o, "coldstart") {
+			return "critical"
+		}
+		return "warning"
+	}
+}
+
+func trapIncidentTitle(oid string) string {
+	switch trapSignalFromOID(oid) {
+	case trapSignalLinkDown, trapSignalBFDDown:
+		// Correlate linkDown + BFD down into one incident class.
+		return "Link loss detected"
+	case trapSignalLinkUp, trapSignalBFDUp:
+		return "Link recovery detected"
+	default:
+		if strings.TrimSpace(oid) == "" || strings.EqualFold(strings.TrimSpace(oid), "unknown") {
+			return "SNMP trap: unknown"
+		}
+		return "SNMP trap: " + strings.TrimSpace(oid)
+	}
+}
+
+func trapIsRecoverySignal(oid string) bool {
+	switch trapSignalFromOID(oid) {
+	case trapSignalLinkUp, trapSignalBFDUp:
+		return true
+	default:
+		return false
+	}
+}
+
+// CreateOrTouchOpenTrapIncident suppresses duplicate trap incidents inside a time window.
+func (r *TrapsRepo) CreateOrTouchOpenTrapIncident(ctx context.Context, deviceIP, oid string, trapVars map[string]string, suppressionWindow time.Duration) error {
+	if suppressionWindow <= 0 {
+		suppressionWindow = 10 * time.Minute
+	}
+	classification := defaultTrapClassification(oid)
+	if row, err := r.trapOIDMappingLookup(ctx, oid); err == nil && row != nil {
+		classification = classificationFromMapping(oid, *row)
+	}
+	title := classification.Title
+	severity := classification.Severity
+	windowSec := int(suppressionWindow.Seconds())
+	if windowSec < 1 {
+		windowSec = 1
+	}
+
+	var devID sql.NullInt64
+	_ = r.db.QueryRowContext(ctx, `SELECT id FROM devices WHERE ip = $1`, deviceIP).Scan(&devID)
+	varsJSON, _ := json.Marshal(trapVars)
+	detailsJSON, _ := json.Marshal(map[string]any{
+		"oid":       oid,
+		"device_ip": deviceIP,
+		"vars":      json.RawMessage(varsJSON),
+	})
+
+	// Recovery trap resolves open link-loss incidents and doesn't create noise incident.
+	if classification.Recovery {
+		_, err := r.ResolveOpenTrapIncidents(ctx, devID, []string{"Link loss detected"}, "system", "auto-resolved by recovery trap")
+		return err
+	}
+
+	var touchedID int64
+	err := r.db.QueryRowContext(ctx, `
+		UPDATE incidents i
+		   SET updated_at = NOW(),
+		       details = $1::jsonb
+		 WHERE i.id = (
+		     SELECT id
+		       FROM incidents
+		      WHERE source = 'trap'
+		        AND status IN ('new', 'acknowledged', 'in_progress')
+		        AND title = $2
+		        AND (device_id IS NOT DISTINCT FROM $3)
+		        AND updated_at >= NOW() - make_interval(secs => $4)
+		      ORDER BY updated_at DESC
+		      LIMIT 1
+		 )
+		RETURNING i.id`,
+		string(detailsJSON), title, devID, float64(windowSec),
+	).Scan(&touchedID)
+	if err != nil && err != sql.ErrNoRows {
+		return err
+	}
+	if err == nil {
+		return nil
+	}
+	_, err = r.db.ExecContext(ctx, `
+		INSERT INTO incidents (device_id, title, severity, status, source, details)
+		VALUES ($1, $2, $3, 'new', 'trap', $4::jsonb)`,
+		devID, title, severity, string(detailsJSON),
+	)
+	return err
+}
+
+func (r *TrapsRepo) ResolveOpenTrapIncidents(ctx context.Context, deviceID sql.NullInt64, titles []string, changedBy, comment string) (int64, error) {
+	if !deviceID.Valid {
+		return 0, nil
+	}
+	if len(titles) == 0 {
+		return 0, nil
+	}
+	changedBy = strings.TrimSpace(changedBy)
+	if changedBy == "" {
+		changedBy = "system"
+	}
+	comment = strings.TrimSpace(comment)
+	if comment == "" {
+		comment = "auto-resolved"
+	}
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, err
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	args := []any{deviceID}
+	titleConds := make([]string, 0, len(titles))
+	for _, t := range titles {
+		tt := strings.TrimSpace(t)
+		if tt == "" {
+			continue
+		}
+		args = append(args, tt)
+		titleConds = append(titleConds, "title = $"+strconv.Itoa(len(args)))
+	}
+	if len(titleConds) == 0 {
+		return 0, nil
+	}
+	query := `
+		SELECT id, status
+		  FROM incidents
+		 WHERE source = 'trap'
+		   AND device_id = $1
+		   AND status IN ('new', 'acknowledged', 'in_progress')
+		   AND (` + strings.Join(titleConds, " OR ") + `)
+		 FOR UPDATE`
+	rows, err := tx.QueryContext(ctx, query, args...)
+	if err != nil {
+		return 0, err
+	}
+	defer func() { _ = rows.Close() }()
+	type incidentRow struct {
+		id     int64
+		status string
+	}
+	var items []incidentRow
+	for rows.Next() {
+		var it incidentRow
+		if err := rows.Scan(&it.id, &it.status); err != nil {
+			return 0, err
+		}
+		items = append(items, it)
+	}
+	if err := rows.Err(); err != nil {
+		return 0, err
+	}
+	var changed int64
+	for _, it := range items {
+		if _, err := tx.ExecContext(ctx, `
+			UPDATE incidents
+			   SET status = 'resolved',
+			       updated_at = NOW(),
+			       resolved_at = NOW()
+			 WHERE id = $1`, it.id); err != nil {
+			return changed, err
+		}
+		if _, err := tx.ExecContext(ctx, `
+			INSERT INTO incident_transitions (incident_id, from_status, to_status, changed_by, comment)
+			VALUES ($1, $2, 'resolved', $3, $4)`,
+			it.id, it.status, changedBy, comment,
+		); err != nil {
+			return changed, err
+		}
+		changed++
+	}
+	if err := tx.Commit(); err != nil {
+		return changed, err
+	}
+	return changed, nil
 }

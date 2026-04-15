@@ -209,3 +209,102 @@ func TestIntegration_TrapsByDeviceOrdersNewestFirst(t *testing.T) {
 		t.Fatalf("expected newest OID first: got %+v", list)
 	}
 }
+
+func TestIntegration_TrapCorrelation_LinkLossAndRecovery(t *testing.T) {
+	db, repo := openTrapsTestDB(t)
+	ctx := context.Background()
+	ip := uniqueTrapIP(t)
+	_, err := db.ExecContext(ctx,
+		`INSERT INTO devices (ip, name, community, snmp_version) VALUES ($1::inet, $2, 'public', 'v2c')`,
+		ip, "integration-trap-correlation",
+	)
+	if err != nil {
+		t.Fatalf("insert device: %v", err)
+	}
+	t.Cleanup(func() {
+		_, _ = db.ExecContext(context.Background(), `DELETE FROM incident_transitions WHERE incident_id IN (SELECT id FROM incidents WHERE source='trap')`)
+		_, _ = db.ExecContext(context.Background(), `DELETE FROM incidents WHERE source='trap'`)
+		_, _ = db.ExecContext(context.Background(), `DELETE FROM traps WHERE device_ip = $1::inet`, ip)
+		_, _ = db.ExecContext(context.Background(), `DELETE FROM devices WHERE ip = $1::inet`, ip)
+	})
+
+	if err := repo.CreateOrTouchOpenTrapIncident(ctx, ip, "IF-MIB::linkDown", map[string]string{"ifName": "Gi0/1"}, 10*time.Minute); err != nil {
+		t.Fatalf("CreateOrTouch linkDown: %v", err)
+	}
+	if err := repo.CreateOrTouchOpenTrapIncident(ctx, ip, "BFD-MIB::bfdDown", map[string]string{"peer": "10.0.0.1"}, 10*time.Minute); err != nil {
+		t.Fatalf("CreateOrTouch bfdDown: %v", err)
+	}
+
+	var cnt int
+	err = db.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM incidents WHERE source='trap' AND title='Link loss detected' AND status IN ('new','acknowledged','in_progress')`).Scan(&cnt)
+	if err != nil {
+		t.Fatalf("count incidents: %v", err)
+	}
+	if cnt != 1 {
+		t.Fatalf("expected 1 open link loss incident after correlation, got %d", cnt)
+	}
+
+	if err := repo.CreateOrTouchOpenTrapIncident(ctx, ip, "IF-MIB::linkUp", map[string]string{"ifName": "Gi0/1"}, 10*time.Minute); err != nil {
+		t.Fatalf("CreateOrTouch linkUp: %v", err)
+	}
+
+	var status string
+	err = db.QueryRowContext(ctx,
+		`SELECT status FROM incidents WHERE source='trap' AND title='Link loss detected' ORDER BY id DESC LIMIT 1`).Scan(&status)
+	if err != nil {
+		t.Fatalf("get incident status: %v", err)
+	}
+	if status != "resolved" {
+		t.Fatalf("expected resolved status after recovery trap, got %q", status)
+	}
+}
+
+func TestIntegration_TrapCorrelation_UsesOIDMappingTable(t *testing.T) {
+	db, repo := openTrapsTestDB(t)
+	ctx := context.Background()
+	ip := uniqueTrapIP(t)
+	_, err := db.ExecContext(ctx,
+		`INSERT INTO devices (ip, name, community, snmp_version) VALUES ($1::inet, $2, 'public', 'v2c')`,
+		ip, "integration-trap-mapping",
+	)
+	if err != nil {
+		t.Fatalf("insert device: %v", err)
+	}
+	_, err = db.ExecContext(ctx, `
+		INSERT INTO trap_oid_mappings (vendor, oid_pattern, signal_kind, title, severity, is_recovery, priority, enabled)
+		VALUES ('test_vendor', '%acmealarm%', 'generic', 'ACME alarm detected', 'critical', FALSE, 9999, TRUE)
+		ON CONFLICT (vendor, oid_pattern, signal_kind) DO UPDATE
+		   SET title = EXCLUDED.title,
+		       severity = EXCLUDED.severity,
+		       is_recovery = EXCLUDED.is_recovery,
+		       priority = EXCLUDED.priority,
+		       enabled = EXCLUDED.enabled`)
+	if err != nil {
+		t.Fatalf("insert mapping: %v", err)
+	}
+	t.Cleanup(func() {
+		_, _ = db.ExecContext(context.Background(), `DELETE FROM incident_transitions WHERE incident_id IN (SELECT id FROM incidents WHERE source='trap')`)
+		_, _ = db.ExecContext(context.Background(), `DELETE FROM incidents WHERE source='trap'`)
+		_, _ = db.ExecContext(context.Background(), `DELETE FROM trap_oid_mappings WHERE vendor='test_vendor'`)
+		_, _ = db.ExecContext(context.Background(), `DELETE FROM devices WHERE ip = $1::inet`, ip)
+	})
+
+	if err := repo.CreateOrTouchOpenTrapIncident(ctx, ip, "ACME-MIB::acmeAlarm", map[string]string{"slot": "1"}, 10*time.Minute); err != nil {
+		t.Fatalf("CreateOrTouch custom mapping: %v", err)
+	}
+
+	var title, severity string
+	err = db.QueryRowContext(ctx,
+		`SELECT title, severity FROM incidents WHERE source='trap' AND device_id = (SELECT id FROM devices WHERE ip = $1::inet) ORDER BY id DESC LIMIT 1`, ip).
+		Scan(&title, &severity)
+	if err != nil {
+		t.Fatalf("query incident by custom mapping: %v", err)
+	}
+	if title != "ACME alarm detected" {
+		t.Fatalf("expected mapped title, got %q", title)
+	}
+	if severity != "critical" {
+		t.Fatalf("expected mapped severity critical, got %q", severity)
+	}
+}

@@ -7,7 +7,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"time"
 )
+
+type IncidentListPage struct {
+	Items []domain.Incident
+	More  bool
+}
 
 var allowedIncidentTransitions = map[string]map[string]struct{}{
 	"new": {
@@ -175,6 +181,14 @@ func (r *Repo) GetIncidentByID(id int64) (*domain.Incident, error) {
 }
 
 func (r *Repo) ListIncidents(limit int, deviceID *int, status, severity string) ([]domain.Incident, error) {
+	page, err := r.ListIncidentsPage(limit, deviceID, status, severity, nil, nil)
+	if err != nil {
+		return nil, err
+	}
+	return page.Items, nil
+}
+
+func (r *Repo) ListIncidentsPage(limit int, deviceID *int, status, severity string, cursorUpdatedAt *time.Time, cursorID *int64) (*IncidentListPage, error) {
 	if limit <= 0 || limit > 5000 {
 		limit = 200
 	}
@@ -200,14 +214,18 @@ func (r *Repo) ListIncidents(limit int, deviceID *int, status, severity string) 
 		args = append(args, sv)
 		conds = append(conds, fmt.Sprintf("severity = $%d", len(args)))
 	}
-	args = append(args, limit)
+	if cursorUpdatedAt != nil && cursorID != nil && *cursorID > 0 {
+		args = append(args, *cursorUpdatedAt, *cursorID)
+		conds = append(conds, fmt.Sprintf("(updated_at, id) < ($%d, $%d)", len(args)-1, len(args)))
+	}
+	args = append(args, limit+1)
 	query := `SELECT id, device_id, title, severity, status, source, details,
                      created_at, updated_at, acknowledged_at, resolved_at, closed_at
               FROM incidents`
 	if len(conds) > 0 {
 		query += " WHERE " + strings.Join(conds, " AND ")
 	}
-	query += fmt.Sprintf(" ORDER BY updated_at DESC LIMIT $%d", len(args))
+	query += fmt.Sprintf(" ORDER BY updated_at DESC, id DESC LIMIT $%d", len(args))
 	rows, err := r.db.QueryContext(context.Background(), query, args...)
 	if err != nil {
 		return nil, err
@@ -215,41 +233,162 @@ func (r *Repo) ListIncidents(limit int, deviceID *int, status, severity string) 
 	defer func() { _ = rows.Close() }()
 	out := make([]domain.Incident, 0)
 	for rows.Next() {
-		var it domain.Incident
-		var devID sql.NullInt64
-		var ackAt, resolvedAt, closedAt sql.NullTime
-		if err := rows.Scan(
-			&it.ID,
-			&devID,
-			&it.Title,
-			&it.Severity,
-			&it.Status,
-			&it.Source,
-			&it.Details,
-			&it.CreatedAt,
-			&it.UpdatedAt,
-			&ackAt,
-			&resolvedAt,
-			&closedAt,
-		); err != nil {
+		it, err := scanIncidentRow(rows)
+		if err != nil {
 			return nil, err
 		}
-		if devID.Valid {
-			v := int(devID.Int64)
-			it.DeviceID = &v
-		}
-		if ackAt.Valid {
-			it.AcknowledgedAt = &ackAt.Time
-		}
-		if resolvedAt.Valid {
-			it.ResolvedAt = &resolvedAt.Time
-		}
-		if closedAt.Valid {
-			it.ClosedAt = &closedAt.Time
-		}
-		out = append(out, it)
+		out = append(out, *it)
 	}
-	return out, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	page := &IncidentListPage{Items: out}
+	if len(page.Items) > limit {
+		page.More = true
+		page.Items = page.Items[:limit]
+	}
+	return page, nil
+}
+
+func (r *Repo) CreateOrTouchOpenIncident(deviceID *int, title, severity, source string, details json.RawMessage, suppressionWindow time.Duration) (*domain.Incident, bool, error) {
+	title = strings.TrimSpace(title)
+	if title == "" {
+		return nil, false, fmt.Errorf("title is required")
+	}
+	sv, err := normalizeIncidentSeverity(severity)
+	if err != nil {
+		return nil, false, err
+	}
+	src, err := normalizeIncidentSource(source)
+	if err != nil {
+		return nil, false, err
+	}
+	if suppressionWindow <= 0 {
+		suppressionWindow = 10 * time.Minute
+	}
+	if len(details) == 0 {
+		details = json.RawMessage(`{}`)
+	}
+	windowSec := int(suppressionWindow.Seconds())
+	if windowSec < 1 {
+		windowSec = 1
+	}
+	var devID sql.NullInt64
+	if deviceID != nil && *deviceID > 0 {
+		devID = sql.NullInt64{Int64: int64(*deviceID), Valid: true}
+	}
+
+	var touchedID int64
+	err = r.db.QueryRowContext(context.Background(), `
+		UPDATE incidents i
+		   SET updated_at = NOW(),
+		       details = $1::jsonb
+		 WHERE i.id = (
+		     SELECT id
+		       FROM incidents
+		      WHERE source = $2
+		        AND status IN ('new', 'acknowledged', 'in_progress')
+		        AND title = $3
+		        AND severity = $4
+		        AND (device_id IS NOT DISTINCT FROM $5)
+		        AND updated_at >= NOW() - make_interval(secs => $6)
+		      ORDER BY updated_at DESC
+		      LIMIT 1
+		 )
+		RETURNING i.id`,
+		[]byte(details), src, title, sv, devID, float64(windowSec),
+	).Scan(&touchedID)
+	if err == nil {
+		item, gerr := r.GetIncidentByID(touchedID)
+		return item, false, gerr
+	}
+	if err != sql.ErrNoRows {
+		return nil, false, err
+	}
+	item, err := r.CreateIncident(&domain.Incident{
+		DeviceID: deviceID,
+		Title:    title,
+		Severity: sv,
+		Source:   src,
+		Details:  details,
+	})
+	if err != nil {
+		return nil, false, err
+	}
+	return item, true, nil
+}
+
+func (r *Repo) ResolveOpenIncidentsBySource(deviceID int, source, changedBy, comment string) (int64, error) {
+	if deviceID <= 0 {
+		return 0, nil
+	}
+	src, err := normalizeIncidentSource(source)
+	if err != nil {
+		return 0, err
+	}
+	changedBy = strings.TrimSpace(changedBy)
+	if changedBy == "" {
+		changedBy = "system"
+	}
+	comment = strings.TrimSpace(comment)
+	if comment == "" {
+		comment = "auto-resolved"
+	}
+	ctx := context.Background()
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, err
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	rows, err := tx.QueryContext(ctx, `
+		SELECT id, status
+		  FROM incidents
+		 WHERE device_id = $1
+		   AND source = $2
+		   AND status IN ('new', 'acknowledged', 'in_progress')
+		 FOR UPDATE`, deviceID, src)
+	if err != nil {
+		return 0, err
+	}
+	defer func() { _ = rows.Close() }()
+	var ids []int64
+	var fromStatuses []string
+	for rows.Next() {
+		var id int64
+		var st string
+		if err := rows.Scan(&id, &st); err != nil {
+			return 0, err
+		}
+		ids = append(ids, id)
+		fromStatuses = append(fromStatuses, st)
+	}
+	if err := rows.Err(); err != nil {
+		return 0, err
+	}
+	var changed int64
+	for i, id := range ids {
+		if _, err := tx.ExecContext(ctx, `
+			UPDATE incidents
+			   SET status = 'resolved',
+			       updated_at = NOW(),
+			       resolved_at = NOW()
+			 WHERE id = $1`, id); err != nil {
+			return changed, err
+		}
+		if _, err := tx.ExecContext(ctx, `
+			INSERT INTO incident_transitions (incident_id, from_status, to_status, changed_by, comment)
+			VALUES ($1, $2, 'resolved', $3, $4)`,
+			id, fromStatuses[i], changedBy, comment,
+		); err != nil {
+			return changed, err
+		}
+		changed++
+	}
+	if err := tx.Commit(); err != nil {
+		return changed, err
+	}
+	return changed, nil
 }
 
 func (r *Repo) TransitionIncidentStatus(incidentID int64, toStatus, changedBy, comment string) (*domain.Incident, error) {
@@ -341,4 +480,66 @@ func (r *Repo) ListIncidentTransitions(incidentID int64, limit int) ([]domain.In
 		out = append(out, tr)
 	}
 	return out, rows.Err()
+}
+
+func (r *Repo) TransitionIncidentsStatus(incidentIDs []int64, toStatus, changedBy, comment string) ([]domain.Incident, error) {
+	out := make([]domain.Incident, 0, len(incidentIDs))
+	seen := map[int64]struct{}{}
+	for _, id := range incidentIDs {
+		if id <= 0 {
+			continue
+		}
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		seen[id] = struct{}{}
+		item, err := r.TransitionIncidentStatus(id, toStatus, changedBy, comment)
+		if err != nil {
+			return nil, err
+		}
+		if item != nil {
+			out = append(out, *item)
+		}
+	}
+	return out, nil
+}
+
+type incidentScanner interface {
+	Scan(dest ...any) error
+}
+
+func scanIncidentRow(row incidentScanner) (*domain.Incident, error) {
+	var it domain.Incident
+	var devID sql.NullInt64
+	var ackAt, resolvedAt, closedAt sql.NullTime
+	if err := row.Scan(
+		&it.ID,
+		&devID,
+		&it.Title,
+		&it.Severity,
+		&it.Status,
+		&it.Source,
+		&it.Details,
+		&it.CreatedAt,
+		&it.UpdatedAt,
+		&ackAt,
+		&resolvedAt,
+		&closedAt,
+	); err != nil {
+		return nil, err
+	}
+	if devID.Valid {
+		v := int(devID.Int64)
+		it.DeviceID = &v
+	}
+	if ackAt.Valid {
+		it.AcknowledgedAt = &ackAt.Time
+	}
+	if resolvedAt.Valid {
+		it.ResolvedAt = &resolvedAt.Time
+	}
+	if closedAt.Valid {
+		it.ClosedAt = &closedAt.Time
+	}
+	return &it, nil
 }

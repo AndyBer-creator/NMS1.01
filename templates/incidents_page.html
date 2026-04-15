@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>NMS1 - Incidents</title>
+    <link rel="stylesheet" href="/static/css/app.css">
+</head>
+<body class="bg-gray-900 text-white min-h-screen">
+<div class="container mx-auto px-4 py-8 max-w-7xl">
+    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-6 mb-10">
+        <div class="flex items-center gap-4">
+            <a href="/" class="shrink-0 opacity-90 hover:opacity-100 transition-opacity">
+                <img src="/static/logo.svg" alt="NMS1" class="h-16 w-auto drop-shadow-2xl">
+            </a>
+            <div>
+                <h1 class="text-3xl sm:text-4xl font-bold bg-gradient-to-r from-red-400 to-orange-500 bg-clip-text text-transparent">
+                    Incidents
+                </h1>
+                <p class="text-gray-400 mt-1 text-sm">Lifecycle инцидентов: new -> acknowledged -> in progress -> resolved -> closed</p>
+            </div>
+        </div>
+        <a href="/"
+           class="inline-flex items-center justify-center gap-2 px-5 py-3 rounded-xl bg-gray-800 hover:bg-gray-700 border border-gray-600 text-sm font-medium transition-all hover:scale-[1.02] shadow-lg">
+            <- На дашборд
+        </a>
+    </div>
+
+    <div class="bg-gray-800 p-6 rounded-xl shadow-2xl border border-gray-700/50 mb-8">
+        <div class="flex flex-col md:flex-row md:items-end gap-4 mb-6">
+            <div class="w-full md:w-44">
+                <label class="block text-sm text-gray-300 mb-2">Severity</label>
+                <select id="inc-severity" class="w-full p-3 bg-gray-900/60 border border-gray-600 rounded-lg focus:border-red-400 focus:outline-none">
+                    <option value="">Все</option>
+                    <option value="critical">critical</option>
+                    <option value="warning">warning</option>
+                    <option value="info">info</option>
+                </select>
+            </div>
+            <div class="w-full md:w-56">
+                <label class="block text-sm text-gray-300 mb-2">Status</label>
+                <select id="inc-status" class="w-full p-3 bg-gray-900/60 border border-gray-600 rounded-lg focus:border-red-400 focus:outline-none">
+                    <option value="">Все</option>
+                    <option value="new">new</option>
+                    <option value="acknowledged">acknowledged</option>
+                    <option value="in_progress">in_progress</option>
+                    <option value="resolved">resolved</option>
+                    <option value="closed">closed</option>
+                </select>
+            </div>
+            <div class="w-full md:w-40">
+                <label class="block text-sm text-gray-300 mb-2">Limit</label>
+                <input id="inc-limit" type="number" min="1" max="500" value="100"
+                       class="w-full p-3 bg-gray-900/60 border border-gray-600 rounded-lg focus:border-red-400 focus:outline-none">
+            </div>
+            <button id="inc-refresh"
+                    class="px-5 py-3 rounded-lg bg-gradient-to-r from-red-600 to-orange-600 hover:from-red-500 hover:to-orange-500 font-semibold">
+                Обновить
+            </button>
+        </div>
+
+        <div id="inc-summary" class="text-sm text-gray-400 mb-4">Загрузка...</div>
+        <div class="overflow-x-auto">
+            <table class="w-full table-auto bg-gray-900/50 rounded-lg border border-gray-700/60">
+                <thead>
+                <tr class="bg-gray-700/50 border-b border-gray-600">
+                    <th class="p-3 text-left text-gray-200">ID</th>
+                    <th class="p-3 text-left text-gray-200">Created</th>
+                    <th class="p-3 text-left text-gray-200">Title</th>
+                    <th class="p-3 text-left text-gray-200">Source</th>
+                    <th class="p-3 text-left text-gray-200">Severity</th>
+                    <th class="p-3 text-left text-gray-200">Status</th>
+                    <th class="p-3 text-left text-gray-200">Action</th>
+                </tr>
+                </thead>
+                <tbody id="inc-body">
+                <tr><td colspan="7" class="p-6 text-center text-gray-500">Загрузка...</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <div class="bg-gray-800 p-6 rounded-xl shadow-2xl border border-gray-700/50">
+        <h2 class="text-xl font-semibold mb-4">Карточка инцидента</h2>
+        <div id="inc-details" class="text-sm text-gray-400">Выберите инцидент из таблицы.</div>
+    </div>
+</div>
+
+<script nonce="{{.CSPNonce}}">
+(function () {
+    const bodyEl = document.getElementById('inc-body');
+    const summaryEl = document.getElementById('inc-summary');
+    const detailsEl = document.getElementById('inc-details');
+    const severityEl = document.getElementById('inc-severity');
+    const statusEl = document.getElementById('inc-status');
+    const limitEl = document.getElementById('inc-limit');
+    const refreshBtn = document.getElementById('inc-refresh');
+
+    function esc(v) {
+        return String(v || '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
+    }
+
+    function statusOptions(current) {
+        const all = ['acknowledged', 'in_progress', 'resolved', 'closed'];
+        return all.filter(function (s) { return s !== current; });
+    }
+
+    function buildQuery() {
+        const p = new URLSearchParams();
+        const sev = (severityEl.value || '').trim();
+        const st = (statusEl.value || '').trim();
+        const limit = Math.max(1, Math.min(500, parseInt(limitEl.value || '100', 10) || 100));
+        p.set('limit', String(limit));
+        if (sev) p.set('severity', sev);
+        if (st) p.set('status', st);
+        return p.toString();
+    }
+
+    function row(i) {
+        const created = i.created_at ? new Date(i.created_at).toLocaleString() : '-';
+        const opts = statusOptions(i.status).map(function (s) {
+            return '<option value="' + esc(s) + '">' + esc(s) + '</option>';
+        }).join('');
+        return '<tr class="border-b border-gray-700/70 hover:bg-gray-700/30">' +
+            '<td class="p-3 font-mono text-xs">' + esc(i.id) + '</td>' +
+            '<td class="p-3 text-sm text-gray-300">' + esc(created) + '</td>' +
+            '<td class="p-3 text-sm">' + esc(i.title) + '</td>' +
+            '<td class="p-3 text-xs">' + esc(i.source) + '</td>' +
+            '<td class="p-3 text-xs">' + esc(i.severity) + '</td>' +
+            '<td class="p-3 text-xs">' + esc(i.status) + '</td>' +
+            '<td class="p-3">' +
+            '<div class="flex gap-2 items-center">' +
+            '<button class="px-3 py-1 text-xs rounded bg-gray-700 hover:bg-gray-600" data-show="' + esc(i.id) + '">open</button>' +
+            (opts ? '<select data-transition-select="' + esc(i.id) + '" class="px-2 py-1 text-xs bg-gray-900 border border-gray-600 rounded">' + opts + '</select>' : '') +
+            (opts ? '<button class="px-3 py-1 text-xs rounded bg-orange-700 hover:bg-orange-600" data-transition="' + esc(i.id) + '">set</button>' : '') +
+            '</div>' +
+            '</td>' +
+            '</tr>';
+    }
+
+    async function loadIncidents() {
+        refreshBtn.disabled = true;
+        summaryEl.textContent = 'Загрузка...';
+        try {
+            const res = await fetch('/incidents?' + buildQuery(), { headers: { 'Accept': 'application/json' } });
+            const text = await res.text();
+            if (!res.ok) {
+                bodyEl.innerHTML = '<tr><td colspan="7" class="p-6 text-center text-red-400">Ошибка ' + res.status + ': ' + esc(text) + '</td></tr>';
+                summaryEl.textContent = 'Ошибка загрузки';
+                return;
+            }
+            const items = JSON.parse(text);
+            if (!Array.isArray(items) || items.length === 0) {
+                bodyEl.innerHTML = '<tr><td colspan="7" class="p-6 text-center text-gray-500">Инцидентов пока нет</td></tr>';
+                summaryEl.textContent = '0 incidents';
+                return;
+            }
+            bodyEl.innerHTML = items.map(row).join('');
+            summaryEl.textContent = 'Показано ' + items.length + ' incidents';
+        } catch (e) {
+            bodyEl.innerHTML = '<tr><td colspan="7" class="p-6 text-center text-red-400">' + esc(e && e.message ? e.message : e) + '</td></tr>';
+            summaryEl.textContent = 'Ошибка сети';
+        } finally {
+            refreshBtn.disabled = false;
+        }
+    }
+
+    async function showIncident(id) {
+        detailsEl.textContent = 'Загрузка...';
+        try {
+            const res = await fetch('/incidents/' + encodeURIComponent(id), { headers: { 'Accept': 'application/json' } });
+            const text = await res.text();
+            if (!res.ok) {
+                detailsEl.innerHTML = '<span class="text-red-400">Ошибка ' + res.status + ': ' + esc(text) + '</span>';
+                return;
+            }
+            const payload = JSON.parse(text);
+            const incident = payload.incident || {};
+            const transitions = Array.isArray(payload.transitions) ? payload.transitions : [];
+            const transitionsHtml = transitions.map(function (t) {
+                const at = t.changed_at ? new Date(t.changed_at).toLocaleString() : '-';
+                return '<li><span class="text-gray-300">' + esc(at) + '</span> : ' + esc(t.from_status) + ' -> ' + esc(t.to_status) + ' <span class="text-gray-500">by ' + esc(t.changed_by) + '</span></li>';
+            }).join('');
+            detailsEl.innerHTML =
+                '<div class="space-y-2">' +
+                '<div><span class="text-gray-500">ID:</span> <span class="font-mono">' + esc(incident.id) + '</span></div>' +
+                '<div><span class="text-gray-500">Title:</span> ' + esc(incident.title) + '</div>' +
+                '<div><span class="text-gray-500">Status:</span> ' + esc(incident.status) + '</div>' +
+                '<div><span class="text-gray-500">Severity:</span> ' + esc(incident.severity) + '</div>' +
+                '<div><span class="text-gray-500">Source:</span> ' + esc(incident.source) + '</div>' +
+                '<div><span class="text-gray-500">Details:</span><pre class="bg-black/30 border border-gray-700 rounded p-3 mt-1 overflow-auto text-xs">' + esc(JSON.stringify(incident.details || {}, null, 2)) + '</pre></div>' +
+                '<div><span class="text-gray-500">Transitions:</span><ul class="mt-1 space-y-1 text-xs">' + (transitionsHtml || '<li class="text-gray-500">Нет переходов</li>') + '</ul></div>' +
+                '</div>';
+        } catch (e) {
+            detailsEl.innerHTML = '<span class="text-red-400">' + esc(e && e.message ? e.message : e) + '</span>';
+        }
+    }
+
+    async function transitionIncident(id) {
+        const select = document.querySelector('[data-transition-select="' + id + '"]');
+        if (!select) return;
+        const targetStatus = (select.value || '').trim();
+        if (!targetStatus) return;
+        const csrf = (document.cookie.split('; ').find(function (x) { return x.indexOf('nms_csrf=') === 0; }) || '').split('=')[1] || '';
+        try {
+            const res = await fetch('/incidents/' + encodeURIComponent(id) + '/status', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                    'X-CSRF-Token': decodeURIComponent(csrf || '')
+                },
+                body: JSON.stringify({ status: targetStatus, comment: 'ui transition' })
+            });
+            if (!res.ok) {
+                const text = await res.text();
+                alert('Transition error: ' + text);
+                return;
+            }
+            await loadIncidents();
+            await showIncident(id);
+        } catch (e) {
+            alert('Transition failed: ' + (e && e.message ? e.message : e));
+        }
+    }
+
+    document.addEventListener('click', function (e) {
+        const showBtn = e.target && e.target.closest('[data-show]');
+        if (showBtn) {
+            showIncident(showBtn.getAttribute('data-show'));
+            return;
+        }
+        const setBtn = e.target && e.target.closest('[data-transition]');
+        if (setBtn) {
+            transitionIncident(setBtn.getAttribute('data-transition'));
+        }
+    });
+
+    refreshBtn.addEventListener('click', loadIncidents);
+    setInterval(loadIncidents, 30000);
+    loadIncidents();
+})();
+</script>
+</body>
+</html>
