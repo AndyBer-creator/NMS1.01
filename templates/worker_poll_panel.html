@@ -33,3 +33,94 @@
     {{end}}
 </div>
 {{end}}
+
+{{define "incidentAutomationPanel"}}
+<div class="space-y-3">
+    <p class="text-sm text-gray-300">
+        Runtime snapshot automation-правил: escalation policies + active ITSM inbound mappings.
+    </p>
+    <p class="text-sm text-gray-400">
+        Escalation check interval:
+        <span class="text-gray-200 font-mono">{{.EscalationIntervalSec}}</span> сек.
+        Active ITSM rules:
+        <span class="text-gray-200 font-mono">{{.ITSMMappingCount}}</span>.
+    </p>
+    {{if .PolicyWarnings}}
+    <div class="text-xs text-amber-300 bg-amber-900/20 border border-amber-700/40 rounded-lg p-3">
+        {{range .PolicyWarnings}}
+        <div>⚠ {{.}}</div>
+        {{end}}
+    </div>
+    {{end}}
+    <div class="overflow-x-auto">
+        <table class="w-full table-auto bg-gray-900/50 rounded-lg border border-gray-700/60 text-xs">
+            <thead>
+            <tr class="bg-gray-700/50 border-b border-gray-600">
+                <th class="p-2 text-left">Policy</th>
+                <th class="p-2 text-left">Timeout</th>
+                <th class="p-2 text-left">Target assignee</th>
+                <th class="p-2 text-left">Scope</th>
+                <th class="p-2 text-left">Mode</th>
+                <th class="p-2 text-left">Active</th>
+            </tr>
+            </thead>
+            <tbody>
+            {{range .Policies}}
+            <tr class="border-b border-gray-700/70">
+                <td class="p-2 font-mono">{{.Name}}</td>
+                <td class="p-2">{{if .OlderThan}}{{.OlderThan}}{{else}}—{{end}}</td>
+                <td class="p-2">{{if .TargetAssignee}}{{.TargetAssignee}}{{else}}—{{end}}</td>
+                <td class="p-2">
+                    {{if .Severity}}severity={{.Severity}}{{else if .Source}}source={{.Source}}{{else}}all{{end}}
+                </td>
+                <td class="p-2">{{if .OnlyIfUnassigned}}only_unassigned{{else}}reassign_allowed{{end}}</td>
+                <td class="p-2">{{if .Active}}✅{{else}}—{{end}}</td>
+            </tr>
+            {{end}}
+            </tbody>
+        </table>
+    </div>
+    <div class="flex flex-wrap gap-3">
+        <button type="button"
+                id="incident-automation-snapshot-btn"
+                class="px-4 py-2 rounded-lg bg-indigo-700 hover:bg-indigo-600 text-sm font-medium">
+            Show JSON snapshot
+        </button>
+    </div>
+    <pre id="incident-automation-snapshot-out" class="hidden mt-2 text-xs text-gray-200 bg-black/30 border border-gray-700 rounded-lg p-4 max-h-72 overflow-auto whitespace-pre-wrap"></pre>
+    <script nonce="{{.CSPNonce}}">
+    (function () {
+        const btn = document.getElementById('incident-automation-snapshot-btn');
+        const out = document.getElementById('incident-automation-snapshot-out');
+        if (!btn || !out || btn.dataset.bound === '1') return;
+        btn.dataset.bound = '1';
+        btn.addEventListener('click', async function () {
+            btn.disabled = true;
+            const prev = btn.textContent;
+            btn.textContent = 'Loading...';
+            out.classList.remove('hidden');
+            out.textContent = 'Loading snapshot...';
+            try {
+                const res = await fetch('/settings/incident-automation-snapshot', { headers: { 'Accept': 'application/json' } });
+                const txt = await res.text();
+                if (!res.ok) {
+                    out.textContent = 'Error ' + res.status + ': ' + txt;
+                    return;
+                }
+                try {
+                    const j = JSON.parse(txt);
+                    out.textContent = JSON.stringify(j, null, 2);
+                } catch (e) {
+                    out.textContent = txt;
+                }
+            } catch (e) {
+                out.textContent = 'Network error: ' + (e && e.message ? e.message : e);
+            } finally {
+                btn.disabled = false;
+                btn.textContent = prev;
+            }
+        });
+    })();
+    </script>
+</div>
+{{end}}

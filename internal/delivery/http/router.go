@@ -76,6 +76,8 @@ func mainRouter(handlers *Handlers) *chi.Mux {
 		r.With(RequireAdmin).Post("/discovery/scan", handlers.DiscoverScan)
 
 		r.Get("/settings/worker-poll-panel", handlers.WorkerPollSettingsPanel)
+		r.Get("/settings/incident-automation-panel", handlers.IncidentAutomationPanel)
+		r.Get("/settings/incident-automation-snapshot", handlers.IncidentAutomationSnapshot)
 		r.With(RequireAdmin).Post("/settings/worker-poll-interval", handlers.SetWorkerPollInterval)
 		r.Get("/settings/alert-email-panel", handlers.AlertEmailPanel)
 		r.With(RequireAdmin).Post("/settings/alert-email", handlers.SetAlertEmail)

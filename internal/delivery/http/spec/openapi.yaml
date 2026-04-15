@@ -20,6 +20,7 @@ tags:
   - name: traps
   - name: trap-mappings
   - name: itsm-mappings
+  - name: automation
   - name: snmp
   - name: incidents
 
@@ -567,6 +568,21 @@ paths:
         "400": {}
         "403": {}
 
+  /settings/incident-automation-snapshot:
+    get:
+      tags: [automation]
+      summary: Runtime snapshot of active escalation policies and ITSM inbound mapping rules
+      security:
+        - sessionOrBasic: []
+      responses:
+        "200":
+          description: Snapshot payload
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IncidentAutomationSnapshotResponse"
+        "500": {}
+
   /api/openapi.yaml:
     get:
       tags: [health]
@@ -998,3 +1014,52 @@ components:
         applied_mapping_id:
           type: integer
           format: int64
+    EscalationPolicyRuntime:
+      type: object
+      properties:
+        name:
+          type: string
+        older_than:
+          type: string
+        target_assignee:
+          type: string
+        severity:
+          type: string
+        source:
+          type: string
+        only_if_unassigned:
+          type: boolean
+        active:
+          type: boolean
+    IncidentAutomationCounts:
+      type: object
+      properties:
+        active_escalation_policies:
+          type: integer
+        active_itsm_mapping_rules:
+          type: integer
+    IncidentAutomationSnapshotResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          example: ok
+        escalation:
+          type: object
+          properties:
+            check_interval_sec:
+              type: integer
+            policies:
+              type: array
+              items:
+                $ref: "#/components/schemas/EscalationPolicyRuntime"
+            warnings:
+              type: array
+              items:
+                type: string
+        itsm_inbound_mappings:
+          type: array
+          items:
+            $ref: "#/components/schemas/ITSMInboundMapping"
+        counts:
+          $ref: "#/components/schemas/IncidentAutomationCounts"
