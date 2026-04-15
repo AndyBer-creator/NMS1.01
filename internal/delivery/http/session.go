@@ -22,12 +22,16 @@ const (
 type sessionClaims struct {
 	User string `json:"u"`
 	Role string `json:"r"`
+	JTI  string `json:"jti"`
 	Exp  int64  `json:"exp"`
 }
 
 var (
 	fallbackSessionKey     [32]byte
 	fallbackSessionKeyOnce sync.Once
+	sessionRevokeMu        sync.Mutex
+	sessionRevokedByJTI    = map[string]int64{}
+	sessionRevokeLastGC    time.Time
 )
 
 func initFallbackSessionKey() {
@@ -49,9 +53,14 @@ func sessionSigningKey() [32]byte {
 }
 
 func signSessionToken(user string, rl role) (string, error) {
+	jti, err := generateSessionJTI()
+	if err != nil {
+		return "", err
+	}
 	c := sessionClaims{
 		User: user,
 		Role: string(rl),
+		JTI:  jti,
 		Exp:  time.Now().Add(sessionTTL).Unix(),
 	}
 	payload, err := json.Marshal(c)
@@ -89,7 +98,13 @@ func verifySessionToken(token string) *authUser {
 	if err := json.Unmarshal(payload, &c); err != nil {
 		return nil
 	}
+	if strings.TrimSpace(c.JTI) == "" {
+		return nil
+	}
 	if time.Now().Unix() > c.Exp {
+		return nil
+	}
+	if isSessionRevoked(c.JTI, time.Now().Unix()) {
 		return nil
 	}
 	var rl role
@@ -104,6 +119,57 @@ func verifySessionToken(token string) *authUser {
 	return &authUser{username: c.User, role: rl}
 }
 
+func generateSessionJTI() (string, error) {
+	var b [16]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		return "", err
+	}
+	return base64.RawURLEncoding.EncodeToString(b[:]), nil
+}
+
+func revokeSessionToken(token string) {
+	parts := strings.Split(token, ".")
+	if len(parts) != 2 {
+		return
+	}
+	payload, err := base64.RawURLEncoding.DecodeString(parts[0])
+	if err != nil {
+		return
+	}
+	var c sessionClaims
+	if err := json.Unmarshal(payload, &c); err != nil {
+		return
+	}
+	if strings.TrimSpace(c.JTI) == "" || c.Exp <= 0 {
+		return
+	}
+	now := time.Now()
+	sessionRevokeMu.Lock()
+	defer sessionRevokeMu.Unlock()
+	revokeGC(now.Unix())
+	sessionRevokedByJTI[c.JTI] = c.Exp
+}
+
+func isSessionRevoked(jti string, nowUnix int64) bool {
+	sessionRevokeMu.Lock()
+	defer sessionRevokeMu.Unlock()
+	revokeGC(nowUnix)
+	exp, ok := sessionRevokedByJTI[jti]
+	return ok && exp >= nowUnix
+}
+
+func revokeGC(nowUnix int64) {
+	if !sessionRevokeLastGC.IsZero() && time.Since(sessionRevokeLastGC) < time.Minute {
+		return
+	}
+	for jti, exp := range sessionRevokedByJTI {
+		if exp < nowUnix {
+			delete(sessionRevokedByJTI, jti)
+		}
+	}
+	sessionRevokeLastGC = time.Now()
+}
+
 func sessionUserFromCookie(r *http.Request) *authUser {
 	c, err := r.Cookie(sessionCookieName)
 	if err != nil || c.Value == "" {
@@ -113,7 +179,7 @@ func sessionUserFromCookie(r *http.Request) *authUser {
 }
 
 func setSessionCookie(w http.ResponseWriter, r *http.Request, token string) {
-	secure := r.TLS != nil || strings.EqualFold(r.Header.Get("X-Forwarded-Proto"), "https")
+	secure := isHTTPSRequest(r)
 	http.SetCookie(w, &http.Cookie{
 		Name:     sessionCookieName,
 		Value:    token,
@@ -126,7 +192,7 @@ func setSessionCookie(w http.ResponseWriter, r *http.Request, token string) {
 }
 
 func clearSessionCookie(w http.ResponseWriter, r *http.Request) {
-	secure := r.TLS != nil || strings.EqualFold(r.Header.Get("X-Forwarded-Proto"), "https")
+	secure := isHTTPSRequest(r)
 	http.SetCookie(w, &http.Cookie{
 		Name:     sessionCookieName,
 		Value:    "",

@@ -32,7 +32,7 @@ func isHTTPSRequest(r *http.Request) bool {
 	if r.TLS != nil {
 		return true
 	}
-	return strings.EqualFold(strings.TrimSpace(r.Header.Get("X-Forwarded-Proto")), "https")
+	return strings.EqualFold(forwardedProto(r), "https")
 }
 
 // SecurityHeaders adds baseline browser-side protections.

@@ -276,7 +276,14 @@ func TestLogout_MethodNotAllowed(t *testing.T) {
 
 func TestLogout_ClearsSessionCookieAndRedirects(t *testing.T) {
 	h := newLoginTestHandlers(t)
+	t.Setenv("NMS_SESSION_SECRET", "itest-secret")
+	resetSessionRevocationsForTest(t)
+	token, err := signSessionToken("admin", roleAdmin)
+	if err != nil {
+		t.Fatalf("signSessionToken: %v", err)
+	}
 	req := httptest.NewRequest(http.MethodPost, "/logout", nil)
+	req.AddCookie(&http.Cookie{Name: sessionCookieName, Value: token})
 	rr := httptest.NewRecorder()
 
 	h.Logout(rr, req)
@@ -302,5 +309,8 @@ func TestLogout_ClearsSessionCookieAndRedirects(t *testing.T) {
 	}
 	if !foundCleared {
 		t.Fatalf("expected %s clearing cookie", sessionCookieName)
+	}
+	if got := verifySessionToken(token); got != nil {
+		t.Fatalf("expected token revoked on logout, got %+v", got)
 	}
 }

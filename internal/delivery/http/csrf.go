@@ -41,7 +41,7 @@ func ensureCSRFCookie(w http.ResponseWriter, r *http.Request) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	secure := r.TLS != nil || strings.EqualFold(r.Header.Get("X-Forwarded-Proto"), "https")
+	secure := isHTTPSRequest(r)
 	http.SetCookie(w, &http.Cookie{
 		Name:     csrfCookieName,
 		Value:    token,

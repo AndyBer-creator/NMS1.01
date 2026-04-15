@@ -102,7 +102,7 @@
     const wsProto = location.protocol === 'https:' ? 'wss:' : 'ws:';
     const wsToken = {{printf "%q" .WSToken}};
     const wsPathWithQuery = '/ws/terminal/' + deviceId +
-        '?kind=' + encodeURIComponent(kind) + '&token=' + encodeURIComponent(wsToken);
+        '?kind=' + encodeURIComponent(kind);
     const wsURL = wsProto + '//' + location.host + wsPathWithQuery;
     const textEnc = new TextEncoder();
     let ws = null;
@@ -276,7 +276,7 @@
         btnConnect.disabled = true;
         btnDisconnect.disabled = false;
 
-        ws = new WebSocket(wsURL);
+        ws = new WebSocket(wsURL, ['nms-term-auth.' + wsToken]);
         ws.binaryType = 'arraybuffer';
 
         ws.onopen = function () {

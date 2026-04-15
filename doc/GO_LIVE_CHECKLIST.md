@@ -55,6 +55,8 @@
 | Шаг | Документ / команда |
 |-----|-------------------|
 | Процедура backup/restore | [`BACKUP_RESTORE.md`](BACKUP_RESTORE.md); `make backup-db`, тестовый `make restore-db FILE=...` на копии |
+| DR цели (обязательно) | Зафиксированы и проверены на drill: **RPO <= 60 мин**, **RTO <= 120 мин** |
+| Offsite + immutable backup | Настроены `BACKUP_OFFSITE_SYNC_CMD` и `BACKUP_IMMUTABLE_COPY_CMD` (или эквивалентные процессы) |
 | Откат релиза | [`ROLLBACK.md`](ROLLBACK.md) |
 | Инциденты | [`RUNBOOK.md`](RUNBOOK.md) |
 

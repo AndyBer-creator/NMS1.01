@@ -104,6 +104,9 @@ func (h *Handlers) Logout(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
+	if c, err := r.Cookie(sessionCookieName); err == nil && strings.TrimSpace(c.Value) != "" {
+		revokeSessionToken(c.Value)
+	}
 	clearSessionCookie(w, r)
 	http.Redirect(w, r, "/login", http.StatusFound)
 }
