@@ -24,7 +24,7 @@ if [[ ! -f "$dump_file" ]]; then
   exit 1
 fi
 
-COMPOSE_FILE="${COMPOSE_FILE:-docker-compose.yml}"
+COMPOSE_FILE="${COMPOSE_FILE:-deploy/compose/docker-compose.yml}"
 POSTGRES_CONTAINER="${POSTGRES_CONTAINER:-postgres}"
 DB_USER="${POSTGRES_USER:-nms-user}"
 TARGET_DB="${2:-${POSTGRES_DB:-NMS}}"

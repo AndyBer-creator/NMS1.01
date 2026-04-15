@@ -26,7 +26,7 @@ BACKUP_DIR=/data/nms-backups \
 BACKUP_RETENTION_DAYS=30 \
 RPO_TARGET_MINUTES=60 \
 RTO_TARGET_MINUTES=120 \
-COMPOSE_FILE=docker-compose.yml \
+COMPOSE_FILE=deploy/compose/docker-compose.yml \
 ./scripts/backup_postgres.sh
 ```
 

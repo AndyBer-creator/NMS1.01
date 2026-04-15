@@ -24,7 +24,7 @@
 
 Контейнер будет видеть MIB’ы по пути **`/app/mibs`**.
 
-- Dev: храните MIB’ы в `./mibs` и подключайте volume в `docker-compose.yml`.
+- Dev: храните MIB’ы в `./mibs` и подключайте volume в `deploy/compose/docker-compose.yml`.
 - Prod: можно копировать `mibs/` в образ (или тоже монтировать volume).
 
 ### Быстрый старт без MIB-парсера

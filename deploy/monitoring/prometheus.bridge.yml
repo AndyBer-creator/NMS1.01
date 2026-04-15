@@ -1,4 +1,4 @@
-# Для docker-compose.bridge.yml (api/worker в bridge-сети).
+# Для deploy/compose/docker-compose.bridge.yml (api/worker в bridge-сети).
 global:
   scrape_interval: 15s
 rule_files:

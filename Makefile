@@ -43,10 +43,10 @@ dev:
 	$(MAKE) migrate && $(MAKE) server & sleep 3 && $(MAKE) worker &
 
 docker-up:
-	sudo docker compose up -d postgres grafana
+	sudo docker compose -f deploy/compose/docker-compose.yml up -d postgres grafana
 
 docker-logs:
-	sudo docker compose logs -f
+	sudo docker compose -f deploy/compose/docker-compose.yml logs -f
 
 clean:
 	rm -rf bin/ *.log ./trap-receiver

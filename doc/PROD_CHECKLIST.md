@@ -44,7 +44,7 @@
 
 - [x] Полный secret-management процесс
   - Добавлена поддержка `*_FILE` для критичных секретов в коде (`DB_DSN`, auth/session, Telegram, SMTP).
-  - Добавлен Docker-secrets overlay: `docker-compose.secrets.yml`.
+  - Добавлен Docker-secrets overlay: `deploy/compose/docker-compose.secrets.yml`.
   - Добавлен операционный процесс bootstrap/rotation/revoke: `SECRETS_PROCESS.md` + `scripts/init_docker_secrets.sh`.
   - В production введён fail-fast на слабый session secret: `NMS_SESSION_SECRET` должен быть не короче 12 символов.
   - В production введён fail-fast на слабый ключ: `NMS_DB_ENCRYPTION_KEY` должен быть не короче 8 символов.

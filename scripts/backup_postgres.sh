@@ -12,7 +12,7 @@ cd "$ROOT_DIR"
 
 BACKUP_DIR="${BACKUP_DIR:-$ROOT_DIR/backups/postgres}"
 RETENTION_DAYS="${BACKUP_RETENTION_DAYS:-14}"
-COMPOSE_FILE="${COMPOSE_FILE:-docker-compose.yml}"
+COMPOSE_FILE="${COMPOSE_FILE:-deploy/compose/docker-compose.yml}"
 POSTGRES_CONTAINER="${POSTGRES_CONTAINER:-postgres}"
 DB_NAME="${POSTGRES_DB:-NMS}"
 DB_USER="${POSTGRES_USER:-nms-user}"

@@ -22,13 +22,13 @@ make init-secrets
 3. Запустить стек с overlay:
 
 ```bash
-docker compose -f docker-compose.yml -f docker-compose.secrets.yml up -d
+docker compose -f deploy/compose/docker-compose.yml -f deploy/compose/docker-compose.secrets.yml up -d
 ```
 
 Bridge-вариант:
 
 ```bash
-docker compose -f docker-compose.bridge.yml -f docker-compose.secrets.yml up -d
+docker compose -f deploy/compose/docker-compose.bridge.yml -f deploy/compose/docker-compose.secrets.yml up -d
 ```
 
 ## 3) Rotation (плановая)
@@ -58,7 +58,7 @@ make init-secrets
 4. Перезапустить только затронутые сервисы:
 
 ```bash
-docker compose -f docker-compose.yml -f docker-compose.secrets.yml up -d api worker trap-receiver migration
+docker compose -f deploy/compose/docker-compose.yml -f deploy/compose/docker-compose.secrets.yml up -d api worker trap-receiver migration
 ```
 
 5. Проверить работоспособность:

@@ -23,7 +23,7 @@ check_forbidden() {
   fi
 }
 
-for compose_file in docker-compose.yml docker-compose.bridge.yml; do
+for compose_file in deploy/compose/docker-compose.yml deploy/compose/docker-compose.bridge.yml; do
   check_forbidden "privileged:\\s*true" "$compose_file" "privileged containers are forbidden"
   check_forbidden "image:\\s*[^[:space:]]+:latest" "$compose_file" "latest image tags are forbidden"
   check_forbidden "healthcheck:\\s*\\n\\s*disable:\\s*true" "$compose_file" "disabled healthcheck is forbidden"

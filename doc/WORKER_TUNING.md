@@ -51,7 +51,7 @@
 # пример для docker-compose окружения
 export NMS_WORKER_POLL_CONCURRENCY=12
 export NMS_WORKER_POLL_RATE_LIMIT_PER_SEC=40
-docker compose up -d worker
+docker compose -f deploy/compose/docker-compose.yml up -d worker
 ```
 
 После изменения:

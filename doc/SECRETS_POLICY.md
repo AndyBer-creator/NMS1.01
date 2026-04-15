@@ -31,7 +31,7 @@
 2. Обновить env на прод-хосте.
 3. Перезапустить затронутые сервисы:
    ```bash
-   docker compose up -d --build api worker trap-receiver
+   docker compose -f deploy/compose/docker-compose.yml up -d --build api worker trap-receiver
    ```
 4. Прогнать проверки:
    ```bash

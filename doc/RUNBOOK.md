@@ -6,10 +6,10 @@
 
 ```bash
 cd "$(git rev-parse --show-toplevel)"
-docker compose ps
-docker compose logs --tail=100 api
-docker compose logs --tail=100 worker
-docker compose logs --tail=100 postgres
+docker compose -f deploy/compose/docker-compose.yml ps
+docker compose -f deploy/compose/docker-compose.yml logs --tail=100 api
+docker compose -f deploy/compose/docker-compose.yml logs --tail=100 worker
+docker compose -f deploy/compose/docker-compose.yml logs --tail=100 postgres
 ```
 
 Проверки HTTP:
@@ -29,12 +29,12 @@ curl -sS http://localhost:8081/metrics | head
 Действия:
 1. Проверить контейнер:
    ```bash
-   docker compose ps api
-   docker compose logs --tail=200 api
+   docker compose -f deploy/compose/docker-compose.yml ps api
+   docker compose -f deploy/compose/docker-compose.yml logs --tail=200 api
    ```
 2. Перезапустить API:
    ```bash
-   docker compose up -d --build api
+   docker compose -f deploy/compose/docker-compose.yml up -d --build api
    ```
 3. Если не помогло — откатить API (см. `ROLLBACK.md`).
 
@@ -48,12 +48,12 @@ curl -sS http://localhost:8081/metrics | head
 Действия:
 1. Проверить worker:
    ```bash
-   docker compose ps worker
-   docker compose logs --tail=300 worker
+   docker compose -f deploy/compose/docker-compose.yml ps worker
+   docker compose -f deploy/compose/docker-compose.yml logs --tail=300 worker
    ```
 2. Перезапуск:
    ```bash
-   docker compose up -d --build worker
+   docker compose -f deploy/compose/docker-compose.yml up -d --build worker
    ```
 3. Проверить БД/доступность устройств/таймауты SNMP.
 4. Если растёт `NMSPollingBackoffSpike`:
@@ -71,12 +71,12 @@ curl -sS http://localhost:8081/metrics | head
 Действия:
 1. Проверить postgres:
    ```bash
-   docker compose ps postgres
-   docker compose logs --tail=200 postgres
+   docker compose -f deploy/compose/docker-compose.yml ps postgres
+   docker compose -f deploy/compose/docker-compose.yml logs --tail=200 postgres
    ```
 2. Если контейнер упал — поднять:
    ```bash
-   docker compose up -d postgres
+   docker compose -f deploy/compose/docker-compose.yml up -d postgres
    ```
 3. Если повреждение данных / авария — восстановление:
    см. `BACKUP_RESTORE.md`.
@@ -93,15 +93,15 @@ curl -sS http://localhost:8081/metrics | head
 Действия:
 1. Проверить Alertmanager:
    ```bash
-   docker compose ps alertmanager
-   docker compose logs --tail=200 alertmanager
+   docker compose -f deploy/compose/docker-compose.yml ps alertmanager
+   docker compose -f deploy/compose/docker-compose.yml logs --tail=200 alertmanager
    ```
 2. Проверить API webhook:
    ```bash
    curl -sS -X POST http://localhost:8080/alerts/webhook \
      -H "Content-Type: application/json" \
      --data '{"status":"firing","alerts":[{"status":"firing","labels":{"alertname":"RunbookTest"},"annotations":{"summary":"runbook test","description":"manual"}}]}'
-   docker compose logs --tail=100 api
+   docker compose -f deploy/compose/docker-compose.yml logs --tail=100 api
    ```
 3. Проверить SMTP/Telegram env и email в UI.
 

@@ -23,9 +23,9 @@
 
 | Шаг | Действие |
 |-----|----------|
-| Секреты не в git | `.env` из `.env.example`, права на файлы; для Docker — `make init-secrets` и overlay `docker-compose.secrets.yml` (см. [`README.md`](../README.md), [`SECRETS_POLICY.md`](SECRETS_POLICY.md), [`SECRETS_PROCESS.md`](SECRETS_PROCESS.md)) |
-| Сеть и режим compose | Выбрать основной compose или `docker-compose.bridge.yml` под вашу ОС/доступ SNMP к LAN (см. [`README.md`](../README.md)) |
-| Production overrides | Для прод-стенда запускать с `docker-compose.prod.yml` (строгие env/security defaults): `docker compose -f docker-compose.yml -f docker-compose.prod.yml -f docker-compose.secrets.yml up -d` |
+| Секреты не в git | `.env` из `.env.example`, права на файлы; для Docker — `make init-secrets` и overlay `deploy/compose/docker-compose.secrets.yml` (см. [`README.md`](../README.md), [`SECRETS_POLICY.md`](SECRETS_POLICY.md), [`SECRETS_PROCESS.md`](SECRETS_PROCESS.md)) |
+| Сеть и режим compose | Выбрать основной compose или `deploy/compose/docker-compose.bridge.yml` под вашу ОС/доступ SNMP к LAN (см. [`README.md`](../README.md)) |
+| Production overrides | Для прод-стенда запускать с `deploy/compose/docker-compose.prod.yml` (строгие env/security defaults): `docker compose -f deploy/compose/docker-compose.yml -f deploy/compose/docker-compose.prod.yml -f deploy/compose/docker-compose.secrets.yml up -d` |
 | БД | `POSTGRES_PASSWORD` и `DB_DSN` согласованы; для миграций с хоста — `host=localhost` (или ваш хост БД) |
 
 ---
@@ -35,7 +35,7 @@
 | Шаг | Действие |
 |-----|----------|
 | Миграции до старта сервисов | `make migrate` или `go run ./cmd/migration` с корректным `DB_DSN` (как в [`README.md`](../README.md)) |
-| Образы | `docker compose build` / `docker compose up -d --build` по вашему процессу релиза |
+| Образы | `docker compose -f deploy/compose/docker-compose.yml build` / `docker compose -f deploy/compose/docker-compose.yml up -d --build` по вашему процессу релиза |
 
 ---
 
@@ -45,7 +45,7 @@
 |-----|---------|
 | Базовый HTTP / сессии | `make e2e-http-smoke` (нужен запущенный API; см. `scripts/e2e_http_smoke.sh`) |
 | RBAC | `make rbac-smoke` |
-| Ручной smoke (из [`RUNBOOK.md`](RUNBOOK.md)) | `curl` на `/health`, `/metrics` API и worker (`:8081`), `docker compose ps`, логи сервисов |
+| Ручной smoke (из [`RUNBOOK.md`](RUNBOOK.md)) | `curl` на `/health`, `/metrics` API и worker (`:8081`), `docker compose -f deploy/compose/docker-compose.yml ps`, логи сервисов |
 
 При необходимости нагрузочного дымка на read-only эндпоинты: `make load-http-readonly` или `make k6-readonly` (нужен запущенный API; для k6-сценариев с авторизацией — переменные из `Makefile`).
 
@@ -67,7 +67,7 @@
 
 | Шаг | Действие |
 |-----|----------|
-| Prometheus / Grafana | URL и datasource как в [`README.md`](../README.md); правила в `alerts/nms-alerts.yml`, Alertmanager — `alertmanager.yml` или `alertmanager.bridge.yml` |
+| Prometheus / Grafana | URL и datasource как в [`README.md`](../README.md); правила в `alerts/nms-alerts.yml`, Alertmanager — `deploy/monitoring/alertmanager.yml` или `deploy/monitoring/alertmanager.bridge.yml` |
 | Worker scaling baseline | Перед go-live зафиксировать baseline/панели из [`WORKER_TUNING.md`](WORKER_TUNING.md) (failure ratio, backoff skips, cycle duration, config gauges) |
 | Проверка цепочки алертов | См. раздел в [`README.md`](../README.md) (Alerting) и [`RUNBOOK.md`](RUNBOOK.md) § про доставку уведомлений |
 

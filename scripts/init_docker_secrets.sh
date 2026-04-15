@@ -33,4 +33,4 @@ write_secret "smtp_pass" "${SMTP_PASS:-}"
 write_secret "smtp_from" "${SMTP_FROM:-}"
 
 echo "Secrets written to ${secrets_dir}"
-echo "Run with overlay: docker compose -f docker-compose.yml -f docker-compose.secrets.yml up -d"
+echo "Run with overlay: docker compose -f deploy/compose/docker-compose.yml -f deploy/compose/docker-compose.secrets.yml up -d"

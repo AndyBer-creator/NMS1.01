@@ -16,8 +16,8 @@
    - симптомы и метрики.
 2. Снять логи:
    ```bash
-   docker compose logs --tail=300 api > /tmp/nms_api_fail.log
-   docker compose logs --tail=300 worker > /tmp/nms_worker_fail.log
+   docker compose -f deploy/compose/docker-compose.yml logs --tail=300 api > /tmp/nms_api_fail.log
+   docker compose -f deploy/compose/docker-compose.yml logs --tail=300 worker > /tmp/nms_worker_fail.log
    ```
 3. Сделать аварийный backup БД:
    ```bash
@@ -30,7 +30,7 @@
 
 ```bash
 git checkout <stable_commit_or_tag>
-docker compose up -d --build api worker trap-receiver
+docker compose -f deploy/compose/docker-compose.yml up -d --build api worker trap-receiver
 ```
 
 Проверить:
@@ -53,7 +53,7 @@ make rbac-smoke
    ```
 3. Перезапустить сервисы:
    ```bash
-   docker compose up -d --build api worker trap-receiver
+   docker compose -f deploy/compose/docker-compose.yml up -d --build api worker trap-receiver
    ```
 4. Проверить smoke:
    ```bash

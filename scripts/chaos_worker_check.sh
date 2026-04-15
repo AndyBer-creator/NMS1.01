@@ -9,6 +9,7 @@ set -euo pipefail
 WORKER_METRICS_URL="${WORKER_METRICS_URL:-http://localhost:8081/metrics}"
 CHAOS_DB_OUTAGE="${CHAOS_DB_OUTAGE:-false}"
 CHAOS_DB_OUTAGE_SECONDS="${CHAOS_DB_OUTAGE_SECONDS:-20}"
+COMPOSE_FILE="${COMPOSE_FILE:-deploy/compose/docker-compose.yml}"
 
 fail() {
   echo "[chaos-worker][FAIL] $*" >&2
@@ -35,7 +36,7 @@ wait_http_200() {
 }
 
 container_id_for_service() {
-  docker compose ps -q "$1"
+  docker compose -f "$COMPOSE_FILE" ps -q "$1"
 }
 
 require_running_service() {
@@ -53,7 +54,7 @@ ensure_service_running() {
   local cid
   cid="$(container_id_for_service "$svc")"
   if [[ -z "$cid" ]]; then
-    docker compose up -d "$svc" >/dev/null
+    docker compose -f "$COMPOSE_FILE" up -d "$svc" >/dev/null
   fi
   wait_service_running "$svc" 40 2 || fail "service '$svc' is not running"
 }
@@ -103,8 +104,8 @@ info "Scenario 1: crash worker main process (PID 1) and verify auto-restart"
 worker_cid="$(container_id_for_service worker)"
 docker exec "$worker_cid" sh -c 'kill -9 1' >/dev/null 2>&1 || true
 if ! wait_service_running "worker" 20 2; then
-  info "Auto-restart not observed; reconciling service via docker compose up -d worker"
-  docker compose up -d worker >/dev/null
+  info "Auto-restart not observed; reconciling service via docker compose -f $COMPOSE_FILE up -d worker"
+  docker compose -f "$COMPOSE_FILE" up -d worker >/dev/null
   wait_service_running "worker" 30 2 || fail "worker did not recover after crash"
 fi
 wait_http_200 "$WORKER_METRICS_URL" 30 2 || fail "worker metrics did not recover after restart"
@@ -112,9 +113,9 @@ info "Scenario 1 passed"
 
 if [[ "$CHAOS_DB_OUTAGE" == "true" ]]; then
   info "Scenario 2: temporary DB outage (${CHAOS_DB_OUTAGE_SECONDS}s)"
-  docker compose stop postgres >/dev/null
+  docker compose -f "$COMPOSE_FILE" stop postgres >/dev/null
   sleep "$CHAOS_DB_OUTAGE_SECONDS"
-  docker compose start postgres >/dev/null
+  docker compose -f "$COMPOSE_FILE" start postgres >/dev/null
   wait_service_healthy "postgres" 60 2 || fail "postgres did not recover to healthy state"
   wait_service_running "worker" 30 2 || fail "worker not running after DB outage scenario"
   wait_http_200 "$WORKER_METRICS_URL" 30 2 || fail "worker metrics not reachable after DB outage scenario"

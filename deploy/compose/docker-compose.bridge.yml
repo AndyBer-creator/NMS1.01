@@ -1,6 +1,7 @@
-# Полный стек в bridge-сети (как раньше). Используйте, если основной docker-compose.yml
+# Полный стек в bridge-сети (как раньше). Используйте, если основной
+# deploy/compose/docker-compose.yml
 # с network_mode: host для api/worker не поднимается (часто Docker Desktop для Windows).
-# Запуск: docker compose -f docker-compose.bridge.yml up -d
+# Запуск: docker compose -f deploy/compose/docker-compose.bridge.yml up -d
 # Для SNMP до LAN в этом режиме на Windows включите в Docker Desktop mirrored networking
 # (Settings → Resources → Network) и задайте DB_DSN с host=postgres как в .env.example.
 #
@@ -25,7 +26,7 @@ services:
       - "443:443"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
-      - ./letsencrypt:/letsencrypt
+      - ../../letsencrypt:/letsencrypt
     networks:
       - nms-network
     restart: unless-stopped
@@ -67,7 +68,7 @@ services:
 
   migration:
     build:
-      context: .
+      context: ../../
       dockerfile: Dockerfile
       target: builder
     command:
@@ -86,7 +87,7 @@ services:
       go run cmd/migration/main.go
       echo "🎉 Migration COMPLETED!"
     volumes:
-      - ./config.yaml:/app/config.yaml:ro
+      - ../../config.yaml:/app/config.yaml:ro
     environment:
       TZ: ${TZ:-UTC}
       DB_DSN: "${DB_DSN}"
@@ -101,7 +102,7 @@ services:
       - nms-network
 
   api:
-    build: .
+    build: ../../
     container_name: nms1-api-1
     expose:
       - "8080"
@@ -123,9 +124,9 @@ services:
       NMS_VIEWER_PASS: "${NMS_VIEWER_PASS}"
       NMS_SESSION_SECRET: "${NMS_SESSION_SECRET}"
     volumes:
-      - ./logs:/app/logs:delegated
-      - ./config.yaml:/app/config.yaml
-      - ./mibs:/app/mibs
+      - ../../logs:/app/logs:delegated
+      - ../../config.yaml:/app/config.yaml
+      - ../../mibs:/app/mibs
     command: ["./nms-api"]
     depends_on:
       postgres:
@@ -161,8 +162,8 @@ services:
     expose:
       - "9090"
     volumes:
-      - ./prometheus.bridge.yml:/etc/prometheus/prometheus.yml
-      - ./alerts:/etc/prometheus/alerts:ro
+      - ../monitoring/prometheus.bridge.yml:/etc/prometheus/prometheus.yml
+      - ../../alerts:/etc/prometheus/alerts:ro
       - prometheus_data:/prometheus
     command:
       - '--config.file=/etc/prometheus/prometheus.yml'
@@ -188,7 +189,7 @@ services:
     ports:
       - "9093:9093"
     volumes:
-      - ./alertmanager.bridge.yml:/etc/alertmanager/alertmanager.yml:ro
+      - ../monitoring/alertmanager.bridge.yml:/etc/alertmanager/alertmanager.yml:ro
     command:
       - '--config.file=/etc/alertmanager/alertmanager.yml'
       - '--storage.path=/alertmanager'
@@ -206,8 +207,8 @@ services:
       - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD}
     volumes:
       - grafana_data:/var/lib/grafana
-      - ./grafana/provisioning:/etc/grafana/provisioning:ro
-      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - ../../grafana/provisioning:/etc/grafana/provisioning:ro
+      - ../../grafana/dashboards:/var/lib/grafana/dashboards:ro
     depends_on:
       - prometheus
     labels:
@@ -222,7 +223,7 @@ services:
     restart: unless-stopped
 
   worker:
-    build: .
+    build: ../../
     container_name: nms1-worker-1
     expose:
       - "8081"
@@ -230,9 +231,9 @@ services:
       TZ: ${TZ:-UTC}
       DB_DSN: ${DB_DSN}
     volumes:
-      - ./logs:/app/logs:delegated
-      - ./config.yaml:/app/config.yaml
-      - ./mibs:/app/mibs:ro
+      - ../../logs:/app/logs:delegated
+      - ../../config.yaml:/app/config.yaml
+      - ../../mibs:/app/mibs:ro
     command: ["./nms-worker"]
     depends_on:
       postgres:
@@ -255,7 +256,7 @@ services:
 
   trap-receiver:
     build:
-      context: .
+      context: ../../
       dockerfile: cmd/trap-receiver/Dockerfile
     container_name: nms1-trap-receiver
     ports:
@@ -271,9 +272,9 @@ services:
       TELEGRAM_TOKEN: "${TELEGRAM_TOKEN}"
       TELEGRAM_CHAT_ID: "${TELEGRAM_CHAT_ID}"
     volumes:
-      - ./logs:/app/logs:delegated
-      - ./config/critical_oids.json:/app/critical_oids.json
-      - ./mibs:/app/mibs:ro
+      - ../../logs:/app/logs:delegated
+      - ../../config/critical_oids.json:/app/critical_oids.json
+      - ../../mibs:/app/mibs:ro
     depends_on:
       postgres:
         condition: service_healthy
