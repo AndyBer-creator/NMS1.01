@@ -1,3 +1,4 @@
+-- +goose Up
 CREATE TABLE IF NOT EXISTS itsm_inbound_mappings (
     id BIGSERIAL PRIMARY KEY,
     provider VARCHAR(64) NOT NULL DEFAULT 'generic',
@@ -25,3 +26,7 @@ VALUES
     ('generic', 'resolved', 'resolved', 40, TRUE),
     ('generic', 'closed', 'closed', 50, TRUE)
 ON CONFLICT DO NOTHING;
+
+-- +goose Down
+DROP INDEX IF EXISTS idx_itsm_inbound_mappings_lookup;
+DROP TABLE IF EXISTS itsm_inbound_mappings;
