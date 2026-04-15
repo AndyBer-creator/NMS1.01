@@ -90,14 +90,21 @@ func mainRouter(handlers *Handlers) *chi.Mux {
 			r.Get("/page", handlers.TrapsPage)
 			r.Get("/", handlers.ListTraps)
 		})
+		r.Get("/trap-oid-mappings/page", handlers.TrapOIDMappingsPage)
+		r.Get("/trap-oid-mappings", handlers.ListTrapOIDMappings)
+		r.With(RequireAdmin).Post("/trap-oid-mappings", handlers.CreateTrapOIDMapping)
+		r.With(RequireAdmin).Put("/trap-oid-mappings", handlers.UpdateTrapOIDMapping)
+		r.With(RequireAdmin).Delete("/trap-oid-mappings", handlers.DeleteTrapOIDMapping)
 
 		r.Get("/events/availability/page", handlers.AvailabilityEventsPage)
 		r.Get("/events/availability", handlers.ListAvailabilityEvents)
 
 		r.Get("/incidents", handlers.ListIncidents)
+		r.Get("/incidents/page", handlers.IncidentsPage)
 		r.Get("/incidents/{incidentID}", handlers.GetIncident)
 		r.With(RequireAdmin).Post("/incidents", handlers.CreateIncident)
 		r.With(RequireAdmin).Post("/incidents/{incidentID}/status", handlers.TransitionIncident)
+		r.With(RequireAdmin).Post("/incidents/bulk/status", handlers.BulkTransitionIncidents)
 
 		r.Get("/api/openapi.yaml", serveOpenAPISpec)
 

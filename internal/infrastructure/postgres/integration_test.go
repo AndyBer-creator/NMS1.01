@@ -3,6 +3,7 @@ package postgres
 import (
 	"crypto/rand"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"os"
 	"strings"
@@ -197,5 +198,50 @@ func TestIntegration_IncidentsLifecycle(t *testing.T) {
 	}
 	if len(trs) < 4 {
 		t.Fatalf("expected >=4 transitions, got %d", len(trs))
+	}
+}
+
+func TestIntegration_IncidentDedupAndAutoResolve(t *testing.T) {
+	repo, _ := openIntegrationRepo(t)
+	ip := uniqueInet(t)
+	_ = repo.DeleteByIP(ip)
+	d := &domain.Device{IP: ip, Name: "incident-dedup", Community: "public", SNMPVersion: "v2c"}
+	if err := repo.CreateDevice(d); err != nil {
+		t.Fatalf("CreateDevice: %v", err)
+	}
+	t.Cleanup(func() { _ = repo.DeleteByIP(ip) })
+
+	details, _ := json.Marshal(map[string]any{"status": "failed_timeout"})
+	first, created, err := repo.CreateOrTouchOpenIncident(&d.ID, "SNMP device unavailable", "critical", "polling", details, 10*time.Minute)
+	if err != nil {
+		t.Fatalf("CreateOrTouchOpenIncident first: %v", err)
+	}
+	if !created || first == nil {
+		t.Fatalf("expected first incident created, got created=%v first=%+v", created, first)
+	}
+	second, created2, err := repo.CreateOrTouchOpenIncident(&d.ID, "SNMP device unavailable", "critical", "polling", details, 10*time.Minute)
+	if err != nil {
+		t.Fatalf("CreateOrTouchOpenIncident second: %v", err)
+	}
+	if created2 {
+		t.Fatal("expected second incident to be deduplicated/touched, not created")
+	}
+	if second == nil || second.ID != first.ID {
+		t.Fatalf("expected same incident id on dedup, first=%+v second=%+v", first, second)
+	}
+
+	resolvedN, err := repo.ResolveOpenIncidentsBySource(d.ID, "polling", "itest", "auto")
+	if err != nil {
+		t.Fatalf("ResolveOpenIncidentsBySource: %v", err)
+	}
+	if resolvedN < 1 {
+		t.Fatalf("expected at least one resolved incident, got %d", resolvedN)
+	}
+	item, err := repo.GetIncidentByID(first.ID)
+	if err != nil {
+		t.Fatalf("GetIncidentByID: %v", err)
+	}
+	if item == nil || item.Status != "resolved" {
+		t.Fatalf("expected incident resolved, got %+v", item)
 	}
 }

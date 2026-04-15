@@ -18,7 +18,9 @@ tags:
   - name: health
   - name: devices
   - name: traps
+  - name: trap-mappings
   - name: snmp
+  - name: incidents
 
 paths:
   /health:
@@ -195,6 +197,236 @@ paths:
                 items:
                   type: object
 
+  /trap-oid-mappings:
+    get:
+      tags: [trap-mappings]
+      summary: Список trap OID mapping rules
+      security:
+        - sessionOrBasic: []
+      parameters:
+        - name: vendor
+          in: query
+          schema:
+            type: string
+        - name: enabled
+          in: query
+          schema:
+            type: boolean
+      responses:
+        "200":
+          description: Список mapping-правил
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/TrapOIDMapping"
+    post:
+      tags: [trap-mappings]
+      summary: Создать trap OID mapping rule (admin)
+      security:
+        - sessionOrBasic: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TrapOIDMappingUpsertRequest"
+      responses:
+        "200":
+          description: Созданный mapping
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TrapOIDMapping"
+        "400": {}
+        "403": {}
+    put:
+      tags: [trap-mappings]
+      summary: Обновить trap OID mapping rule по id (admin)
+      security:
+        - sessionOrBasic: []
+      parameters:
+        - name: id
+          in: query
+          required: true
+          schema:
+            type: integer
+            format: int64
+            minimum: 1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TrapOIDMappingUpsertRequest"
+      responses:
+        "200":
+          description: Обновленный mapping
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TrapOIDMapping"
+        "400": {}
+        "403": {}
+        "404": {}
+    delete:
+      tags: [trap-mappings]
+      summary: Удалить trap OID mapping rule по id (admin)
+      security:
+        - sessionOrBasic: []
+      parameters:
+        - name: id
+          in: query
+          required: true
+          schema:
+            type: integer
+            format: int64
+            minimum: 1
+      responses:
+        "200":
+          description: Mapping удалён
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TrapOIDMappingDeleteResponse"
+        "400": {}
+        "403": {}
+        "404": {}
+
+  /incidents:
+    get:
+      tags: [incidents]
+      summary: Список инцидентов
+      security:
+        - sessionOrBasic: []
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 200
+        - name: device_id
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [new, acknowledged, in_progress, resolved, closed]
+        - name: severity
+          in: query
+          schema:
+            type: string
+            enum: [critical, warning, info]
+        - name: cursor
+          in: query
+          schema:
+            type: string
+          description: Курсор следующей страницы (base64 token из next_cursor)
+        - name: include_pagination
+          in: query
+          schema:
+            type: boolean
+          description: Если true, ответ в формате {items,next_cursor}
+      responses:
+        "200":
+          description: Список инцидентов (array или paged object)
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - type: array
+                    items:
+                      $ref: "#/components/schemas/Incident"
+                  - $ref: "#/components/schemas/IncidentListPage"
+    post:
+      tags: [incidents]
+      summary: Создать инцидент (admin)
+      security:
+        - sessionOrBasic: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/IncidentCreate"
+      responses:
+        "200":
+          description: Созданный инцидент
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Incident"
+        "400": {}
+        "403": {}
+
+  /incidents/{incidentID}:
+    parameters:
+      - $ref: "#/components/parameters/incidentId"
+    get:
+      tags: [incidents]
+      summary: Получить инцидент с историей переходов
+      security:
+        - sessionOrBasic: []
+      responses:
+        "200":
+          description: Incident + transitions
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IncidentWithTransitions"
+        "404": {}
+
+  /incidents/{incidentID}/status:
+    parameters:
+      - $ref: "#/components/parameters/incidentId"
+    post:
+      tags: [incidents]
+      summary: Сменить статус инцидента (admin)
+      security:
+        - sessionOrBasic: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/IncidentTransitionRequest"
+      responses:
+        "200":
+          description: Обновлённый инцидент
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Incident"
+        "400": {}
+        "403": {}
+        "404": {}
+
+  /incidents/bulk/status:
+    post:
+      tags: [incidents]
+      summary: Массовая смена статуса инцидентов (admin)
+      security:
+        - sessionOrBasic: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/IncidentBulkTransitionRequest"
+      responses:
+        "200":
+          description: Результат массового обновления
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IncidentBulkTransitionResponse"
+        "400": {}
+        "403": {}
+
   /api/openapi.yaml:
     get:
       tags: [health]
@@ -224,6 +456,14 @@ components:
         type: integer
         minimum: 1
       description: Числовой id устройства в БД
+    incidentId:
+      name: incidentID
+      in: path
+      required: true
+      schema:
+        type: integer
+        minimum: 1
+      description: Числовой id инцидента
 
   schemas:
     ReadyOK:
@@ -269,3 +509,216 @@ components:
           type: string
         snmp_version:
           type: string
+    Incident:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        device_id:
+          type: integer
+          nullable: true
+        title:
+          type: string
+        severity:
+          type: string
+          enum: [critical, warning, info]
+        status:
+          type: string
+          enum: [new, acknowledged, in_progress, resolved, closed]
+        source:
+          type: string
+          enum: [polling, trap, manual]
+        details:
+          type: object
+          additionalProperties: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        acknowledged_at:
+          type: string
+          format: date-time
+          nullable: true
+        resolved_at:
+          type: string
+          format: date-time
+          nullable: true
+        closed_at:
+          type: string
+          format: date-time
+          nullable: true
+    IncidentCreate:
+      type: object
+      required: [title]
+      properties:
+        device_id:
+          type: integer
+          minimum: 1
+        title:
+          type: string
+        severity:
+          type: string
+          enum: [critical, warning, info]
+          default: warning
+        source:
+          type: string
+          enum: [polling, trap, manual]
+          default: manual
+        details:
+          type: object
+          additionalProperties: true
+    IncidentTransition:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        incident_id:
+          type: integer
+          format: int64
+        from_status:
+          type: string
+        to_status:
+          type: string
+        changed_by:
+          type: string
+        comment:
+          type: string
+        changed_at:
+          type: string
+          format: date-time
+    IncidentWithTransitions:
+      type: object
+      properties:
+        incident:
+          $ref: "#/components/schemas/Incident"
+        transitions:
+          type: array
+          items:
+            $ref: "#/components/schemas/IncidentTransition"
+    IncidentTransitionRequest:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          enum: [new, acknowledged, in_progress, resolved, closed]
+        comment:
+          type: string
+    IncidentBulkTransitionRequest:
+      type: object
+      required: [incident_ids, status]
+      properties:
+        incident_ids:
+          type: array
+          items:
+            type: integer
+            format: int64
+          minItems: 1
+        status:
+          type: string
+          enum: [new, acknowledged, in_progress, resolved, closed]
+        comment:
+          type: string
+    IncidentBulkTransitionResponse:
+      type: object
+      properties:
+        requested_count:
+          type: integer
+        updated_count:
+          type: integer
+        failed_count:
+          type: integer
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/Incident"
+        results:
+          type: array
+          items:
+            $ref: "#/components/schemas/IncidentBulkTransitionResult"
+    IncidentBulkTransitionResult:
+      type: object
+      properties:
+        incident_id:
+          type: integer
+          format: int64
+        success:
+          type: boolean
+        error:
+          type: string
+        incident:
+          $ref: "#/components/schemas/Incident"
+    IncidentListPage:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/Incident"
+        next_cursor:
+          type: string
+          nullable: true
+    TrapOIDMapping:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        vendor:
+          type: string
+        oid_pattern:
+          type: string
+        signal_kind:
+          type: string
+          enum: [generic, link_down, link_up, bfd_down, bfd_up]
+        title:
+          type: string
+        severity:
+          type: string
+          enum: [critical, warning, info]
+        is_recovery:
+          type: boolean
+        priority:
+          type: integer
+        enabled:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+    TrapOIDMappingUpsertRequest:
+      type: object
+      required: [oid_pattern, signal_kind, title, severity]
+      properties:
+        vendor:
+          type: string
+          default: generic
+        oid_pattern:
+          type: string
+        signal_kind:
+          type: string
+          enum: [generic, link_down, link_up, bfd_down, bfd_up]
+        title:
+          type: string
+        severity:
+          type: string
+          enum: [critical, warning, info]
+        is_recovery:
+          type: boolean
+        priority:
+          type: integer
+          default: 100
+        enabled:
+          type: boolean
+          default: true
+    TrapOIDMappingDeleteResponse:
+      type: object
+      properties:
+        deleted:
+          type: boolean
+        mapping_id:
+          type: integer
+          format: int64

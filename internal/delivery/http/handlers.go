@@ -58,6 +58,36 @@ var (
 		},
 		[]string{"method", "endpoint", "status"},
 	)
+	incidentsCreatedTotal = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "nms_incidents_created_total",
+			Help: "Total incidents created via API",
+		},
+		[]string{"source", "severity"},
+	)
+	incidentTransitionsTotal = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "nms_incident_transitions_total",
+			Help: "Total incident status transitions via API",
+		},
+		[]string{"from_status", "to_status", "source", "severity"},
+	)
+	incidentAckLatencySeconds = prometheus.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Name:    "nms_incident_ack_latency_seconds",
+			Help:    "Time from incident creation to acknowledge",
+			Buckets: prometheus.DefBuckets,
+		},
+		[]string{"source", "severity"},
+	)
+	incidentResolveLatencySeconds = prometheus.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Name:    "nms_incident_resolve_latency_seconds",
+			Help:    "Time from incident creation to resolve/close",
+			Buckets: prometheus.DefBuckets,
+		},
+		[]string{"source", "severity", "final_status"},
+	)
 )
 
 type Handlers struct {
@@ -73,6 +103,8 @@ type Handlers struct {
 	terminalTmpl  *template.Template
 	trapsPageTmpl *template.Template
 	eventsPageTmpl *template.Template
+	incidentsPageTmpl *template.Template
+	trapOIDMappingsPageTmpl *template.Template
 	topologyTmpl  *template.Template
 	mibUploadDir  string
 	mib           *mibresolver.Resolver
@@ -91,6 +123,8 @@ func NewHandlers(repo *postgres.Repo, snmpClient *snmp.Client, scanner *discover
 	terminalTmpl := template.Must(template.ParseFiles("templates/device_terminal.html"))
 	trapsPageTmpl := template.Must(template.ParseFiles("templates/traps_page.html"))
 	eventsPageTmpl := template.Must(template.ParseFiles("templates/events_availability.html"))
+	incidentsPageTmpl := template.Must(template.ParseFiles("templates/incidents_page.html"))
+	trapOIDMappingsPageTmpl := template.Must(template.ParseFiles("templates/trap_oid_mappings_page.html"))
 	topologyTmpl := template.Must(template.ParseFiles("templates/topology_lldp_page.html"))
 
 	h := &Handlers{
@@ -106,6 +140,8 @@ func NewHandlers(repo *postgres.Repo, snmpClient *snmp.Client, scanner *discover
 		terminalTmpl:  terminalTmpl,
 		trapsPageTmpl: trapsPageTmpl,
 		eventsPageTmpl: eventsPageTmpl,
+		incidentsPageTmpl: incidentsPageTmpl,
+		trapOIDMappingsPageTmpl: trapOIDMappingsPageTmpl,
 		topologyTmpl:  topologyTmpl,
 		mibUploadDir:  mibUploadDir,
 		mib:           mib,
@@ -125,6 +161,10 @@ func (h *Handlers) resolveOIDInput(raw string) (string, error) {
 func init() {
 	prometheus.MustRegister(requestsTotal)
 	prometheus.MustRegister(requestDurationSeconds)
+	prometheus.MustRegister(incidentsCreatedTotal)
+	prometheus.MustRegister(incidentTransitionsTotal)
+	prometheus.MustRegister(incidentAckLatencySeconds)
+	prometheus.MustRegister(incidentResolveLatencySeconds)
 }
 
 type devicesTableRow struct {

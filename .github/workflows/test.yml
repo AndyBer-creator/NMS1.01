@@ -48,6 +48,16 @@ jobs:
       - name: compose security policy
         run: ./scripts/check_compose_security.sh
 
+  openapi-breaking:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          fetch-depth: 0
+      - name: strict OpenAPI breaking-change check vs main
+        run: ./scripts/check_openapi_breaking.sh
+
   alert-rules:
     runs-on: ubuntu-latest
     steps:

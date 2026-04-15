@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"NMS1/internal/config"
 	"NMS1/internal/repository"
 
 	"github.com/gosnmp/gosnmp"
@@ -37,6 +38,7 @@ func run(ctx context.Context, log *zap.Logger, dsn string, udpPort uint16) error
 	}
 
 	repo := repository.NewTrapsRepo(db)
+	suppressionWindow := trapIncidentSuppressionWindow()
 
 	tl := gosnmp.NewTrapListener()
 	tl.Params = gosnmp.Default
@@ -68,6 +70,14 @@ func run(ctx context.Context, log *zap.Logger, dsn string, udpPort uint16) error
 				zap.Error(err))
 			return
 		}
+		incidentCtx, incidentCancel := context.WithTimeout(ctx, 5*time.Second)
+		if err := repo.CreateOrTouchOpenTrapIncident(incidentCtx, addr.IP.String(), trapOID, vars, suppressionWindow); err != nil {
+			log.Warn("Failed to correlate trap into incident",
+				zap.String("from", addr.IP.String()),
+				zap.String("oid", trapOID),
+				zap.Error(err))
+		}
+		incidentCancel()
 
 		raw, _ := json.Marshal(vars)
 		log.Info("SNMP trap persisted",
@@ -96,4 +106,16 @@ func run(ctx context.Context, log *zap.Logger, dsn string, udpPort uint16) error
 		}
 		return nil
 	}
+}
+
+func trapIncidentSuppressionWindow() time.Duration {
+	raw := strings.TrimSpace(config.EnvOrFile("NMS_TRAP_INCIDENT_SUPPRESSION_WINDOW"))
+	if raw == "" {
+		return 10 * time.Minute
+	}
+	d, err := time.ParseDuration(raw)
+	if err != nil || d <= 0 {
+		return 10 * time.Minute
+	}
+	return d
 }

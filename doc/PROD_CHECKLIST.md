@@ -1,6 +1,6 @@
 # NMS1 Production Readiness Checklist
 
-Дата обновления: 2026-04-14 (enterprise: readiness, OpenAPI, security.txt, coverage 25%, strict CI gates)
+Дата обновления: 2026-04-15 (enterprise: readiness, OpenAPI, security.txt, coverage 35%, strict CI gates)
 
 Этот файл фиксирует минимальные требования для безопасного go-live и текущий статус проекта.
 
@@ -32,7 +32,9 @@
 - [x] Security headers
   - Добавлены: `X-Frame-Options`, `X-Content-Type-Options`, `Referrer-Policy`, `Permissions-Policy`, `Content-Security-Policy`.
   - `Strict-Transport-Security` выставляется для HTTPS/`X-Forwarded-Proto=https`.
-  - Введена HTTPS-only политика при `NMS_ENFORCE_HTTPS=true`: HTTP-запросы редиректятся на HTTPS (кроме `/health`, `/metrics`).
+  - Введена HTTPS-only политика при `NMS_ENFORCE_HTTPS=true`: HTTP-запросы редиректятся на HTTPS (кроме `/health`, `/ready`, `/metrics`, `/.well-known/security.txt`).
+  - Forwarded headers (`X-Forwarded-For`/`X-Real-IP`/`X-Forwarded-Proto`) учитываются только от trusted proxy (`NMS_TRUSTED_PROXIES`), иначе используется `RemoteAddr`.
+  - Terminal WS token убран из query string: auth token передаётся через `Sec-WebSocket-Protocol`.
 
 ## 2) Secrets & Configuration
 
@@ -59,6 +61,7 @@
 - [x] Проверка restore-процедуры
   - Добавлен restore-runbook и скрипт: `scripts/restore_postgres.sh`, `BACKUP_RESTORE.md`.
   - Выполнен restore drill: `2026-04-09` в БД `NMS_restore_test` (таблицы и данные проверены).
+  - Добавлены DR targets `RPO <= 60m`, `RTO <= 120m`, backup metadata `.meta`, offsite/immutable hooks и restore drill-log.
 
 ## 4) Observability & Operations
 
@@ -93,7 +96,7 @@
 - [x] Интеграционные тесты критичных сценариев
   - HTTP: RBAC/CSRF (viewer vs admin), CRUD устройств, настройки worker/email, discovery/MIB/SNMP/test-alert; `internal/testdb` для ping БД; `make test-integration` и пакет `internal/delivery/http` (`-run Integration`).
   - PostgreSQL/traps: `internal/infrastructure/postgres`, `internal/repository` при `DB_DSN`.
-  - CI: unit + integration + e2e/contract gates (см. `.github/workflows/test.yml`), job **static-css-sync** (Tailwind `app.css` совпадает с билдом), порог покрытия по `scripts/check_coverage.sh` (по умолчанию **25%**).
+  - CI: unit + integration + e2e/contract gates (см. `.github/workflows/test.yml`), job **static-css-sync** (Tailwind `app.css` совпадает с билдом), порог покрытия по `scripts/check_coverage.sh` — **35%**.
   - Добавлены обязательные gates: `e2e-http-smoke`, `e2e-auth-smoke`, `contract-http-spec` (auth-aware OpenAPI + public security.txt), `alert-rules`, `compose-security`, `shell-syntax`, `tool-version-policy`, `trivy`, `gosec`, `sbom-sign`.
   - Добавлен manual promotion flow `stage -> prod` с environment approvals и rollback handoff (`.github/workflows/promote.yml`).
   - В nightly-lite добавлены регулярные guardrails: `lint`, `govulncheck`, `alert-rules`, `tool-version-policy`.
@@ -106,6 +109,13 @@
 - [x] **security.txt** — `GET /.well-known/security.txt` (редактируемый шаблон в `internal/delivery/http/spec/security.txt`, исключение в HTTPS-only как у probes).
 - [x] **OpenAPI 3** — `GET /api/openapi.yaml` после авторизации (встроенная спецификация).
 - [x] Документ целевого уровня: [`ENTERPRISE.md`](ENTERPRISE.md).
+- [x] Базовый incident lifecycle и API:
+  - `incidents` + `incident_transitions` (status machine),
+  - API `/incidents`, `/incidents/{id}`, `/incidents/{id}/status`,
+  - UI `/incidents/page`.
+- [x] Базовая correlation/dedup логика:
+  - trap/polling события создают или touch-ят open incident в suppression window;
+  - polling recovery auto-resolve открытых polling incidents.
 
 - [x] Нагрузочные прогоны (k6)
   - Read-only: `make k6-readonly` (GET `/health` / `/metrics`).
