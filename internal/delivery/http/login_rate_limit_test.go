@@ -66,6 +66,7 @@ func TestLoginLimiter_WindowExpiryResetsCounters(t *testing.T) {
 }
 
 func TestClientIPPriority(t *testing.T) {
+	t.Setenv(trustedProxyEnv, "203.0.113.20/32")
 	r := httptestRequest("203.0.113.20:12345")
 	r.Header.Set("X-Forwarded-For", "198.51.100.1, 198.51.100.2")
 	if got := clientIP(r); got != "198.51.100.1" {
@@ -81,6 +82,16 @@ func TestClientIPPriority(t *testing.T) {
 	r3 := httptestRequest("203.0.113.20:12345")
 	if got := clientIP(r3); got != "203.0.113.20" {
 		t.Fatalf("expected RemoteAddr host, got %q", got)
+	}
+}
+
+func TestClientIP_IgnoresForwardedHeadersFromUntrustedPeer(t *testing.T) {
+	t.Setenv(trustedProxyEnv, "10.0.0.0/8")
+	r := httptestRequest("203.0.113.20:12345")
+	r.Header.Set("X-Forwarded-For", "198.51.100.1")
+	r.Header.Set("X-Real-IP", "198.51.100.9")
+	if got := clientIP(r); got != "203.0.113.20" {
+		t.Fatalf("expected RemoteAddr for untrusted peer, got %q", got)
 	}
 }
 

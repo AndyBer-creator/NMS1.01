@@ -242,7 +242,23 @@ func verifyTerminalWSToken(token string, deviceID int) *authUser {
 	return &authUser{username: c.User, role: role(c.Role)}
 }
 
-// TerminalWS: WebSocket к SSH или Telnet устройства (только admin: query token или cookie/Basic).
+func terminalTokenFromSubprotocol(r *http.Request) string {
+	raw := strings.TrimSpace(r.Header.Get("Sec-WebSocket-Protocol"))
+	if raw == "" {
+		return ""
+	}
+	// Browser may send a comma-separated list; we consume only our auth protocol entry.
+	const prefix = "nms-term-auth."
+	for _, part := range strings.Split(raw, ",") {
+		p := strings.TrimSpace(part)
+		if strings.HasPrefix(p, prefix) {
+			return strings.TrimSpace(strings.TrimPrefix(p, prefix))
+		}
+	}
+	return ""
+}
+
+// TerminalWS: WebSocket к SSH или Telnet устройства (только admin: subprotocol token или cookie/Basic).
 // Первое сообщение — текст JSON: {"type":"init","username":"...","password":"...","port":22}.
 // Далее: бинарные кадры — ввод в PTY/TCP; текст JSON {"type":"resize","cols":n,"rows":m} для SSH.
 // С сервера: бинарные кадры — вывод терминала; при ошибке — текст JSON {"type":"error",...}.
@@ -257,7 +273,7 @@ func (h *Handlers) TerminalWS(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "bad device id", http.StatusBadRequest)
 		return
 	}
-	token := strings.TrimSpace(r.URL.Query().Get("token"))
+	token := terminalTokenFromSubprotocol(r)
 	u := verifyTerminalWSToken(token, id)
 	if u == nil {
 		authRes := adminUserFromRequest(r)

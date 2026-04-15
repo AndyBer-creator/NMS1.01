@@ -12,18 +12,17 @@ concurrency:
 
 permissions:
   contents: read
-  id-token: write
 
 jobs:
   lint:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
         with:
           go-version-file: go.mod
       - name: golangci-lint
-        uses: golangci/golangci-lint-action@v8
+        uses: golangci/golangci-lint-action@4afd733a84b1f43292c63897423277bb7f4313a9 # v8
         with:
           version: v2.6.1
           args: --timeout=5m
@@ -31,8 +30,8 @@ jobs:
   static-css-sync:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: "20"
           cache: npm
@@ -45,36 +44,36 @@ jobs:
   compose-security:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
       - name: compose security policy
         run: ./scripts/check_compose_security.sh
 
   alert-rules:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
       - name: validate Prometheus alert rules
         run: ./scripts/check_alert_rules.sh
 
   shell-syntax:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
       - name: validate shell scripts syntax
         run: ./scripts/check_shell_syntax.sh
 
   tool-version-policy:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
       - name: validate pinned tool versions policy
         run: ./scripts/check_tool_versions.sh
 
   vuln:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
         with:
           go-version-file: go.mod
       - name: govulncheck
@@ -83,8 +82,8 @@ jobs:
   gosec:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
         with:
           go-version-file: go.mod
       - name: install gosec
@@ -95,9 +94,9 @@ jobs:
   trivy:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
       - name: Trivy filesystem scan
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@915b19bbe73b92a6cf82a1bc12b087c9a19a5fe2 # v0.28.0
         with:
           scan-type: fs
           scan-ref: .
@@ -107,8 +106,11 @@ jobs:
 
   sbom-sign:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
       - name: generate SBOM (SPDX JSON)
         run: ./scripts/generate_sbom.sh sbom.spdx.json
       - name: sign SBOM with keyless cosign
@@ -143,14 +145,14 @@ jobs:
             --certificate-identity-regexp 'https://github.com/.+' \
             sbom.spdx.json
       - name: upload SBOM artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: always()
         with:
           name: sbom-spdx
           path: sbom.spdx.json
           if-no-files-found: error
       - name: upload SBOM signature artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: github.event_name != 'pull_request'
         with:
           name: sbom-signature
@@ -162,8 +164,8 @@ jobs:
   unit:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
         with:
           go-version-file: go.mod
       - name: go test (race + coverage)
@@ -173,14 +175,14 @@ jobs:
       - name: coverage minimum
         run: ./scripts/check_coverage.sh coverage.out
         env:
-          MIN_COVERAGE_PERCENT: "25"
+          MIN_COVERAGE_PERCENT: "35"
       - name: upload coverage to Codecov
-        uses: codecov/codecov-action@v5
+        uses: codecov/codecov-action@75cd11691c0faa626561e295848008c8a7dddffe # v5
         with:
           files: coverage.out
           fail_ci_if_error: false
       - name: upload coverage.out
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: always()
         with:
           name: coverage-out
@@ -204,8 +206,8 @@ jobs:
     env:
       DB_DSN: host=postgres port=5432 user=nms-user password=testpass dbname=NMS sslmode=disable
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
         with:
           go-version-file: go.mod
       - name: migrations
@@ -233,8 +235,8 @@ jobs:
       NMS_SESSION_SECRET: ci-e2e-session-secret
       BASE_URL: http://127.0.0.1:8080
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
         with:
           go-version-file: go.mod
       - name: migrations
@@ -257,7 +259,7 @@ jobs:
         run: ./scripts/e2e_http_smoke.sh
       - name: upload api log
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: e2e-http-smoke-api-log
           path: /tmp/nms-api.log
@@ -286,8 +288,8 @@ jobs:
       NMS_SESSION_SECRET: ci-e2e-auth-session-secret
       BASE_URL: http://127.0.0.1:8080
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
         with:
           go-version-file: go.mod
       - name: migrations
@@ -310,7 +312,7 @@ jobs:
         run: ./scripts/e2e_auth_smoke.sh
       - name: upload api log
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: e2e-auth-smoke-api-log
           path: /tmp/nms-api-auth.log
@@ -339,8 +341,8 @@ jobs:
       NMS_SESSION_SECRET: ci-contract-session-secret
       BASE_URL: http://127.0.0.1:8080
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
         with:
           go-version-file: go.mod
       - name: migrations
@@ -363,7 +365,7 @@ jobs:
         run: ./scripts/contract_http_spec.sh
       - name: upload api log
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: contract-http-spec-api-log
           path: /tmp/nms-api-contract.log

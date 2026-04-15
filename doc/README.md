@@ -8,6 +8,7 @@
 | [ENTERPRISE.md](ENTERPRISE.md) | Целевой enterprise-уровень: `/ready`, OpenAPI, security.txt, корреляция запросов |
 | [BACKUP_RESTORE.md](BACKUP_RESTORE.md) | Резервное копирование и восстановление PostgreSQL |
 | [GO_LIVE_CHECKLIST.md](GO_LIVE_CHECKLIST.md) | Чеклист перед выводом в эксплуатацию |
+| [ROADMAP_NMS_8_WEEKS.md](ROADMAP_NMS_8_WEEKS.md) | Пошаговый план внедрения инцидентов, корреляции и интеграций |
 | [PROD_CHECKLIST.md](PROD_CHECKLIST.md) | Статус production readiness |
 | [ROLLBACK.md](ROLLBACK.md) | Откат релиза и БД |
 | [RUNBOOK.md](RUNBOOK.md) | Дежурство и инциденты |

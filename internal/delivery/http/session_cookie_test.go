@@ -37,6 +37,7 @@ func TestSetSessionCookie_HTTPNotSecure(t *testing.T) {
 func TestSetSessionCookie_ForwardedHTTPSIsSecure(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "http://nms.local/login", nil)
 	req.Header.Set("X-Forwarded-Proto", "https")
+	req.RemoteAddr = "127.0.0.1:12345"
 	rr := httptest.NewRecorder()
 
 	setSessionCookie(rr, req, "token-value")
@@ -97,6 +98,7 @@ func TestClearSessionCookie_SetsExpiredCookie(t *testing.T) {
 func TestClearSessionCookie_ForwardedHTTPSIsSecure(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "http://nms.local/logout", nil)
 	req.Header.Set("X-Forwarded-Proto", "https")
+	req.RemoteAddr = "127.0.0.1:12345"
 	rr := httptest.NewRecorder()
 
 	clearSessionCookie(rr, req)

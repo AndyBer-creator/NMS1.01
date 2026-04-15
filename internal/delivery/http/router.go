@@ -94,6 +94,11 @@ func mainRouter(handlers *Handlers) *chi.Mux {
 		r.Get("/events/availability/page", handlers.AvailabilityEventsPage)
 		r.Get("/events/availability", handlers.ListAvailabilityEvents)
 
+		r.Get("/incidents", handlers.ListIncidents)
+		r.Get("/incidents/{incidentID}", handlers.GetIncident)
+		r.With(RequireAdmin).Post("/incidents", handlers.CreateIncident)
+		r.With(RequireAdmin).Post("/incidents/{incidentID}/status", handlers.TransitionIncident)
+
 		r.Get("/api/openapi.yaml", serveOpenAPISpec)
 
 		r.With(RequireAdmin).Post("/test-alert", handlers.testAlert)

@@ -139,3 +139,63 @@ func TestIntegration_LldpScanAndLink(t *testing.T) {
 		t.Fatalf("inserted rows: %d", n)
 	}
 }
+
+func TestIntegration_IncidentsLifecycle(t *testing.T) {
+	repo, _ := openIntegrationRepo(t)
+	ip := uniqueInet(t)
+	_ = repo.DeleteByIP(ip)
+	d := &domain.Device{IP: ip, Name: "incident-dev", Community: "public", SNMPVersion: "v2c"}
+	if err := repo.CreateDevice(d); err != nil {
+		t.Fatalf("CreateDevice: %v", err)
+	}
+	t.Cleanup(func() { _ = repo.DeleteByIP(ip) })
+
+	item, err := repo.CreateIncident(&domain.Incident{
+		DeviceID: &d.ID,
+		Title:    "port down",
+		Severity: "critical",
+		Source:   "trap",
+	})
+	if err != nil {
+		t.Fatalf("CreateIncident: %v", err)
+	}
+	if item == nil || item.ID <= 0 || item.Status != "new" {
+		t.Fatalf("unexpected incident: %+v", item)
+	}
+
+	item, err = repo.TransitionIncidentStatus(item.ID, "acknowledged", "itest", "ack")
+	if err != nil {
+		t.Fatalf("Transition to acknowledged: %v", err)
+	}
+	item, err = repo.TransitionIncidentStatus(item.ID, "in_progress", "itest", "work")
+	if err != nil {
+		t.Fatalf("Transition to in_progress: %v", err)
+	}
+	item, err = repo.TransitionIncidentStatus(item.ID, "resolved", "itest", "fixed")
+	if err != nil {
+		t.Fatalf("Transition to resolved: %v", err)
+	}
+	item, err = repo.TransitionIncidentStatus(item.ID, "closed", "itest", "done")
+	if err != nil {
+		t.Fatalf("Transition to closed: %v", err)
+	}
+	if item.Status != "closed" {
+		t.Fatalf("expected closed status, got %q", item.Status)
+	}
+
+	items, err := repo.ListIncidents(50, &d.ID, "closed", "critical")
+	if err != nil {
+		t.Fatalf("ListIncidents: %v", err)
+	}
+	if len(items) == 0 {
+		t.Fatal("expected at least one incident in list")
+	}
+
+	trs, err := repo.ListIncidentTransitions(item.ID, 10)
+	if err != nil {
+		t.Fatalf("ListIncidentTransitions: %v", err)
+	}
+	if len(trs) < 4 {
+		t.Fatalf("expected >=4 transitions, got %d", len(trs))
+	}
+}

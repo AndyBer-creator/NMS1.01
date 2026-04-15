@@ -5,7 +5,7 @@
 ## 0) Базовые проверки
 
 ```bash
-cd /home/admin1/NMS1.01
+cd "$(git rev-parse --show-toplevel)"
 docker compose ps
 docker compose logs --tail=100 api
 docker compose logs --tail=100 worker
@@ -80,6 +80,10 @@ curl -sS http://localhost:8081/metrics | head
    ```
 3. Если повреждение данных / авария — восстановление:
    см. `BACKUP_RESTORE.md`.
+4. После восстановления:
+   - зафиксировать длительность restore и сравнить с целевым RTO;
+   - выполнить smoke (`make smoke-test`, `make rbac-smoke`);
+   - эскалировать, если RTO/RPO цели не выдержаны.
 
 ## 4) Alert pipeline не доставляет уведомления
 

@@ -48,6 +48,7 @@ func TestSecurityHeaders_HSTSWhenForwardedHTTPS(t *testing.T) {
 	rr := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	req.Header.Set("X-Forwarded-Proto", "https")
+	req.RemoteAddr = "127.0.0.1:12345"
 	h.ServeHTTP(rr, req)
 
 	if got := rr.Header().Get("Strict-Transport-Security"); got == "" {

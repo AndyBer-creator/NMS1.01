@@ -59,6 +59,7 @@ func TestHTTPSHelpers(t *testing.T) {
 
 	rForwarded := httptest.NewRequest(http.MethodGet, "http://example.local/path", nil)
 	rForwarded.Header.Set("X-Forwarded-Proto", "https")
+	rForwarded.RemoteAddr = "127.0.0.1:12345"
 	if !isHTTPSRequest(rForwarded) {
 		t.Fatalf("forwarded https request must be treated as HTTPS")
 	}

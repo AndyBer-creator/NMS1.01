@@ -13,6 +13,22 @@ import (
 	"time"
 )
 
+func resetSessionRevocationsForTest(t *testing.T) {
+	t.Helper()
+	sessionRevokeMu.Lock()
+	prev := sessionRevokedByJTI
+	prevGC := sessionRevokeLastGC
+	sessionRevokedByJTI = map[string]int64{}
+	sessionRevokeLastGC = time.Time{}
+	sessionRevokeMu.Unlock()
+	t.Cleanup(func() {
+		sessionRevokeMu.Lock()
+		sessionRevokedByJTI = prev
+		sessionRevokeLastGC = prevGC
+		sessionRevokeMu.Unlock()
+	})
+}
+
 func signRawSessionPayload(payload []byte) string {
 	key := sessionSigningKey()
 	mac := hmac.New(sha256.New, key[:])
@@ -23,6 +39,7 @@ func signRawSessionPayload(payload []byte) string {
 
 func TestVerifySessionToken_InvalidFormats(t *testing.T) {
 	t.Setenv("NMS_SESSION_SECRET", "itest-session-secret")
+	resetSessionRevocationsForTest(t)
 	cases := []string{
 		"",
 		"one-part-only",
@@ -38,6 +55,7 @@ func TestVerifySessionToken_InvalidFormats(t *testing.T) {
 
 func TestVerifySessionToken_RejectsInvalidSignature(t *testing.T) {
 	t.Setenv("NMS_SESSION_SECRET", "itest-session-secret")
+	resetSessionRevocationsForTest(t)
 	ok, err := signSessionToken("admin", roleAdmin)
 	if err != nil {
 		t.Fatalf("signSessionToken: %v", err)
@@ -63,10 +81,12 @@ func TestVerifySessionToken_RejectsInvalidSignature(t *testing.T) {
 
 func TestVerifySessionToken_RejectsExpiredAndUnknownRole(t *testing.T) {
 	t.Setenv("NMS_SESSION_SECRET", "itest-session-secret")
+	resetSessionRevocationsForTest(t)
 
 	expiredPayload, err := json.Marshal(sessionClaims{
 		User: "admin",
 		Role: string(roleAdmin),
+		JTI:  "expired-jti",
 		Exp:  time.Now().Add(-time.Minute).Unix(),
 	})
 	if err != nil {
@@ -80,6 +100,7 @@ func TestVerifySessionToken_RejectsExpiredAndUnknownRole(t *testing.T) {
 	unknownRolePayload, err := json.Marshal(sessionClaims{
 		User: "admin",
 		Role: "superuser",
+		JTI:  "unknown-role-jti",
 		Exp:  time.Now().Add(time.Hour).Unix(),
 	})
 	if err != nil {
@@ -93,6 +114,7 @@ func TestVerifySessionToken_RejectsExpiredAndUnknownRole(t *testing.T) {
 
 func TestSessionUserFromCookie_UsesVerifySessionToken(t *testing.T) {
 	t.Setenv("NMS_SESSION_SECRET", "itest-session-secret")
+	resetSessionRevocationsForTest(t)
 	token, err := signSessionToken("viewer", roleViewer)
 	if err != nil {
 		t.Fatalf("signSessionToken: %v", err)
@@ -102,6 +124,22 @@ func TestSessionUserFromCookie_UsesVerifySessionToken(t *testing.T) {
 	u := sessionUserFromCookie(req)
 	if u == nil || u.username != "viewer" || u.role != roleViewer {
 		t.Fatalf("unexpected user from cookie: %+v", u)
+	}
+}
+
+func TestVerifySessionToken_RejectsRevokedJTI(t *testing.T) {
+	t.Setenv("NMS_SESSION_SECRET", "itest-session-secret")
+	resetSessionRevocationsForTest(t)
+	token, err := signSessionToken("admin", roleAdmin)
+	if err != nil {
+		t.Fatalf("signSessionToken: %v", err)
+	}
+	if got := verifySessionToken(token); got == nil {
+		t.Fatal("expected token valid before revocation")
+	}
+	revokeSessionToken(token)
+	if got := verifySessionToken(token); got != nil {
+		t.Fatalf("expected revoked token to fail verification, got %+v", got)
 	}
 }
 

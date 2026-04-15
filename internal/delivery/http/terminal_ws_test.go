@@ -266,6 +266,14 @@ func TestTerminalWSTokenRejectsInvalidCases(t *testing.T) {
 	}
 }
 
+func TestTerminalTokenFromSubprotocol(t *testing.T) {
+	r := httptest.NewRequest(http.MethodGet, "/ws/terminal/7?kind=ssh", nil)
+	r.Header.Set("Sec-WebSocket-Protocol", "chat, nms-term-auth.abc.def, other")
+	if got := terminalTokenFromSubprotocol(r); got != "abc.def" {
+		t.Fatalf("expected token from subprotocol, got %q", got)
+	}
+}
+
 func TestTerminalWS_ThrottledBasicAuthReturns429(t *testing.T) {
 	resetAuthLimiterForTest(t)
 	t.Setenv("NMS_ADMIN_USER", "admin")

@@ -63,6 +63,7 @@ func TestEnsureCSRFCookie_SecureWhenForwardedHTTPS(t *testing.T) {
 	w := httptest.NewRecorder()
 	r := httptest.NewRequest(http.MethodGet, "/", nil)
 	r.Header.Set("X-Forwarded-Proto", "https")
+	r.RemoteAddr = "127.0.0.1:12345"
 	_, err := ensureCSRFCookie(w, r)
 	if err != nil {
 		t.Fatalf("ensureCSRFCookie: %v", err)
