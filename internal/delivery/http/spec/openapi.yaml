@@ -4,7 +4,7 @@ info:
   description: |
     SNMP NMS: устройства, трапы, SNMP GET/SET, MIB. HTML-страницы не описаны здесь полностью.
 
-    **Публично без авторизации:** `GET /health`, `GET /ready`, `GET /metrics`, `GET|POST /login`, `POST /alerts/webhook`.
+    **Публично без авторизации:** `GET /health`, `GET /ready`, `GET /metrics`, `GET|POST /login`, `POST /alerts/webhook`, `POST /itsm/inbound`, `POST /itsm/inbound/dry-run` (token-required).
 
     Остальные пути — после входа (cookie-сессия или HTTP Basic с теми же учётными данными).
 
@@ -19,6 +19,7 @@ tags:
   - name: devices
   - name: traps
   - name: trap-mappings
+  - name: itsm-mappings
   - name: snmp
   - name: incidents
 
@@ -61,6 +62,49 @@ paths:
       responses:
         "200":
           description: text exposition format
+
+  /itsm/inbound:
+    post:
+      tags: [incidents]
+      summary: Inbound sync from external ITSM (token auth via Bearer/X-ITSM-Token)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ITSMInboundIncidentUpdateRequest"
+      responses:
+        "200":
+          description: Incident synchronized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ITSMInboundIncidentUpdateResponse"
+        "400": {}
+        "401": {}
+        "404": {}
+        "503": {}
+
+  /itsm/inbound/dry-run:
+    post:
+      tags: [incidents]
+      summary: Dry-run inbound mapping resolution without incident mutation
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ITSMInboundIncidentUpdateRequest"
+      responses:
+        "200":
+          description: Effective mapping resolution
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ITSMInboundDryRunResponse"
+        "400": {}
+        "401": {}
+        "503": {}
 
   /devices:
     get:
@@ -270,9 +314,81 @@ paths:
         "400": {}
         "403": {}
         "404": {}
+
+  /itsm-inbound-mappings:
+    get:
+      tags: [itsm-mappings]
+      summary: List ITSM inbound mapping rules
+      security:
+        - sessionOrBasic: []
+      parameters:
+        - name: provider
+          in: query
+          schema:
+            type: string
+        - name: enabled
+          in: query
+          schema:
+            type: boolean
+      responses:
+        "200":
+          description: Mapping rules
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ITSMInboundMapping"
+    post:
+      tags: [itsm-mappings]
+      summary: Create ITSM inbound mapping rule (admin)
+      security:
+        - sessionOrBasic: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ITSMInboundMappingUpsertRequest"
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ITSMInboundMapping"
+        "400": {}
+        "403": {}
+    put:
+      tags: [itsm-mappings]
+      summary: Update ITSM inbound mapping rule by id (admin)
+      security:
+        - sessionOrBasic: []
+      parameters:
+        - name: id
+          in: query
+          required: true
+          schema:
+            type: integer
+            format: int64
+            minimum: 1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ITSMInboundMappingUpsertRequest"
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ITSMInboundMapping"
+        "400": {}
+        "403": {}
+        "404": {}
     delete:
-      tags: [trap-mappings]
-      summary: Удалить trap OID mapping rule по id (admin)
+      tags: [itsm-mappings]
+      summary: Delete ITSM inbound mapping rule by id (admin)
       security:
         - sessionOrBasic: []
       parameters:
@@ -285,11 +401,10 @@ paths:
             minimum: 1
       responses:
         "200":
-          description: Mapping удалён
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/TrapOIDMappingDeleteResponse"
+                $ref: "#/components/schemas/ITSMInboundMappingDeleteResponse"
         "400": {}
         "403": {}
         "404": {}
@@ -394,6 +509,31 @@ paths:
           application/json:
             schema:
               $ref: "#/components/schemas/IncidentTransitionRequest"
+      responses:
+        "200":
+          description: Обновлённый инцидент
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Incident"
+        "400": {}
+        "403": {}
+        "404": {}
+
+  /incidents/{incidentID}/assignee:
+    parameters:
+      - $ref: "#/components/parameters/incidentId"
+    post:
+      tags: [incidents]
+      summary: Назначить/снять assignee инцидента (admin)
+      security:
+        - sessionOrBasic: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/IncidentAssignRequest"
       responses:
         "200":
           description: Обновлённый инцидент
@@ -518,6 +658,9 @@ components:
         device_id:
           type: integer
           nullable: true
+        assignee:
+          type: string
+          nullable: true
         title:
           type: string
         severity:
@@ -557,6 +700,9 @@ components:
         device_id:
           type: integer
           minimum: 1
+        assignee:
+          type: string
+          nullable: true
         title:
           type: string
         severity:
@@ -606,6 +752,15 @@ components:
         status:
           type: string
           enum: [new, acknowledged, in_progress, resolved, closed]
+        comment:
+          type: string
+    IncidentAssignRequest:
+      type: object
+      properties:
+        assignee:
+          type: string
+          nullable: true
+          description: Пустая строка очищает assignee.
         comment:
           type: string
     IncidentBulkTransitionRequest:
@@ -720,5 +875,126 @@ components:
         deleted:
           type: boolean
         mapping_id:
+          type: integer
+          format: int64
+    ITSMInboundIncidentUpdateRequest:
+      type: object
+      required: [incident_id]
+      properties:
+        incident_id:
+          type: integer
+          format: int64
+          minimum: 1
+        provider:
+          type: string
+          description: External ITSM provider identifier for mapping lookup.
+        status:
+          type: string
+          description: "Optional external status (supports aliases: open/ack/in-progress/resolve/close)."
+        priority:
+          type: string
+          description: Optional external priority used by mapping rules.
+        owner:
+          type: string
+          description: Optional external owner/team used by mapping rules.
+        assignee:
+          type: string
+          nullable: true
+          description: Optional owner; empty clears assignee when incident is assigned.
+        comment:
+          type: string
+        changed_by:
+          type: string
+    ITSMInboundMapping:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        provider:
+          type: string
+        external_status:
+          type: string
+        external_priority:
+          type: string
+        external_owner:
+          type: string
+        mapped_status:
+          type: string
+          enum: ["", new, acknowledged, in_progress, resolved, closed]
+        mapped_assignee:
+          type: string
+        enabled:
+          type: boolean
+        priority:
+          type: integer
+        created_at:
+          type: string
+          format: date-time
+    ITSMInboundMappingUpsertRequest:
+      type: object
+      properties:
+        provider:
+          type: string
+          default: generic
+        external_status:
+          type: string
+        external_priority:
+          type: string
+        external_owner:
+          type: string
+        mapped_status:
+          type: string
+          enum: ["", new, acknowledged, in_progress, resolved, closed]
+        mapped_assignee:
+          type: string
+        enabled:
+          type: boolean
+          default: true
+        priority:
+          type: integer
+          default: 100
+      description: At least one of mapped_status or mapped_assignee is required.
+    ITSMInboundMappingDeleteResponse:
+      type: object
+      properties:
+        deleted:
+          type: boolean
+        mapping_id:
+          type: integer
+          format: int64
+    ITSMInboundIncidentUpdateResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          example: ok
+        applied_mapping_id:
+          type: integer
+          format: int64
+          description: ID of matched ITSM mapping rule, 0 when no rule matched.
+        incident:
+          $ref: "#/components/schemas/Incident"
+    ITSMInboundDryRunResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          example: ok
+        dry_run:
+          type: boolean
+          example: true
+        provider:
+          type: string
+        incident_id:
+          type: integer
+          format: int64
+        effective_status:
+          type: string
+          nullable: true
+        effective_assignee:
+          type: string
+          nullable: true
+        applied_mapping_id:
           type: integer
           format: int64

@@ -303,6 +303,37 @@
           "format": "short"
         }
       ]
+    },
+    {
+      "datasource": "Prometheus",
+      "gridPos": {
+        "h": 9,
+        "w": 12,
+        "x": 0,
+        "y": 26
+      },
+      "id": 9,
+      "options": {},
+      "targets": [
+        {
+          "expr": "(sum(pg_stat_activity_count{datname!=\"\"}) / clamp_min(max(pg_settings_max_connections), 1)) * 100",
+          "legendFormat": "DB connection usage %",
+          "refId": "A"
+        }
+      ],
+      "title": "PostgreSQL connection saturation (%)",
+      "type": "graph",
+      "xaxis": {
+        "mode": "time"
+      },
+      "yaxes": [
+        {
+          "format": "percent"
+        },
+        {
+          "format": "short"
+        }
+      ]
     }
   ],
   "refresh": "",

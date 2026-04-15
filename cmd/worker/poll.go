@@ -44,6 +44,21 @@ var (
 		Name: "nms_worker_poll_config_rate_limit_per_sec",
 		Help: "Configured worker polling start rate limit per second used in the latest cycle",
 	})
+	incidentEscalationsTotal = prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "nms_incident_escalations_total",
+		Help: "Total incidents auto-escalated due to ack timeout",
+	})
+	incidentEscalationAckTimeoutSeconds = prometheus.NewGauge(prometheus.GaugeOpts{
+		Name: "nms_incident_escalation_ack_timeout_seconds",
+		Help: "Configured ack-timeout threshold for incident auto-escalation",
+	})
+	incidentEscalationsByPolicyTotal = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "nms_incident_escalations_policy_total",
+			Help: "Total incidents auto-escalated by escalation policy",
+		},
+		[]string{"policy"},
+	)
 
 	lldpScanDurationSeconds = prometheus.NewHistogram(prometheus.HistogramOpts{
 		Name:    "nms_lldp_scan_duration_seconds",
@@ -220,6 +235,9 @@ func init() {
 	prometheus.MustRegister(workerPollSkippedBackoffTotal)
 	prometheus.MustRegister(workerPollConfigConcurrency)
 	prometheus.MustRegister(workerPollConfigRateLimitPerSec)
+	prometheus.MustRegister(incidentEscalationsTotal)
+	prometheus.MustRegister(incidentEscalationAckTimeoutSeconds)
+	prometheus.MustRegister(incidentEscalationsByPolicyTotal)
 	prometheus.MustRegister(lldpScanDurationSeconds)
 	prometheus.MustRegister(lldpLinksFoundGauge)
 	prometheus.MustRegister(lldpLinksInsertedGauge)

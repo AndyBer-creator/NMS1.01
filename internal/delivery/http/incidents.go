@@ -162,6 +162,7 @@ func (h *Handlers) GetIncident(w http.ResponseWriter, r *http.Request) {
 func (h *Handlers) CreateIncident(w http.ResponseWriter, r *http.Request) {
 	var input struct {
 		DeviceID *int             `json:"device_id"`
+		Assignee *string          `json:"assignee"`
 		Title    string           `json:"title"`
 		Severity string           `json:"severity"`
 		Source   string           `json:"source"`
@@ -173,6 +174,7 @@ func (h *Handlers) CreateIncident(w http.ResponseWriter, r *http.Request) {
 	}
 	item := &domain.Incident{
 		DeviceID: input.DeviceID,
+		Assignee: input.Assignee,
 		Title:    input.Title,
 		Severity: input.Severity,
 		Source:   input.Source,
@@ -244,6 +246,39 @@ func (h *Handlers) TransitionIncident(w http.ResponseWriter, r *http.Request) {
 		incidentResolveLatencySeconds.WithLabelValues(item.Source, item.Severity, item.Status).Observe(ageSec)
 	}
 	notifyITSMIncidentAsync(h.logger, "incident.status_changed", changedBy, input.Comment, item)
+}
+
+func (h *Handlers) AssignIncident(w http.ResponseWriter, r *http.Request) {
+	id, err := incidentIDFromChi(r)
+	if err != nil {
+		http.Error(w, "bad incident id", http.StatusBadRequest)
+		return
+	}
+	var input struct {
+		Assignee string `json:"assignee"`
+		Comment  string `json:"comment"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+		http.Error(w, "invalid json body", http.StatusBadRequest)
+		return
+	}
+	changedBy := "system"
+	if u := userFromContext(r.Context()); u != nil && strings.TrimSpace(u.username) != "" {
+		changedBy = strings.TrimSpace(u.username)
+	}
+	item, err := h.repo.AssignIncident(id, input.Assignee, changedBy, input.Comment)
+	if err != nil {
+		h.logger.Error("AssignIncident failed", zap.Error(err))
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if item == nil {
+		http.Error(w, "incident not found", http.StatusNotFound)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(item)
+	notifyITSMIncidentAsync(h.logger, "incident.assignment_changed", changedBy, input.Comment, item)
 }
 
 func (h *Handlers) BulkTransitionIncidents(w http.ResponseWriter, r *http.Request) {

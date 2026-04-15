@@ -44,6 +44,91 @@ func envIntOrDefault(name string, fallback int) int {
 	return n
 }
 
+func escalationAckTimeout() time.Duration {
+	return envDurationOrDefault("NMS_INCIDENT_ESCALATION_ACK_TIMEOUT", 0)
+}
+
+func escalationCheckInterval() time.Duration {
+	return envDurationOrDefault("NMS_INCIDENT_ESCALATION_CHECK_INTERVAL", time.Minute)
+}
+
+func escalationTargetAssignee() string {
+	return strings.TrimSpace(config.EnvOrFile("NMS_INCIDENT_ASSIGNEE_ESCALATION"))
+}
+
+type incidentEscalationPolicy struct {
+	name             string
+	olderThan        time.Duration
+	targetAssignee   string
+	severity         string
+	source           string
+	onlyIfUnassigned bool
+	comment          string
+}
+
+func appendEscalationPolicy(out []incidentEscalationPolicy, p incidentEscalationPolicy) []incidentEscalationPolicy {
+	if p.olderThan <= 0 || strings.TrimSpace(p.targetAssignee) == "" {
+		return out
+	}
+	p.targetAssignee = strings.TrimSpace(p.targetAssignee)
+	if strings.TrimSpace(p.comment) == "" {
+		p.comment = "auto-escalated: no ack within timeout"
+	}
+	return append(out, p)
+}
+
+func loadEscalationPoliciesV2() []incidentEscalationPolicy {
+	policies := make([]incidentEscalationPolicy, 0, 8)
+	stage1Timeout := escalationAckTimeout()
+	stage1Assignee := escalationTargetAssignee()
+	policies = appendEscalationPolicy(policies, incidentEscalationPolicy{
+		name:             "stage1.default",
+		olderThan:        stage1Timeout,
+		targetAssignee:   stage1Assignee,
+		onlyIfUnassigned: true,
+		comment:          "auto-escalated stage1: no ack within timeout",
+	})
+	policies = appendEscalationPolicy(policies, incidentEscalationPolicy{
+		name:             "stage1.critical",
+		olderThan:        envDurationOrDefault("NMS_INCIDENT_ESCALATION_CRITICAL_ACK_TIMEOUT", 0),
+		targetAssignee:   strings.TrimSpace(config.EnvOrFile("NMS_INCIDENT_ESCALATION_CRITICAL_ASSIGNEE")),
+		severity:         "critical",
+		onlyIfUnassigned: true,
+		comment:          "auto-escalated stage1 critical: no ack within timeout",
+	})
+	policies = appendEscalationPolicy(policies, incidentEscalationPolicy{
+		name:             "stage1.trap",
+		olderThan:        envDurationOrDefault("NMS_INCIDENT_ESCALATION_TRAP_ACK_TIMEOUT", 0),
+		targetAssignee:   strings.TrimSpace(config.EnvOrFile("NMS_INCIDENT_ESCALATION_TRAP_ASSIGNEE")),
+		source:           "trap",
+		onlyIfUnassigned: true,
+		comment:          "auto-escalated stage1 trap: no ack within timeout",
+	})
+	policies = appendEscalationPolicy(policies, incidentEscalationPolicy{
+		name:             "stage1.polling",
+		olderThan:        envDurationOrDefault("NMS_INCIDENT_ESCALATION_POLLING_ACK_TIMEOUT", 0),
+		targetAssignee:   strings.TrimSpace(config.EnvOrFile("NMS_INCIDENT_ESCALATION_POLLING_ASSIGNEE")),
+		source:           "polling",
+		onlyIfUnassigned: true,
+		comment:          "auto-escalated stage1 polling: no ack within timeout",
+	})
+	policies = appendEscalationPolicy(policies, incidentEscalationPolicy{
+		name:             "stage1.manual",
+		olderThan:        envDurationOrDefault("NMS_INCIDENT_ESCALATION_MANUAL_ACK_TIMEOUT", 0),
+		targetAssignee:   strings.TrimSpace(config.EnvOrFile("NMS_INCIDENT_ESCALATION_MANUAL_ASSIGNEE")),
+		source:           "manual",
+		onlyIfUnassigned: true,
+		comment:          "auto-escalated stage1 manual: no ack within timeout",
+	})
+	policies = appendEscalationPolicy(policies, incidentEscalationPolicy{
+		name:           "stage2.default",
+		olderThan:      envDurationOrDefault("NMS_INCIDENT_ESCALATION_STAGE2_ACK_TIMEOUT", 0),
+		targetAssignee: strings.TrimSpace(config.EnvOrFile("NMS_INCIDENT_ESCALATION_STAGE2_ASSIGNEE")),
+		comment:        "auto-escalated stage2: no ack within extended timeout",
+	})
+	return policies
+}
+
 // workerOpts задаёт адрес HTTP /metrics; пустая строка — дефолт ":8081".
 type workerOpts struct {
 	metricsAddr string
@@ -128,6 +213,57 @@ func run(ctx context.Context, cfg *config.Config, log *zap.Logger, opts workerOp
 		}
 	}()
 
+	var escalationWg sync.WaitGroup
+	escalationInterval := escalationCheckInterval()
+	policies := loadEscalationPoliciesV2()
+	stage1Timeout := escalationAckTimeout()
+	incidentEscalationAckTimeoutSeconds.Set(stage1Timeout.Seconds())
+	if len(policies) > 0 {
+		log.Info("Incident escalation enabled",
+			zap.Duration("check_interval", escalationInterval),
+			zap.Int("policies", len(policies)))
+		escalationWg.Add(1)
+		go func() {
+			defer escalationWg.Done()
+			ticker := time.NewTicker(escalationInterval)
+			defer ticker.Stop()
+			for {
+				select {
+				case <-loopCtx.Done():
+					return
+				case <-ticker.C:
+					for _, p := range policies {
+						n, err := repo.EscalateUnackedIncidentsWithFilter(
+							p.olderThan,
+							p.targetAssignee,
+							"system-escalation",
+							p.comment,
+							p.severity,
+							p.source,
+							p.onlyIfUnassigned,
+						)
+						if err != nil {
+							log.Warn("Incident escalation check failed",
+								zap.String("policy", p.name),
+								zap.Error(err))
+							continue
+						}
+						if n > 0 {
+							incidentEscalationsTotal.Add(float64(n))
+							incidentEscalationsByPolicyTotal.WithLabelValues(p.name).Add(float64(n))
+							log.Info("Incident escalation applied",
+								zap.String("policy", p.name),
+								zap.Int64("escalated", n))
+						}
+					}
+				}
+			}
+		}()
+	} else {
+		log.Info("Incident escalation disabled",
+			zap.String("reason", "no_valid_policies"))
+	}
+
 	lldpTicker := time.NewTicker(5 * time.Minute)
 	defer lldpTicker.Stop()
 
@@ -139,6 +275,7 @@ func run(ctx context.Context, cfg *config.Config, log *zap.Logger, opts workerOp
 			log.Info("🛑 Worker shutdown")
 			cancelLoop()
 			snmpWg.Wait()
+			escalationWg.Wait()
 			return nil
 		case <-lldpTicker.C:
 			if !lldpBusy.CompareAndSwap(false, true) {

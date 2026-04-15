@@ -11,17 +11,19 @@ if [[ ! -f "$RULES_FILE" ]]; then
 fi
 
 docker run --rm \
+  --entrypoint promtool \
   -v "$PWD:/work" \
   -w /work \
   "$PROM_IMAGE" \
-  promtool check rules "$RULES_FILE"
+  check rules "$RULES_FILE"
 
 if [[ -f "$RULES_TEST_FILE" ]]; then
   docker run --rm \
+    --entrypoint promtool \
     -v "$PWD:/work" \
     -w /work \
     "$PROM_IMAGE" \
-    promtool test rules "$RULES_TEST_FILE"
+    test rules "$RULES_TEST_FILE"
   echo "alert-rules: unit tests OK ($RULES_TEST_FILE)"
 fi
 

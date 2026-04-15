@@ -1,0 +1,403 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>NMS1 - ITSM Inbound Mappings</title>
+    <link rel="stylesheet" href="/static/css/app.css">
+</head>
+<body class="bg-gray-900 text-white min-h-screen">
+<div class="container mx-auto px-4 py-8 max-w-7xl">
+    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-6 mb-10">
+        <div class="flex items-center gap-4">
+            <a href="/" class="shrink-0 opacity-90 hover:opacity-100 transition-opacity">
+                <img src="/static/logo.svg" alt="NMS1" class="h-16 w-auto drop-shadow-2xl">
+            </a>
+            <div>
+                <h1 class="text-3xl sm:text-4xl font-bold bg-gradient-to-r from-cyan-300 to-blue-500 bg-clip-text text-transparent">
+                    ITSM Inbound Mappings
+                </h1>
+                <p class="text-gray-400 mt-1 text-sm">Rules for mapping external ITSM status/priority/owner to incident lifecycle.</p>
+            </div>
+        </div>
+        <a href="/" class="inline-flex items-center justify-center gap-2 px-5 py-3 rounded-xl bg-gray-800 hover:bg-gray-700 border border-gray-600 text-sm font-medium transition-all hover:scale-[1.02] shadow-lg">
+            <- На дашборд
+        </a>
+    </div>
+
+    <div class="bg-gray-800 p-6 rounded-xl shadow-2xl border border-gray-700/50 mb-8">
+        <h2 id="map-form-title" class="text-xl font-semibold mb-4">Создать ITSM mapping rule (admin)</h2>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <input id="map-provider" placeholder="provider (default: generic)" class="p-3 bg-gray-900/60 border border-gray-600 rounded-lg">
+            <input id="map-ext-status" placeholder="external_status (optional wildcard via empty)" class="p-3 bg-gray-900/60 border border-gray-600 rounded-lg">
+            <input id="map-ext-priority" placeholder="external_priority (optional)" class="p-3 bg-gray-900/60 border border-gray-600 rounded-lg">
+            <input id="map-ext-owner" placeholder="external_owner (optional)" class="p-3 bg-gray-900/60 border border-gray-600 rounded-lg">
+            <select id="map-mapped-status" class="p-3 bg-gray-900/60 border border-gray-600 rounded-lg">
+                <option value="">(no status mapping)</option>
+                <option value="new">new</option>
+                <option value="acknowledged">acknowledged</option>
+                <option value="in_progress">in_progress</option>
+                <option value="resolved">resolved</option>
+                <option value="closed">closed</option>
+            </select>
+            <input id="map-mapped-assignee" placeholder="mapped_assignee (optional)" class="p-3 bg-gray-900/60 border border-gray-600 rounded-lg">
+            <input id="map-priority" type="number" value="100" class="p-3 bg-gray-900/60 border border-gray-600 rounded-lg">
+            <label class="flex items-center gap-2 text-sm text-gray-300 p-3">
+                <input id="map-enabled" type="checkbox" checked>
+                enabled
+            </label>
+            <button id="map-submit" class="px-4 py-3 rounded-lg bg-cyan-700 hover:bg-cyan-600 disabled:opacity-50 disabled:cursor-not-allowed">Create</button>
+            <button id="map-cancel-edit" class="px-4 py-3 rounded-lg bg-gray-700 hover:bg-gray-600 hidden disabled:opacity-50 disabled:cursor-not-allowed">Cancel edit</button>
+        </div>
+        <p id="map-status" class="text-sm text-gray-400 mt-3"></p>
+    </div>
+
+    <div class="bg-gray-800 p-6 rounded-xl shadow-2xl border border-gray-700/50 mb-8">
+        <h2 class="text-xl font-semibold mb-4">ITSM Inbound Dry-Run</h2>
+        <p class="text-sm text-gray-400 mb-4">Проверка того, как применится mapping rule без изменения инцидента.</p>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <input id="dry-incident-id" type="number" min="1" placeholder="incident_id" class="p-3 bg-gray-900/60 border border-gray-600 rounded-lg">
+            <input id="dry-provider" placeholder="provider (optional)" class="p-3 bg-gray-900/60 border border-gray-600 rounded-lg">
+            <input id="dry-status" placeholder="external status (optional)" class="p-3 bg-gray-900/60 border border-gray-600 rounded-lg">
+            <input id="dry-priority" placeholder="external priority (optional)" class="p-3 bg-gray-900/60 border border-gray-600 rounded-lg">
+            <input id="dry-owner" placeholder="external owner (optional)" class="p-3 bg-gray-900/60 border border-gray-600 rounded-lg">
+            <input id="dry-assignee" placeholder="direct assignee override (optional)" class="p-3 bg-gray-900/60 border border-gray-600 rounded-lg">
+            <button id="dry-run-btn" type="button" class="px-4 py-3 rounded-lg bg-indigo-700 hover:bg-indigo-600 disabled:opacity-50 disabled:cursor-not-allowed">Run dry-run</button>
+        </div>
+        <pre id="dry-run-out" class="mt-4 text-xs text-gray-200 bg-black/30 border border-gray-700 rounded-lg p-4 max-h-80 overflow-auto whitespace-pre-wrap hidden"></pre>
+    </div>
+
+    <div class="bg-gray-800 p-6 rounded-xl shadow-2xl border border-gray-700/50">
+        <div class="flex flex-col gap-3 mb-4">
+            <div class="flex items-center justify-between">
+                <h2 class="text-xl font-semibold">Existing mappings</h2>
+                <div class="flex items-center gap-3">
+                    <span id="map-loading" class="text-xs text-cyan-300 hidden">Loading...</span>
+                    <button id="map-refresh" type="button" class="px-4 py-2 rounded-lg bg-gray-700 hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed">Refresh</button>
+                </div>
+            </div>
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-3">
+                <input id="map-filter-provider" placeholder="filter provider" class="p-2 bg-gray-900/60 border border-gray-600 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed">
+                <select id="map-filter-enabled" class="p-2 bg-gray-900/60 border border-gray-600 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed">
+                    <option value="">all</option>
+                    <option value="true">enabled=true</option>
+                    <option value="false">enabled=false</option>
+                </select>
+                <button id="map-apply-filters" type="button" class="px-4 py-2 rounded-lg bg-cyan-700 hover:bg-cyan-600 disabled:opacity-50 disabled:cursor-not-allowed">Apply filters</button>
+                <button id="map-clear-filters" type="button" class="px-4 py-2 rounded-lg bg-gray-700 hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed">Clear filters</button>
+            </div>
+        </div>
+        <div class="overflow-x-auto">
+            <table class="w-full table-auto bg-gray-900/50 rounded-lg border border-gray-700/60">
+                <thead>
+                <tr class="bg-gray-700/50 border-b border-gray-600">
+                    <th class="p-2 text-left">ID</th>
+                    <th class="p-2 text-left">Provider</th>
+                    <th class="p-2 text-left">External match</th>
+                    <th class="p-2 text-left">Mapped values</th>
+                    <th class="p-2 text-left">Priority</th>
+                    <th class="p-2 text-left">Enabled</th>
+                    <th class="p-2 text-left">Actions</th>
+                </tr>
+                </thead>
+                <tbody id="map-body"></tbody>
+            </table>
+        </div>
+    </div>
+</div>
+<script nonce="{{.CSPNonce}}">
+(function () {
+    const bodyEl = document.getElementById('map-body');
+    const statusEl = document.getElementById('map-status');
+    const loadingEl = document.getElementById('map-loading');
+    const refreshBtn = document.getElementById('map-refresh');
+    const submitBtn = document.getElementById('map-submit');
+    const cancelEditBtn = document.getElementById('map-cancel-edit');
+    const formTitleEl = document.getElementById('map-form-title');
+    const providerEl = document.getElementById('map-provider');
+    const extStatusEl = document.getElementById('map-ext-status');
+    const extPriorityEl = document.getElementById('map-ext-priority');
+    const extOwnerEl = document.getElementById('map-ext-owner');
+    const mappedStatusEl = document.getElementById('map-mapped-status');
+    const mappedAssigneeEl = document.getElementById('map-mapped-assignee');
+    const priorityEl = document.getElementById('map-priority');
+    const enabledEl = document.getElementById('map-enabled');
+    const filterProviderEl = document.getElementById('map-filter-provider');
+    const filterEnabledEl = document.getElementById('map-filter-enabled');
+    const applyFiltersBtn = document.getElementById('map-apply-filters');
+    const clearFiltersBtn = document.getElementById('map-clear-filters');
+    const dryRunBtn = document.getElementById('dry-run-btn');
+    const dryRunOutEl = document.getElementById('dry-run-out');
+    const dryIncidentIDEl = document.getElementById('dry-incident-id');
+    const dryProviderEl = document.getElementById('dry-provider');
+    const dryStatusEl = document.getElementById('dry-status');
+    const dryPriorityEl = document.getElementById('dry-priority');
+    const dryOwnerEl = document.getElementById('dry-owner');
+    const dryAssigneeEl = document.getElementById('dry-assignee');
+    let providerFilterTimer = null;
+    let editID = null;
+    let mappingsByID = {};
+    let requestInFlight = false;
+    let submitInFlight = false;
+
+    function csrf() {
+        const p = (document.cookie || '').split('; ').find(function (x) { return x.indexOf('nms_csrf=') === 0; });
+        return p ? decodeURIComponent(p.slice('nms_csrf='.length)) : '';
+    }
+    function esc(v) {
+        return String(v || '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
+    }
+    function row(m) {
+        return '<tr class="border-b border-gray-700/70 hover:bg-gray-700/30">' +
+            '<td class="p-2 font-mono text-xs">' + esc(m.id) + '</td>' +
+            '<td class="p-2 text-xs">' + esc(m.provider) + '</td>' +
+            '<td class="p-2 text-xs">status=' + esc(m.external_status || '*') + ', priority=' + esc(m.external_priority || '*') + ', owner=' + esc(m.external_owner || '*') + '</td>' +
+            '<td class="p-2 text-xs">status=' + esc(m.mapped_status || '-') + ', assignee=' + esc(m.mapped_assignee || '-') + '</td>' +
+            '<td class="p-2 text-xs">' + esc(m.priority) + '</td>' +
+            '<td class="p-2 text-xs">' + (m.enabled ? 'enabled' : 'disabled') + '</td>' +
+            '<td class="p-2 text-xs flex gap-2">' +
+            '<button type="button" class="px-2 py-1 rounded bg-blue-700 hover:bg-blue-600" data-edit="' + esc(m.id) + '">edit</button>' +
+            '<button type="button" class="px-2 py-1 rounded bg-red-700 hover:bg-red-600" data-del="' + esc(m.id) + '">delete</button>' +
+            '</td></tr>';
+    }
+    function payloadFromForm() {
+        return {
+            provider: (providerEl.value || '').trim() || 'generic',
+            external_status: (extStatusEl.value || '').trim(),
+            external_priority: (extPriorityEl.value || '').trim(),
+            external_owner: (extOwnerEl.value || '').trim(),
+            mapped_status: mappedStatusEl.value,
+            mapped_assignee: (mappedAssigneeEl.value || '').trim(),
+            priority: parseInt(priorityEl.value || '100', 10) || 100,
+            enabled: enabledEl.checked
+        };
+    }
+    function resetFormToCreate() {
+        editID = null;
+        formTitleEl.textContent = 'Создать ITSM mapping rule (admin)';
+        submitBtn.textContent = 'Create';
+        cancelEditBtn.classList.add('hidden');
+        providerEl.value = '';
+        extStatusEl.value = '';
+        extPriorityEl.value = '';
+        extOwnerEl.value = '';
+        mappedStatusEl.value = '';
+        mappedAssigneeEl.value = '';
+        priorityEl.value = '100';
+        enabledEl.checked = true;
+        setTimeout(function () { providerEl.focus(); }, 0);
+    }
+    function startEdit(id) {
+        const m = mappingsByID[String(id)];
+        if (!m) {
+            statusEl.textContent = 'Mapping not found for edit';
+            return;
+        }
+        editID = Number(id);
+        formTitleEl.textContent = 'Редактировать ITSM mapping #' + id;
+        submitBtn.textContent = 'Update';
+        cancelEditBtn.classList.remove('hidden');
+        providerEl.value = m.provider || '';
+        extStatusEl.value = m.external_status || '';
+        extPriorityEl.value = m.external_priority || '';
+        extOwnerEl.value = m.external_owner || '';
+        mappedStatusEl.value = m.mapped_status || '';
+        mappedAssigneeEl.value = m.mapped_assignee || '';
+        priorityEl.value = String(m.priority || 100);
+        enabledEl.checked = !!m.enabled;
+        setTimeout(function () { extStatusEl.focus(); }, 0);
+    }
+    function buildListURL() {
+        const p = new URLSearchParams();
+        const provider = (filterProviderEl.value || '').trim();
+        const enabled = (filterEnabledEl.value || '').trim();
+        if (provider) p.set('provider', provider);
+        if (enabled === 'true' || enabled === 'false') p.set('enabled', enabled);
+        const qs = p.toString();
+        return '/itsm-inbound-mappings' + (qs ? ('?' + qs) : '');
+    }
+    function syncFiltersToPageURL() {
+        const p = new URLSearchParams();
+        const provider = (filterProviderEl.value || '').trim();
+        const enabled = (filterEnabledEl.value || '').trim();
+        if (provider) p.set('provider', provider);
+        if (enabled === 'true' || enabled === 'false') p.set('enabled', enabled);
+        const next = window.location.pathname + (p.toString() ? ('?' + p.toString()) : '');
+        window.history.replaceState({}, '', next);
+    }
+    function loadFiltersFromPageURL() {
+        const p = new URLSearchParams(window.location.search || '');
+        filterProviderEl.value = (p.get('provider') || '').trim();
+        const enabled = (p.get('enabled') || '').trim();
+        filterEnabledEl.value = (enabled === 'true' || enabled === 'false') ? enabled : '';
+    }
+    function setListControlsDisabled(disabled) {
+        refreshBtn.disabled = disabled;
+        applyFiltersBtn.disabled = disabled;
+        clearFiltersBtn.disabled = disabled;
+        filterProviderEl.disabled = disabled;
+        filterEnabledEl.disabled = disabled;
+    }
+    function setSubmitControlsDisabled(disabled) {
+        submitBtn.disabled = disabled;
+        cancelEditBtn.disabled = disabled;
+    }
+    function setDryRunBusy(disabled) {
+        dryRunBtn.disabled = disabled;
+    }
+    async function loadMappings() {
+        if (requestInFlight) return;
+        requestInFlight = true;
+        statusEl.textContent = 'Loading...';
+        loadingEl.classList.remove('hidden');
+        setListControlsDisabled(true);
+        syncFiltersToPageURL();
+        try {
+            const res = await fetch(buildListURL(), { headers: { 'Accept': 'application/json' } });
+            const txt = await res.text();
+            if (!res.ok) {
+                statusEl.textContent = 'Error ' + res.status + ': ' + txt;
+                return;
+            }
+            const items = JSON.parse(txt);
+            mappingsByID = {};
+            (items || []).forEach(function (m) { mappingsByID[String(m.id)] = m; });
+            bodyEl.innerHTML = (items || []).map(row).join('') || '<tr><td colspan="7" class="p-4 text-center text-gray-500">No mappings</td></tr>';
+            statusEl.textContent = 'Loaded ' + (items || []).length + ' mapping(s)';
+        } catch (e) {
+            statusEl.textContent = 'Network error: ' + (e && e.message ? e.message : e);
+        } finally {
+            requestInFlight = false;
+            setListControlsDisabled(false);
+            loadingEl.classList.add('hidden');
+        }
+    }
+    async function submitMapping() {
+        if (submitInFlight) return;
+        submitInFlight = true;
+        setSubmitControlsDisabled(true);
+        const payload = payloadFromForm();
+        const isEdit = editID !== null;
+        const url = isEdit ? '/itsm-inbound-mappings?id=' + encodeURIComponent(editID) : '/itsm-inbound-mappings';
+        const method = isEdit ? 'PUT' : 'POST';
+        try {
+            const res = await fetch(url, {
+                method: method,
+                headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'X-CSRF-Token': csrf() },
+                body: JSON.stringify(payload)
+            });
+            const txt = await res.text();
+            if (!res.ok) {
+                statusEl.textContent = (isEdit ? 'Update failed: ' : 'Create failed: ') + txt;
+                return;
+            }
+            statusEl.textContent = isEdit ? ('Updated mapping #' + editID) : 'Created mapping';
+            resetFormToCreate();
+            await loadMappings();
+        } catch (e) {
+            statusEl.textContent = (isEdit ? 'Update network error: ' : 'Create network error: ') + (e && e.message ? e.message : e);
+        } finally {
+            submitInFlight = false;
+            setSubmitControlsDisabled(false);
+        }
+    }
+    async function deleteMapping(id) {
+        if (submitInFlight) return;
+        submitInFlight = true;
+        setSubmitControlsDisabled(true);
+        try {
+            const res = await fetch('/itsm-inbound-mappings?id=' + encodeURIComponent(id), {
+                method: 'DELETE',
+                headers: { 'Accept': 'application/json', 'X-CSRF-Token': csrf() }
+            });
+            const txt = await res.text();
+            if (!res.ok) {
+                statusEl.textContent = 'Delete failed: ' + txt;
+                return;
+            }
+            statusEl.textContent = 'Deleted mapping #' + id;
+            await loadMappings();
+        } catch (e) {
+            statusEl.textContent = 'Delete network error: ' + (e && e.message ? e.message : e);
+        } finally {
+            submitInFlight = false;
+            setSubmitControlsDisabled(false);
+        }
+    }
+    async function runDryRun() {
+        const incidentID = parseInt(dryIncidentIDEl.value || '0', 10);
+        if (!incidentID || incidentID <= 0) {
+            dryRunOutEl.classList.remove('hidden');
+            dryRunOutEl.textContent = 'incident_id is required';
+            return;
+        }
+        const payload = {
+            incident_id: incidentID,
+            provider: (dryProviderEl.value || '').trim(),
+            status: (dryStatusEl.value || '').trim(),
+            priority: (dryPriorityEl.value || '').trim(),
+            owner: (dryOwnerEl.value || '').trim(),
+            assignee: (dryAssigneeEl.value || '').trim()
+        };
+        setDryRunBusy(true);
+        dryRunOutEl.classList.remove('hidden');
+        dryRunOutEl.textContent = 'Running dry-run...';
+        try {
+            const res = await fetch('/itsm/inbound/dry-run', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json'
+                },
+                body: JSON.stringify(payload)
+            });
+            const txt = await res.text();
+            if (!res.ok) {
+                dryRunOutEl.textContent = 'Error ' + res.status + ': ' + txt;
+                return;
+            }
+            try {
+                const j = JSON.parse(txt);
+                dryRunOutEl.textContent = JSON.stringify(j, null, 2);
+            } catch (e) {
+                dryRunOutEl.textContent = txt;
+            }
+        } catch (e) {
+            dryRunOutEl.textContent = 'Network error: ' + (e && e.message ? e.message : e);
+        } finally {
+            setDryRunBusy(false);
+        }
+    }
+    document.addEventListener('click', function (e) {
+        const edit = e.target && e.target.closest('[data-edit]');
+        if (edit) { startEdit(edit.getAttribute('data-edit')); return; }
+        const del = e.target && e.target.closest('[data-del]');
+        if (del) deleteMapping(del.getAttribute('data-del'));
+    });
+    refreshBtn.addEventListener('click', loadMappings);
+    applyFiltersBtn.addEventListener('click', loadMappings);
+    clearFiltersBtn.addEventListener('click', function () {
+        filterProviderEl.value = '';
+        filterEnabledEl.value = '';
+        loadMappings();
+    });
+    submitBtn.addEventListener('click', submitMapping);
+    cancelEditBtn.addEventListener('click', resetFormToCreate);
+    dryRunBtn.addEventListener('click', runDryRun);
+    filterProviderEl.addEventListener('keydown', function (e) { if (e.key === 'Enter') loadMappings(); });
+    filterProviderEl.addEventListener('input', function () {
+        if (providerFilterTimer) clearTimeout(providerFilterTimer);
+        providerFilterTimer = setTimeout(function () { loadMappings(); }, 300);
+    });
+    filterEnabledEl.addEventListener('change', loadMappings);
+    window.addEventListener('popstate', function () {
+        loadFiltersFromPageURL();
+        loadMappings();
+    });
+    loadFiltersFromPageURL();
+    resetFormToCreate();
+    loadMappings();
+})();
+</script>
+</body>
+</html>

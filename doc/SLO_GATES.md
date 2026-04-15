@@ -39,3 +39,17 @@ PROM_URL=http://prometheus.example:9090 make slo-gates
 ## Назначение
 
 Этот gate используется как минимальная формализованная проверка observability/SLO в go-live процессе.
+
+## Связанные alert-rules (observability)
+
+Помимо SLO-gates, в `alerts/nms-alerts.yml` добавлены операционные правила:
+
+- host saturation:
+  - `NMSHostCPUHigh`
+  - `NMSHostMemoryPressureHigh`
+  - `NMSHostDiskPressureHigh`
+- PostgreSQL saturation:
+  - `NMSPostgresConnectionsHigh` (активируется при наличии `postgres`/`postgres-exporter` в scrape)
+- pipeline health:
+  - `NMSDeadManSwitch` (always-firing heartbeat)
+  - `NMSAlertDeliveryErrors` (ошибки доставки уведомлений Prometheus -> Alertmanager)

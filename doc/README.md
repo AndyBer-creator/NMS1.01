@@ -11,6 +11,7 @@
 | [ROADMAP_NMS_8_WEEKS.md](ROADMAP_NMS_8_WEEKS.md) | Пошаговый план внедрения инцидентов, корреляции и интеграций |
 | [PROD_CHECKLIST.md](PROD_CHECKLIST.md) | Статус production readiness |
 | [ROLLBACK.md](ROLLBACK.md) | Откат релиза и БД |
+| [RELEASE_NOTE_TEMPLATE.md](RELEASE_NOTE_TEMPLATE.md) | Шаблон release-note для incident/trap mapping изменений |
 | [RUNBOOK.md](RUNBOOK.md) | Дежурство и инциденты |
 | [SECRETS_POLICY.md](SECRETS_POLICY.md) | Политика секретов |
 | [SECRETS_PROCESS.md](SECRETS_PROCESS.md) | Процесс Docker-secrets |

@@ -1,6 +1,7 @@
 package repository
 
 import (
+	"NMS1/internal/config"
 	"NMS1/internal/domain"
 	"context"
 	"database/sql"
@@ -309,10 +310,18 @@ func (r *TrapsRepo) CreateOrTouchOpenTrapIncident(ctx context.Context, deviceIP,
 	if err == nil {
 		return nil
 	}
+	var assignee sql.NullString
+	if v := strings.TrimSpace(config.EnvOrFile("NMS_INCIDENT_ASSIGNEE_CRITICAL")); v != "" && strings.EqualFold(severity, "critical") {
+		assignee = sql.NullString{String: v, Valid: true}
+	} else if v := strings.TrimSpace(config.EnvOrFile("NMS_INCIDENT_ASSIGNEE_TRAP")); v != "" {
+		assignee = sql.NullString{String: v, Valid: true}
+	} else if v := strings.TrimSpace(config.EnvOrFile("NMS_INCIDENT_ASSIGNEE_DEFAULT")); v != "" {
+		assignee = sql.NullString{String: v, Valid: true}
+	}
 	_, err = r.db.ExecContext(ctx, `
-		INSERT INTO incidents (device_id, title, severity, status, source, details)
-		VALUES ($1, $2, $3, 'new', 'trap', $4::jsonb)`,
-		devID, title, severity, string(detailsJSON),
+		INSERT INTO incidents (device_id, assignee, title, severity, status, source, details)
+		VALUES ($1, $2, $3, $4, 'new', 'trap', $5::jsonb)`,
+		devID, assignee, title, severity, string(detailsJSON),
 	)
 	return err
 }

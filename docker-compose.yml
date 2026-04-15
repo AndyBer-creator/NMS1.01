@@ -48,6 +48,20 @@ services:
       - nms-network
     restart: unless-stopped
 
+  postgres-exporter:
+    image: prometheuscommunity/postgres-exporter:v0.15.0
+    container_name: nms-postgres-exporter
+    environment:
+      DATA_SOURCE_NAME: "postgresql://nms-user:${POSTGRES_PASSWORD}@postgres:5432/NMS?sslmode=disable"
+    expose:
+      - "9187"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - nms-network
+    restart: unless-stopped
+
   migration:
     build:
       context: .

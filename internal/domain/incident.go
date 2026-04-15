@@ -8,6 +8,7 @@ import (
 type Incident struct {
 	ID             int64           `json:"id"`
 	DeviceID       *int            `json:"device_id,omitempty"`
+	Assignee       *string         `json:"assignee,omitempty"`
 	Title          string          `json:"title"`
 	Severity       string          `json:"severity"`
 	Status         string          `json:"status"`

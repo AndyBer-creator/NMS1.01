@@ -51,6 +51,8 @@ func mainRouter(handlers *Handlers) *chi.Mux {
 	r.Get("/login", handlers.LoginPage)
 	r.Post("/login", handlers.LoginPost)
 	r.Post("/alerts/webhook", handlers.AlertWebhook)
+	r.Post("/itsm/inbound", handlers.ITSMInboundWebhook)
+	r.Post("/itsm/inbound/dry-run", handlers.ITSMInboundDryRun)
 
 	r.Group(func(r chi.Router) {
 		r.Use(RequireAuth)
@@ -95,6 +97,11 @@ func mainRouter(handlers *Handlers) *chi.Mux {
 		r.With(RequireAdmin).Post("/trap-oid-mappings", handlers.CreateTrapOIDMapping)
 		r.With(RequireAdmin).Put("/trap-oid-mappings", handlers.UpdateTrapOIDMapping)
 		r.With(RequireAdmin).Delete("/trap-oid-mappings", handlers.DeleteTrapOIDMapping)
+		r.Get("/itsm-inbound-mappings/page", handlers.ITSMInboundMappingsPage)
+		r.Get("/itsm-inbound-mappings", handlers.ListITSMInboundMappings)
+		r.With(RequireAdmin).Post("/itsm-inbound-mappings", handlers.CreateITSMInboundMapping)
+		r.With(RequireAdmin).Put("/itsm-inbound-mappings", handlers.UpdateITSMInboundMapping)
+		r.With(RequireAdmin).Delete("/itsm-inbound-mappings", handlers.DeleteITSMInboundMapping)
 
 		r.Get("/events/availability/page", handlers.AvailabilityEventsPage)
 		r.Get("/events/availability", handlers.ListAvailabilityEvents)
@@ -104,6 +111,7 @@ func mainRouter(handlers *Handlers) *chi.Mux {
 		r.Get("/incidents/{incidentID}", handlers.GetIncident)
 		r.With(RequireAdmin).Post("/incidents", handlers.CreateIncident)
 		r.With(RequireAdmin).Post("/incidents/{incidentID}/status", handlers.TransitionIncident)
+		r.With(RequireAdmin).Post("/incidents/{incidentID}/assignee", handlers.AssignIncident)
 		r.With(RequireAdmin).Post("/incidents/bulk/status", handlers.BulkTransitionIncidents)
 
 		r.Get("/api/openapi.yaml", serveOpenAPISpec)

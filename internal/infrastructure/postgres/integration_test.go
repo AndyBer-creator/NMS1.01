@@ -201,6 +201,93 @@ func TestIntegration_IncidentsLifecycle(t *testing.T) {
 	}
 }
 
+func TestIntegration_IncidentEscalationByAckTimeout(t *testing.T) {
+	repo, db := openIntegrationRepo(t)
+	item, err := repo.CreateIncident(&domain.Incident{
+		Title:    "escalation-test",
+		Severity: "warning",
+		Source:   "manual",
+		Assignee: nil,
+	})
+	if err != nil {
+		t.Fatalf("CreateIncident: %v", err)
+	}
+	if item == nil || item.ID <= 0 {
+		t.Fatalf("unexpected incident: %+v", item)
+	}
+	if _, err := db.Exec(`UPDATE incidents SET created_at = NOW() - interval '20 minutes' WHERE id = $1`, item.ID); err != nil {
+		t.Fatalf("force old created_at: %v", err)
+	}
+
+	changed, err := repo.EscalateUnackedIncidents(10*time.Minute, "noc-escalation", "itest", "escalated-by-test")
+	if err != nil {
+		t.Fatalf("EscalateUnackedIncidents: %v", err)
+	}
+	if changed < 1 {
+		t.Fatalf("expected >=1 escalated incidents, got %d", changed)
+	}
+	updated, err := repo.GetIncidentByID(item.ID)
+	if err != nil {
+		t.Fatalf("GetIncidentByID: %v", err)
+	}
+	if updated == nil || updated.Assignee == nil || *updated.Assignee != "noc-escalation" {
+		t.Fatalf("expected assignee noc-escalation, got %+v", updated)
+	}
+	trs, err := repo.ListIncidentTransitions(item.ID, 20)
+	if err != nil {
+		t.Fatalf("ListIncidentTransitions: %v", err)
+	}
+	found := false
+	for _, tr := range trs {
+		if tr.ChangedBy == "itest" && tr.Comment == "escalated-by-test" && tr.FromStatus == "new" && tr.ToStatus == "new" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("expected escalation transition audit row, got %+v", trs)
+	}
+}
+
+func TestIntegration_IncidentEscalation_OnlyIfUnassigned(t *testing.T) {
+	repo, db := openIntegrationRepo(t)
+	assignee := "already-assigned"
+	item, err := repo.CreateIncident(&domain.Incident{
+		Title:    "escalation-unassigned-guard",
+		Severity: "warning",
+		Source:   "manual",
+		Assignee: &assignee,
+	})
+	if err != nil {
+		t.Fatalf("CreateIncident: %v", err)
+	}
+	if _, err := db.Exec(`UPDATE incidents SET created_at = NOW() - interval '40 minutes' WHERE id = $1`, item.ID); err != nil {
+		t.Fatalf("force old created_at: %v", err)
+	}
+	changed, err := repo.EscalateUnackedIncidentsWithFilter(
+		10*time.Minute,
+		"noc-stage1",
+		"itest",
+		"stage1",
+		"",
+		"",
+		true,
+	)
+	if err != nil {
+		t.Fatalf("EscalateUnackedIncidentsWithFilter: %v", err)
+	}
+	if changed != 0 {
+		t.Fatalf("expected 0 changes for assigned incident, got %d", changed)
+	}
+	updated, err := repo.GetIncidentByID(item.ID)
+	if err != nil {
+		t.Fatalf("GetIncidentByID: %v", err)
+	}
+	if updated == nil || updated.Assignee == nil || *updated.Assignee != assignee {
+		t.Fatalf("assignee changed unexpectedly: %+v", updated)
+	}
+}
+
 func TestIntegration_IncidentDedupAndAutoResolve(t *testing.T) {
 	repo, _ := openIntegrationRepo(t)
 	ip := uniqueInet(t)

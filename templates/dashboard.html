@@ -43,6 +43,24 @@
                 NMS1 Dashboard LIVE!
             </h1>
             <p class="text-gray-400 mt-2">Network Management System v1.0</p>
+            {{if .Admin}}
+            <div class="mt-3 flex flex-wrap gap-2 text-xs">
+                <span class="px-2 py-1 rounded border
+                    {{if eq .GrafanaHealth "up"}}bg-emerald-500/20 border-emerald-500/50 text-emerald-300
+                    {{else if eq .GrafanaHealth "degraded"}}bg-amber-500/20 border-amber-500/50 text-amber-300
+                    {{else if eq .GrafanaHealth "down"}}bg-rose-500/20 border-rose-500/50 text-rose-300
+                    {{else}}bg-gray-700/40 border-gray-600/50 text-gray-300{{end}}">
+                    Grafana: {{.GrafanaHealth}}
+                </span>
+                <span class="px-2 py-1 rounded border
+                    {{if eq .PrometheusHealth "up"}}bg-emerald-500/20 border-emerald-500/50 text-emerald-300
+                    {{else if eq .PrometheusHealth "degraded"}}bg-amber-500/20 border-amber-500/50 text-amber-300
+                    {{else if eq .PrometheusHealth "down"}}bg-rose-500/20 border-rose-500/50 text-rose-300
+                    {{else}}bg-gray-700/40 border-gray-600/50 text-gray-300{{end}}">
+                    Prometheus: {{.PrometheusHealth}}
+                </span>
+            </div>
+            {{end}}
         </div>
     </div>
 
@@ -519,6 +537,14 @@
                 <a href="/trap-oid-mappings/page" class="block p-4 bg-amber-700 hover:bg-amber-600 rounded-lg transition-all flex items-center hover:scale-[1.02]">
                     🧭 Trap OID Mappings
                 </a>
+                <a href="/itsm-inbound-mappings/page" class="block p-4 bg-cyan-700 hover:bg-cyan-600 rounded-lg transition-all flex items-center hover:scale-[1.02]">
+                    🔁 ITSM Inbound Mappings
+                </a>
+                {{if and .Admin .GrafanaIncidentSLAURL}}
+                <a href="{{.GrafanaIncidentSLAURL}}" target="_blank" rel="noopener noreferrer" class="block p-4 bg-fuchsia-700 hover:bg-fuchsia-600 rounded-lg transition-all flex items-center hover:scale-[1.02]">
+                    📊 Incident SLA Dashboard (Grafana)
+                </a>
+                {{end}}
             </div>
         </div>
     </div>

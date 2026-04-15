@@ -68,13 +68,14 @@
                     <th class="p-3 text-left text-gray-200">Created</th>
                     <th class="p-3 text-left text-gray-200">Title</th>
                     <th class="p-3 text-left text-gray-200">Source</th>
+                    <th class="p-3 text-left text-gray-200">Assignee</th>
                     <th class="p-3 text-left text-gray-200">Severity</th>
                     <th class="p-3 text-left text-gray-200">Status</th>
                     <th class="p-3 text-left text-gray-200">Action</th>
                 </tr>
                 </thead>
                 <tbody id="inc-body">
-                <tr><td colspan="7" class="p-6 text-center text-gray-500">Загрузка...</td></tr>
+                <tr><td colspan="8" class="p-6 text-center text-gray-500">Загрузка...</td></tr>
                 </tbody>
             </table>
         </div>
@@ -126,6 +127,12 @@
             '<td class="p-3 text-sm text-gray-300">' + esc(created) + '</td>' +
             '<td class="p-3 text-sm">' + esc(i.title) + '</td>' +
             '<td class="p-3 text-xs">' + esc(i.source) + '</td>' +
+            '<td class="p-3 text-xs">' +
+            '<div class="flex gap-2 items-center">' +
+            '<input data-assignee-input="' + esc(i.id) + '" value="' + esc(i.assignee || '') + '" placeholder="unassigned" class="px-2 py-1 text-xs bg-gray-900 border border-gray-600 rounded w-28">' +
+            '<button class="px-2 py-1 text-xs rounded bg-blue-700 hover:bg-blue-600" data-assign="' + esc(i.id) + '">assign</button>' +
+            '</div>' +
+            '</td>' +
             '<td class="p-3 text-xs">' + esc(i.severity) + '</td>' +
             '<td class="p-3 text-xs">' + esc(i.status) + '</td>' +
             '<td class="p-3">' +
@@ -145,20 +152,20 @@
             const res = await fetch('/incidents?' + buildQuery(), { headers: { 'Accept': 'application/json' } });
             const text = await res.text();
             if (!res.ok) {
-                bodyEl.innerHTML = '<tr><td colspan="7" class="p-6 text-center text-red-400">Ошибка ' + res.status + ': ' + esc(text) + '</td></tr>';
+                bodyEl.innerHTML = '<tr><td colspan="8" class="p-6 text-center text-red-400">Ошибка ' + res.status + ': ' + esc(text) + '</td></tr>';
                 summaryEl.textContent = 'Ошибка загрузки';
                 return;
             }
             const items = JSON.parse(text);
             if (!Array.isArray(items) || items.length === 0) {
-                bodyEl.innerHTML = '<tr><td colspan="7" class="p-6 text-center text-gray-500">Инцидентов пока нет</td></tr>';
+                bodyEl.innerHTML = '<tr><td colspan="8" class="p-6 text-center text-gray-500">Инцидентов пока нет</td></tr>';
                 summaryEl.textContent = '0 incidents';
                 return;
             }
             bodyEl.innerHTML = items.map(row).join('');
             summaryEl.textContent = 'Показано ' + items.length + ' incidents';
         } catch (e) {
-            bodyEl.innerHTML = '<tr><td colspan="7" class="p-6 text-center text-red-400">' + esc(e && e.message ? e.message : e) + '</td></tr>';
+            bodyEl.innerHTML = '<tr><td colspan="8" class="p-6 text-center text-red-400">' + esc(e && e.message ? e.message : e) + '</td></tr>';
             summaryEl.textContent = 'Ошибка сети';
         } finally {
             refreshBtn.disabled = false;
@@ -185,6 +192,7 @@
                 '<div class="space-y-2">' +
                 '<div><span class="text-gray-500">ID:</span> <span class="font-mono">' + esc(incident.id) + '</span></div>' +
                 '<div><span class="text-gray-500">Title:</span> ' + esc(incident.title) + '</div>' +
+                '<div><span class="text-gray-500">Assignee:</span> ' + esc(incident.assignee || '—') + '</div>' +
                 '<div><span class="text-gray-500">Status:</span> ' + esc(incident.status) + '</div>' +
                 '<div><span class="text-gray-500">Severity:</span> ' + esc(incident.severity) + '</div>' +
                 '<div><span class="text-gray-500">Source:</span> ' + esc(incident.source) + '</div>' +
@@ -224,6 +232,33 @@
         }
     }
 
+    async function assignIncident(id) {
+        const input = document.querySelector('[data-assignee-input="' + id + '"]');
+        if (!input) return;
+        const assignee = (input.value || '').trim();
+        const csrf = (document.cookie.split('; ').find(function (x) { return x.indexOf('nms_csrf=') === 0; }) || '').split('=')[1] || '';
+        try {
+            const res = await fetch('/incidents/' + encodeURIComponent(id) + '/assignee', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                    'X-CSRF-Token': decodeURIComponent(csrf || '')
+                },
+                body: JSON.stringify({ assignee: assignee, comment: 'ui assignment update' })
+            });
+            if (!res.ok) {
+                const text = await res.text();
+                alert('Assign error: ' + text);
+                return;
+            }
+            await loadIncidents();
+            await showIncident(id);
+        } catch (e) {
+            alert('Assign failed: ' + (e && e.message ? e.message : e));
+        }
+    }
+
     document.addEventListener('click', function (e) {
         const showBtn = e.target && e.target.closest('[data-show]');
         if (showBtn) {
@@ -233,6 +268,11 @@
         const setBtn = e.target && e.target.closest('[data-transition]');
         if (setBtn) {
             transitionIncident(setBtn.getAttribute('data-transition'));
+            return;
+        }
+        const assignBtn = e.target && e.target.closest('[data-assign]');
+        if (assignBtn) {
+            assignIncident(assignBtn.getAttribute('data-assign'));
         }
     });
 
