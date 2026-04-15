@@ -155,14 +155,14 @@ jobs:
             --certificate-identity-regexp 'https://github.com/.+' \
             sbom.spdx.json
       - name: upload SBOM artifact
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: always()
         with:
           name: sbom-spdx
           path: sbom.spdx.json
           if-no-files-found: error
       - name: upload SBOM signature artifacts
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: github.event_name != 'pull_request'
         with:
           name: sbom-signature
@@ -192,7 +192,7 @@ jobs:
           files: coverage.out
           fail_ci_if_error: false
       - name: upload coverage.out
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: always()
         with:
           name: coverage-out
@@ -269,7 +269,7 @@ jobs:
         run: ./scripts/e2e_http_smoke.sh
       - name: upload api log
         if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: e2e-http-smoke-api-log
           path: /tmp/nms-api.log
@@ -322,7 +322,7 @@ jobs:
         run: ./scripts/e2e_auth_smoke.sh
       - name: upload api log
         if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: e2e-auth-smoke-api-log
           path: /tmp/nms-api-auth.log
@@ -375,7 +375,7 @@ jobs:
         run: ./scripts/contract_http_spec.sh
       - name: upload api log
         if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: contract-http-spec-api-log
           path: /tmp/nms-api-contract.log
