@@ -1,6 +1,7 @@
 package http
 
 import (
+	"net"
 	"net/http"
 	"os"
 	"strings"
@@ -28,8 +29,41 @@ func EnforceHTTPS(next http.Handler) http.Handler {
 			next.ServeHTTP(w, r)
 			return
 		}
-		target := "https://" + r.Host + r.URL.RequestURI()
+		host := canonicalRequestHost(r)
+		if host == "" {
+			http.Error(w, "invalid host", http.StatusBadRequest)
+			return
+		}
+		target := "https://" + host + r.URL.RequestURI()
 		http.Redirect(w, r, target, http.StatusPermanentRedirect)
 	})
 }
 
+func canonicalRequestHost(r *http.Request) string {
+	if r == nil {
+		return ""
+	}
+	host := strings.TrimSpace(r.Host)
+	if host == "" || strings.ContainsAny(host, " \t\r\n/\\") || strings.Contains(host, "@") {
+		return ""
+	}
+	if strings.HasPrefix(host, "[") {
+		if _, _, err := net.SplitHostPort(host); err == nil {
+			return host
+		}
+		if strings.HasSuffix(host, "]") {
+			return host
+		}
+		return ""
+	}
+	if strings.Count(host, ":") == 0 {
+		return host
+	}
+	if h, p, err := net.SplitHostPort(host); err == nil {
+		if strings.TrimSpace(h) == "" || strings.TrimSpace(p) == "" {
+			return ""
+		}
+		return net.JoinHostPort(h, p)
+	}
+	return ""
+}

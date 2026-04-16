@@ -62,15 +62,17 @@ func terminalCheckOrigin(r *http.Request) bool {
 	if err != nil {
 		return false
 	}
-	rh := r.Host
-	if !strings.Contains(rh, ":") || strings.HasPrefix(rh, "[") {
-		return strings.EqualFold(ou.Host, rh)
+	if ou.Scheme != "http" && ou.Scheme != "https" {
+		return false
 	}
-	// IPv4 host:port — сравниваем host без порта с Origin (часто без порта).
-	if h, _, err := net.SplitHostPort(rh); err == nil {
-		return strings.EqualFold(ou.Hostname(), h)
+	reqScheme := "http"
+	if isHTTPSRequest(r) {
+		reqScheme = "https"
 	}
-	return strings.EqualFold(ou.Host, rh)
+	if !strings.EqualFold(ou.Scheme, reqScheme) {
+		return false
+	}
+	return strings.EqualFold(ou.Host, canonicalRequestHost(r))
 }
 
 func terminalSSHHostKeyCallback() (ssh.HostKeyCallback, error) {

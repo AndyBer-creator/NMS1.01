@@ -2,6 +2,7 @@ package http
 
 import (
 	"context"
+	"crypto/tls"
 	"encoding/base64"
 	"net"
 	"net/http"
@@ -54,6 +55,7 @@ func TestTerminalCheckOrigin_DefaultStrict(t *testing.T) {
 	req := &http.Request{
 		Host:   "nms.example.com",
 		Header: make(http.Header),
+		TLS:    &tls.ConnectionState{},
 	}
 	req.Header.Set("Origin", "https://nms.example.com")
 	if !terminalCheckOrigin(req) {
@@ -63,10 +65,34 @@ func TestTerminalCheckOrigin_DefaultStrict(t *testing.T) {
 	req2 := &http.Request{
 		Host:   "nms.example.com",
 		Header: make(http.Header),
+		TLS:    &tls.ConnectionState{},
 	}
 	req2.Header.Set("Origin", "https://evil.example.com")
 	if terminalCheckOrigin(req2) {
 		t.Fatal("expected cross-origin websocket request to be blocked")
+	}
+}
+
+func TestTerminalCheckOrigin_RejectsSchemeAndPortMismatch(t *testing.T) {
+	t.Setenv("NMS_TERMINAL_ALLOW_INSECURE_ORIGIN", "")
+
+	reqHTTP := &http.Request{
+		Host:   "nms.example.com",
+		Header: make(http.Header),
+	}
+	reqHTTP.Header.Set("Origin", "https://nms.example.com")
+	if terminalCheckOrigin(reqHTTP) {
+		t.Fatal("expected scheme mismatch to be blocked")
+	}
+
+	reqHTTPS := &http.Request{
+		Host:   "nms.example.com:8443",
+		Header: make(http.Header),
+		TLS:    &tls.ConnectionState{},
+	}
+	reqHTTPS.Header.Set("Origin", "https://nms.example.com")
+	if terminalCheckOrigin(reqHTTPS) {
+		t.Fatal("expected port mismatch to be blocked")
 	}
 }
 

@@ -138,3 +138,34 @@ func TestEnforceHTTPS_RedirectAndBypass(t *testing.T) {
 	}
 }
 
+func TestEnforceHTTPS_InvalidHostRejected(t *testing.T) {
+	key := "NMS_ENFORCE_HTTPS"
+	if err := os.Setenv(key, "true"); err != nil {
+		t.Fatalf("set env: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = os.Unsetenv(key)
+	})
+
+	nextCalled := false
+	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		nextCalled = true
+		w.WriteHeader(http.StatusOK)
+	})
+	h := EnforceHTTPS(next)
+
+	rr := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "http://nms.local/login", nil)
+	req.Host = "evil.example.com/path"
+	h.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for invalid host, got %d", rr.Code)
+	}
+	if nextCalled {
+		t.Fatal("next handler should not be called for invalid host")
+	}
+	if loc := rr.Header().Get("Location"); loc != "" {
+		t.Fatalf("expected no redirect location for invalid host, got %q", loc)
+	}
+}
