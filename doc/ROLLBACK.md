@@ -47,10 +47,11 @@ make rbac-smoke
 ⚠️ Делать только если новый релиз повредил данные/схему и без rollback DB сервис не работает.
 
 1. Выбрать нужный backup `.dump` из `backups/postgres/`.
-2. Восстановить:
+2. Восстановить в отдельную rollback/drill БД:
    ```bash
-   ./scripts/restore_postgres.sh ./backups/postgres/<file.dump> NMS
+   RESTORE_CONFIRM_DROP=YES ./scripts/restore_postgres.sh ./backups/postgres/<file.dump> NMS_rollback_restore
    ```
+   Скрипт намеренно не восстанавливает прямо в primary БД, чтобы не снести рабочую базу по ошибке.
 3. Перезапустить сервисы:
    ```bash
    docker compose -f deploy/compose/docker-compose.yml up -d --build api worker trap-receiver

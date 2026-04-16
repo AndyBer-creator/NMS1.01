@@ -41,12 +41,16 @@ BACKUP_IMMUTABLE_COPY_CMD='aws s3 cp "$BACKUP_FILE" s3://nms-dr-immutable/postgr
 ## 2) Ручной restore
 
 ```bash
-./scripts/restore_postgres.sh ./backups/postgres/NMS_YYYY-mm-ddTHH-MM-SS.dump
+RESTORE_CONFIRM_DROP=YES \
+./scripts/restore_postgres.sh ./backups/postgres/NMS_YYYY-mm-ddTHH-MM-SS.dump NMS_restore_test
 ```
 
-или в отдельную БД для проверки:
+`target_db` обязателен. Скрипт намеренно отказывается восстанавливать в primary/default БД (`POSTGRES_DB`/`NMS`) и требует явного подтверждения `RESTORE_CONFIRM_DROP=YES`, потому что делает destructive `DROP DATABASE` + `CREATE DATABASE`.
+
+Пример для отдельной БД проверки:
 
 ```bash
+RESTORE_CONFIRM_DROP=YES \
 ./scripts/restore_postgres.sh ./backups/postgres/NMS_YYYY-mm-ddTHH-MM-SS.dump NMS_restore_test
 ```
 
@@ -61,6 +65,7 @@ BACKUP_IMMUTABLE_COPY_CMD='aws s3 cp "$BACKUP_FILE" s3://nms-dr-immutable/postgr
 Для регулярных restore-drill можно писать журнал:
 
 ```bash
+RESTORE_CONFIRM_DROP=YES \
 RESTORE_DRILL_LOG=./logs/restore-drill.tsv \
 ./scripts/restore_postgres.sh ./backups/postgres/NMS_YYYY-mm-ddTHH-MM-SS.dump NMS_restore_test
 ```

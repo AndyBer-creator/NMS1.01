@@ -13,4 +13,5 @@ receivers:
     webhook_configs:
       - url: "http://host.docker.internal:8080/alerts/webhook"
         send_resolved: true
+__ALERTMANAGER_WEBHOOK_AUTH_BLOCK__
 

@@ -187,15 +187,19 @@ services:
   alertmanager:
     image: prom/alertmanager:v0.27.0
     container_name: nms-alertmanager
+    environment:
+      NMS_ALERT_WEBHOOK_TOKEN: ${NMS_ALERT_WEBHOOK_TOKEN:-}
+      NMS_ALERT_WEBHOOK_TOKEN_FILE: ${NMS_ALERT_WEBHOOK_TOKEN_FILE:-}
     expose:
       - "9093"
     ports:
       - "9093:9093"
     volumes:
       - ../monitoring/alertmanager.bridge.yml:/etc/alertmanager/alertmanager.yml:ro
+      - ../../scripts/render_alertmanager_config.sh:/usr/local/bin/render_alertmanager_config.sh:ro
+    entrypoint: ["/bin/sh", "-c"]
     command:
-      - '--config.file=/etc/alertmanager/alertmanager.yml'
-      - '--storage.path=/alertmanager'
+      - 'bin="$$(command -v alertmanager || true)"; [ -n "$$bin" ] || bin=/bin/alertmanager; /usr/local/bin/render_alertmanager_config.sh /etc/alertmanager/alertmanager.yml /tmp/alertmanager.yml && exec "$$bin" --config.file=/tmp/alertmanager.yml --storage.path=/alertmanager'
     networks:
       - nms-network
     restart: unless-stopped

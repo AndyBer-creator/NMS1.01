@@ -99,6 +99,7 @@ curl -sS http://localhost:8081/metrics | head
 2. Проверить API webhook:
    ```bash
    curl -sS -X POST http://localhost:8080/alerts/webhook \
+     -H "Authorization: Bearer ${NMS_ALERT_WEBHOOK_TOKEN:?set NMS_ALERT_WEBHOOK_TOKEN}" \
      -H "Content-Type: application/json" \
      --data '{"status":"firing","alerts":[{"status":"firing","labels":{"alertname":"RunbookTest"},"annotations":{"summary":"runbook test","description":"manual"}}]}'
    docker compose -f deploy/compose/docker-compose.yml logs --tail=100 api

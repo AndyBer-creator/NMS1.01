@@ -3,15 +3,16 @@ set -euo pipefail
 
 # NMS1 Postgres restore (docker compose)
 # Usage:
-#   scripts/restore_postgres.sh /absolute/or/relative/path/to/file.dump [target_db]
+#   RESTORE_CONFIRM_DROP=YES scripts/restore_postgres.sh /absolute/or/relative/path/to/file.dump <target_db>
 #
 # Notes:
-# - target_db defaults to POSTGRES_DB or NMS
+# - target_db is mandatory and must be passed explicitly
 # - drops/recreates target DB before restore
+# - set RESTORE_CONFIRM_DROP=YES to acknowledge destructive drop/create
 # - for restore-drill set RESTORE_DRILL_LOG=/path/to/log.tsv
 
-if [[ $# -lt 1 ]]; then
-  echo "Usage: $0 <backup.dump> [target_db]" >&2
+if [[ $# -lt 2 ]]; then
+  echo "Usage: RESTORE_CONFIRM_DROP=YES $0 <backup.dump> <target_db>" >&2
   exit 1
 fi
 
@@ -27,8 +28,10 @@ fi
 COMPOSE_FILE="${COMPOSE_FILE:-deploy/compose/docker-compose.yml}"
 POSTGRES_CONTAINER="${POSTGRES_CONTAINER:-postgres}"
 DB_USER="${POSTGRES_USER:-nms-user}"
-TARGET_DB="${2:-${POSTGRES_DB:-NMS}}"
+TARGET_DB="$2"
 RESTORE_DRILL_LOG="${RESTORE_DRILL_LOG:-}"
+RESTORE_CONFIRM_DROP="${RESTORE_CONFIRM_DROP:-}"
+PRIMARY_DB="${POSTGRES_DB:-NMS}"
 restore_started_epoch="$(date +%s)"
 
 # Accept only simple PostgreSQL identifiers to prevent SQL injection.
@@ -38,8 +41,19 @@ if [[ ! "$TARGET_DB" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]]; then
   exit 1
 fi
 
+if [[ "$RESTORE_CONFIRM_DROP" != "YES" ]]; then
+  echo "Refusing destructive restore without RESTORE_CONFIRM_DROP=YES" >&2
+  exit 1
+fi
+
+if [[ "$TARGET_DB" == "$PRIMARY_DB" ]]; then
+  echo "Refusing restore into primary/default DB '$TARGET_DB'. Use a dedicated restore target database." >&2
+  exit 1
+fi
+
 echo "[restore] source: $dump_file"
 echo "[restore] target database: $TARGET_DB"
+echo "[restore] primary/default database: $PRIMARY_DB"
 
 if [[ -f "${dump_file}.sha256" ]]; then
   echo "[restore] verifying checksum"

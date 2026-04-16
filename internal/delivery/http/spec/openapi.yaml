@@ -4,7 +4,8 @@ info:
   description: |
     SNMP NMS: устройства, трапы, SNMP GET/SET, MIB. HTML-страницы не описаны здесь полностью.
 
-    **Публично без авторизации:** `GET /health`, `GET /ready`, `GET /metrics`, `GET|POST /login`, `POST /alerts/webhook`, `POST /itsm/inbound`, `POST /itsm/inbound/dry-run` (token-required).
+    **Публично без cookie-сессии:** `GET /health`, `GET /ready`, `GET /metrics`, `GET|POST /login`, `POST /alerts/webhook`, `POST /itsm/inbound`, `POST /itsm/inbound/dry-run`.
+    Для webhook endpoint-ов требуется bearer token: `POST /alerts/webhook`, `POST /itsm/inbound`, `POST /itsm/inbound/dry-run`.
 
     Остальные пути — после входа (cookie-сессия или HTTP Basic с теми же учётными данными).
 
