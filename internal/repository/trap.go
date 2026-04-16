@@ -6,6 +6,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"fmt"
 	"strconv"
 	"strings"
 	"time"
@@ -111,6 +112,42 @@ type trapOIDMappingRow struct {
 	Recovery   bool
 }
 
+func normalizeTrapVendor(v string) string {
+	s := strings.ToLower(strings.TrimSpace(v))
+	if s == "" {
+		return ""
+	}
+	return s
+}
+
+func trapVendorsFromInput(oid string, trapVars map[string]string) []string {
+	seen := make(map[string]struct{}, 4)
+	out := make([]string, 0, 4)
+	add := func(v string) {
+		v = normalizeTrapVendor(v)
+		if v == "" {
+			return
+		}
+		if _, ok := seen[v]; ok {
+			return
+		}
+		seen[v] = struct{}{}
+		out = append(out, v)
+	}
+	for k, v := range trapVars {
+		key := strings.ToLower(strings.TrimSpace(k))
+		switch key {
+		case "vendor", "manufacturer", "enterprise", "enterprise_oid", "sysobjectid", "sysobjectid.0":
+			add(v)
+		}
+	}
+	if i := strings.Index(strings.TrimSpace(oid), "::"); i > 0 {
+		add(oid[:i])
+	}
+	add("generic")
+	return out
+}
+
 func trapSignalFromOID(oid string) trapSignalKind {
 	o := strings.ToLower(strings.TrimSpace(oid))
 	switch {
@@ -191,20 +228,37 @@ func classificationFromMapping(oid string, row trapOIDMappingRow) trapClassifica
 	}
 }
 
-func (r *TrapsRepo) trapOIDMappingLookup(ctx context.Context, oid string) (*trapOIDMappingRow, error) {
+func (r *TrapsRepo) trapOIDMappingLookup(ctx context.Context, oid string, trapVars map[string]string) (*trapOIDMappingRow, error) {
 	o := strings.TrimSpace(strings.ToLower(oid))
 	if o == "" {
 		return nil, nil
 	}
 	var row trapOIDMappingRow
+	vendors := trapVendorsFromInput(oid, trapVars)
+	vendorPlaceholders := make([]string, 0, len(vendors))
+	args := make([]any, 0, len(vendors)+2)
+	args = append(args, o)
+	for _, vendor := range vendors {
+		args = append(args, vendor)
+		vendorPlaceholders = append(vendorPlaceholders, fmt.Sprintf("$%d", len(args)))
+	}
+	args = append(args, vendors[0])
 	err := r.db.QueryRowContext(ctx, `
 		SELECT signal_kind, title, severity, is_recovery
 		  FROM trap_oid_mappings
 		 WHERE enabled = TRUE
+		   AND vendor IN (`+strings.Join(vendorPlaceholders, ", ")+`)
 		   AND $1 ILIKE oid_pattern
-		 ORDER BY priority DESC, id ASC
+		 ORDER BY
+		       CASE
+		           WHEN vendor = $`+strconv.Itoa(len(args))+` THEN 0
+		           WHEN vendor = 'generic' THEN 1
+		           ELSE 2
+		       END,
+		       priority DESC,
+		       id ASC
 		 LIMIT 1`,
-		o,
+		args...,
 	).Scan(&row.SignalKind, &row.Title, &row.Severity, &row.Recovery)
 	if err == sql.ErrNoRows {
 		return nil, nil
@@ -260,7 +314,7 @@ func (r *TrapsRepo) CreateOrTouchOpenTrapIncident(ctx context.Context, deviceIP,
 		suppressionWindow = 10 * time.Minute
 	}
 	classification := defaultTrapClassification(oid)
-	if row, err := r.trapOIDMappingLookup(ctx, oid); err == nil && row != nil {
+	if row, err := r.trapOIDMappingLookup(ctx, oid, trapVars); err == nil && row != nil {
 		classification = classificationFromMapping(oid, *row)
 	}
 	title := classification.Title

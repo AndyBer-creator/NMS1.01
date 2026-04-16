@@ -18,13 +18,16 @@ func resetSessionRevocationsForTest(t *testing.T) {
 	sessionRevokeMu.Lock()
 	prev := sessionRevokedByJTI
 	prevGC := sessionRevokeLastGC
+	prevStore := sessionRevocationStore
 	sessionRevokedByJTI = map[string]int64{}
 	sessionRevokeLastGC = time.Time{}
+	sessionRevocationStore = nil
 	sessionRevokeMu.Unlock()
 	t.Cleanup(func() {
 		sessionRevokeMu.Lock()
 		sessionRevokedByJTI = prev
 		sessionRevokeLastGC = prevGC
+		sessionRevocationStore = prevStore
 		sessionRevokeMu.Unlock()
 	})
 }
@@ -142,4 +145,3 @@ func TestVerifySessionToken_RejectsRevokedJTI(t *testing.T) {
 		t.Fatalf("expected revoked token to fail verification, got %+v", got)
 	}
 }
-

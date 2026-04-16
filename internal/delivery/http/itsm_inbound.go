@@ -191,7 +191,11 @@ func (h *Handlers) ITSMInboundWebhook(w http.ResponseWriter, r *http.Request) {
 		}
 		notifyITSMIncidentAsync(h.logger, "incident.status_changed", changedBy, comment, item)
 	}
-	if strings.TrimSpace(input.Assignee) != "" || (item.Assignee != nil && resolved.Assignee == "") {
+	currentAssignee := ""
+	if item.Assignee != nil {
+		currentAssignee = strings.TrimSpace(*item.Assignee)
+	}
+	if strings.TrimSpace(resolved.Assignee) != currentAssignee {
 		updated, err := h.repo.AssignIncident(r.Context(), input.IncidentID, resolved.Assignee, changedBy, comment)
 		if err != nil {
 			h.logger.Warn("itsm inbound: assignment failed",

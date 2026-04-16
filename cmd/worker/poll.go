@@ -373,30 +373,12 @@ func pollOneDevice(
 		case snmp.ErrorKindTransport:
 			status = "failed_transport"
 		}
-		if snmpPollWasOK(device.Status) {
-			detail := status + ": " + err.Error()
-			if errEv := repo.InsertAvailabilityEvent(ctx, device.ID, "unavailable", detail); errEv != nil {
-				logger.Warn("availability event insert failed", zap.Int("device_id", device.ID), zap.Error(errEv))
-			}
-			details, _ := json.Marshal(map[string]any{
-				"status": status,
-				"error":  err.Error(),
-				"ip":     device.IP,
-				"name":   device.Name,
-			})
-			_, _, ierr := repo.CreateOrTouchOpenIncident(
-				ctx,
-				&device.ID,
-				"SNMP device unavailable",
-				"critical",
-				"polling",
-				details,
-				pollingIncidentSuppressionWindow(),
-			)
-			if ierr != nil {
-				logger.Warn("incident correlate failed", zap.Int("device_id", device.ID), zap.Error(ierr))
-			}
-		}
+		details, _ := json.Marshal(map[string]any{
+			"status": status,
+			"error":  err.Error(),
+			"ip":     device.IP,
+			"name":   device.Name,
+		})
 		logger.Warn("SNMP failed",
 			zap.Int("id", device.ID),
 			zap.String("ip", device.IP),
@@ -405,20 +387,13 @@ func pollOneDevice(
 			zap.Error(err))
 
 		retryAfter := pollBackoff.onFailure(device.IP, err.Error(), time.Now())
-		_ = repo.UpdateDeviceError(device.ID, status, err.Error())
+		if errTx := repo.RecordPollFailureTransition(ctx, device.ID, status, err.Error(), details, pollingIncidentSuppressionWindow()); errTx != nil {
+			logger.Warn("poll failure transition failed", zap.Int("device_id", device.ID), zap.Error(errTx))
+		}
 		logger.Warn("Backoff scheduled",
 			zap.String("ip", device.IP),
 			zap.Duration("retry_after", retryAfter))
 		return pollResultFailed
-	}
-
-	if snmpPollWasFailure(device.Status) {
-		if errEv := repo.InsertAvailabilityEvent(ctx, device.ID, "available", "SNMP опрос восстановлен"); errEv != nil {
-			logger.Warn("availability event insert failed", zap.Int("device_id", device.ID), zap.Error(errEv))
-		}
-		if _, errRes := repo.ResolveOpenIncidentsBySource(ctx, device.ID, "polling", "system", "auto-resolved: SNMP poll restored"); errRes != nil {
-			logger.Warn("incident auto-resolve failed", zap.Int("device_id", device.ID), zap.Error(errRes))
-		}
 	}
 
 	metricsSaved := 0
@@ -433,7 +408,9 @@ func pollOneDevice(
 		}
 	}
 
-	_ = repo.MarkDevicePollSuccess(device.ID)
+	if err := repo.RecordPollRecoveryTransition(ctx, device.ID); err != nil {
+		logger.Warn("poll recovery transition failed", zap.Int("device_id", device.ID), zap.Error(err))
+	}
 	pollBackoff.onSuccess(device.IP)
 
 	sysDescr := getValue(result, "1.3.6.1.2.1.1.1.0")

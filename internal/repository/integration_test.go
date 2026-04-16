@@ -273,7 +273,7 @@ func TestIntegration_TrapCorrelation_UsesOIDMappingTable(t *testing.T) {
 	}
 	_, err = db.ExecContext(ctx, `
 		INSERT INTO trap_oid_mappings (vendor, oid_pattern, signal_kind, title, severity, is_recovery, priority, enabled)
-		VALUES ('test_vendor', '%acmealarm%', 'generic', 'ACME alarm detected', 'critical', FALSE, 9999, TRUE)
+		VALUES ('acme-mib', '%acmealarm%', 'generic', 'ACME vendor alarm detected', 'critical', FALSE, 9999, TRUE)
 		ON CONFLICT (vendor, oid_pattern, signal_kind) DO UPDATE
 		   SET title = EXCLUDED.title,
 		       severity = EXCLUDED.severity,
@@ -283,10 +283,22 @@ func TestIntegration_TrapCorrelation_UsesOIDMappingTable(t *testing.T) {
 	if err != nil {
 		t.Fatalf("insert mapping: %v", err)
 	}
+	_, err = db.ExecContext(ctx, `
+		INSERT INTO trap_oid_mappings (vendor, oid_pattern, signal_kind, title, severity, is_recovery, priority, enabled)
+		VALUES ('generic', '%acmealarm%', 'generic', 'Generic alarm detected', 'warning', FALSE, 1, TRUE)
+		ON CONFLICT (vendor, oid_pattern, signal_kind) DO UPDATE
+		   SET title = EXCLUDED.title,
+		       severity = EXCLUDED.severity,
+		       is_recovery = EXCLUDED.is_recovery,
+		       priority = EXCLUDED.priority,
+		       enabled = EXCLUDED.enabled`)
+	if err != nil {
+		t.Fatalf("insert generic mapping: %v", err)
+	}
 	t.Cleanup(func() {
 		_, _ = db.ExecContext(context.Background(), `DELETE FROM incident_transitions WHERE incident_id IN (SELECT id FROM incidents WHERE source='trap')`)
 		_, _ = db.ExecContext(context.Background(), `DELETE FROM incidents WHERE source='trap'`)
-		_, _ = db.ExecContext(context.Background(), `DELETE FROM trap_oid_mappings WHERE vendor='test_vendor'`)
+		_, _ = db.ExecContext(context.Background(), `DELETE FROM trap_oid_mappings WHERE vendor IN ('acme-mib', 'generic') AND oid_pattern='%acmealarm%'`)
 		_, _ = db.ExecContext(context.Background(), `DELETE FROM devices WHERE ip = $1::inet`, ip)
 	})
 
@@ -301,7 +313,7 @@ func TestIntegration_TrapCorrelation_UsesOIDMappingTable(t *testing.T) {
 	if err != nil {
 		t.Fatalf("query incident by custom mapping: %v", err)
 	}
-	if title != "ACME alarm detected" {
+	if title != "ACME vendor alarm detected" {
 		t.Fatalf("expected mapped title, got %q", title)
 	}
 	if severity != "critical" {

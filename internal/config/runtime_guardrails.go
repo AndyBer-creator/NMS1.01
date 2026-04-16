@@ -22,18 +22,25 @@ func isProductionEnv() bool {
 	return strings.EqualFold(strings.TrimSpace(os.Getenv("NMS_ENV")), "production")
 }
 
+type RuntimeSecurityRole string
+
+const (
+	RuntimeSecurityRoleAPI          RuntimeSecurityRole = "api"
+	RuntimeSecurityRoleWorker       RuntimeSecurityRole = "worker"
+	RuntimeSecurityRoleTrapReceiver RuntimeSecurityRole = "trap-receiver"
+)
+
 // ValidateRuntimeSecurity applies strict guardrails for production mode.
+// Backward-compatible default: API process.
 func ValidateRuntimeSecurity() error {
+	return ValidateRuntimeSecurityFor(RuntimeSecurityRoleAPI)
+}
+
+func ValidateRuntimeSecurityFor(role RuntimeSecurityRole) error {
 	if !isProductionEnv() {
 		return nil
 	}
 
-	if strings.TrimSpace(EnvOrFile("NMS_SESSION_SECRET")) == "" {
-		return fmt.Errorf("production guardrail: NMS_SESSION_SECRET must be set")
-	}
-	if err := validateSessionSecretStrength(EnvOrFile("NMS_SESSION_SECRET")); err != nil {
-		return err
-	}
 	if strings.TrimSpace(EnvOrFile("NMS_DB_ENCRYPTION_KEY")) == "" {
 		return fmt.Errorf("production guardrail: NMS_DB_ENCRYPTION_KEY must be set")
 	}
@@ -43,6 +50,8 @@ func ValidateRuntimeSecurity() error {
 	for _, name := range []string{
 		"NMS_SESSION_SECRET",
 		"NMS_DB_ENCRYPTION_KEY",
+		"NMS_ALERT_WEBHOOK_TOKEN",
+		"NMS_ITSM_INBOUND_TOKEN",
 		"DB_DSN",
 		"SMTP_HOST",
 		"SMTP_PORT",
@@ -55,12 +64,7 @@ func ValidateRuntimeSecurity() error {
 		}
 	}
 
-	for _, name := range []string{
-		"NMS_ALLOW_NO_AUTH",
-		"NMS_TERMINAL_ALLOW_INSECURE_ORIGIN",
-		"NMS_TERMINAL_ALLOW_INSECURE_HOSTKEY",
-		"NMS_SMTP_ALLOW_PLAINTEXT",
-	} {
+	for _, name := range roleForbiddenFlags(role) {
 		if envEnabled(name) {
 			return fmt.Errorf("production guardrail: %s must be disabled", name)
 		}
@@ -73,20 +77,44 @@ func ValidateRuntimeSecurity() error {
 	if err := validateDBDSNShape(EnvOrFile("DB_DSN")); err != nil {
 		return err
 	}
-	if strings.TrimSpace(EnvOrFile("NMS_TERMINAL_SSH_KNOWN_HOSTS")) == "" {
-		return fmt.Errorf("production guardrail: NMS_TERMINAL_SSH_KNOWN_HOSTS must be set")
-	}
-	if err := validateKnownHostsFile(EnvOrFile("NMS_TERMINAL_SSH_KNOWN_HOSTS")); err != nil {
-		return err
-	}
-	if !envEnabled("NMS_ENFORCE_HTTPS") {
-		return fmt.Errorf("production guardrail: NMS_ENFORCE_HTTPS must be enabled")
-	}
 	if err := validateProductionSMTPConfig(); err != nil {
 		return err
 	}
+	if role == RuntimeSecurityRoleAPI {
+		if strings.TrimSpace(EnvOrFile("NMS_SESSION_SECRET")) == "" {
+			return fmt.Errorf("production guardrail: NMS_SESSION_SECRET must be set")
+		}
+		if err := validateSessionSecretStrength(EnvOrFile("NMS_SESSION_SECRET")); err != nil {
+			return err
+		}
+		if strings.TrimSpace(EnvOrFile("NMS_TERMINAL_SSH_KNOWN_HOSTS")) == "" {
+			return fmt.Errorf("production guardrail: NMS_TERMINAL_SSH_KNOWN_HOSTS must be set")
+		}
+		if err := validateKnownHostsFile(EnvOrFile("NMS_TERMINAL_SSH_KNOWN_HOSTS")); err != nil {
+			return err
+		}
+		if !envEnabled("NMS_ENFORCE_HTTPS") {
+			return fmt.Errorf("production guardrail: NMS_ENFORCE_HTTPS must be enabled")
+		}
+	}
 
 	return nil
+}
+
+func roleForbiddenFlags(role RuntimeSecurityRole) []string {
+	switch role {
+	case RuntimeSecurityRoleWorker, RuntimeSecurityRoleTrapReceiver:
+		return []string{"NMS_SMTP_ALLOW_PLAINTEXT"}
+	case RuntimeSecurityRoleAPI:
+		fallthrough
+	default:
+		return []string{
+			"NMS_ALLOW_NO_AUTH",
+			"NMS_TERMINAL_ALLOW_INSECURE_ORIGIN",
+			"NMS_TERMINAL_ALLOW_INSECURE_HOSTKEY",
+			"NMS_SMTP_ALLOW_PLAINTEXT",
+		}
+	}
 }
 
 func hasSafeDBSSLMode(dsn string) bool {

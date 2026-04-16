@@ -79,6 +79,7 @@ func clearAuthEnv(t *testing.T) {
 func clearAlertDeliveryEnv(t *testing.T) {
 	t.Helper()
 	for _, k := range []string{
+		"NMS_ALERT_WEBHOOK_TOKEN", "NMS_ALERT_WEBHOOK_TOKEN_FILE",
 		"TELEGRAM_TOKEN", "TELEGRAM_CHAT_ID",
 		"TELEGRAM_TOKEN_FILE", "TELEGRAM_CHAT_ID_FILE",
 		"SMTP_HOST", "SMTP_PORT", "SMTP_USER", "SMTP_PASS", "SMTP_FROM",
@@ -86,6 +87,14 @@ func clearAlertDeliveryEnv(t *testing.T) {
 	} {
 		t.Setenv(k, "")
 	}
+}
+
+func setAlertWebhookToken(t *testing.T) string {
+	t.Helper()
+	token := "itest-alert-webhook-token"
+	t.Setenv("NMS_ALERT_WEBHOOK_TOKEN", token)
+	t.Setenv("NMS_ALERT_WEBHOOK_TOKEN_FILE", "")
+	return token
 }
 
 // integrationAuthOpts задаёт Basic-учётки для loadCreds(); пустые строки — креды не выставляются (после clearAuth).
@@ -407,6 +416,7 @@ func TestIntegration_HTTP_HTTPSPolicyForwardedProtoSkipsRedirect(t *testing.T) {
 
 func TestIntegration_HTTP_AlertWebhookMethodNotAllowed(t *testing.T) {
 	clearAlertDeliveryEnv(t)
+	_ = setAlertWebhookToken(t)
 	srv, _ := newIntegrationServer(t, integrationAuthOpts{})
 	req, err := http.NewRequest(http.MethodGet, srv.URL+"/alerts/webhook", nil)
 	if err != nil {
@@ -423,14 +433,36 @@ func TestIntegration_HTTP_AlertWebhookMethodNotAllowed(t *testing.T) {
 	}
 }
 
+func TestIntegration_HTTP_AlertWebhookUnauthorizedWithoutToken(t *testing.T) {
+	clearAlertDeliveryEnv(t)
+	_ = setAlertWebhookToken(t)
+	srv, _ := newIntegrationServer(t, integrationAuthOpts{})
+	req, err := http.NewRequest(http.MethodPost, srv.URL+"/alerts/webhook", strings.NewReader(`{"status":"firing","alerts":[]}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("POST /alerts/webhook: %v", err)
+	}
+	body, _ := io.ReadAll(res.Body)
+	_ = res.Body.Close()
+	if res.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("expected 401, got %d: %s", res.StatusCode, body)
+	}
+}
+
 func TestIntegration_HTTP_AlertWebhookInvalidJSON(t *testing.T) {
 	clearAlertDeliveryEnv(t)
+	token := setAlertWebhookToken(t)
 	srv, _ := newIntegrationServer(t, integrationAuthOpts{})
 	req, err := http.NewRequest(http.MethodPost, srv.URL+"/alerts/webhook", strings.NewReader("not-json{"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+token)
 	res, err := http.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatalf("POST /alerts/webhook: %v", err)
@@ -444,12 +476,14 @@ func TestIntegration_HTTP_AlertWebhookInvalidJSON(t *testing.T) {
 
 func TestIntegration_HTTP_AlertWebhookEmptyAlertsNoContent(t *testing.T) {
 	clearAlertDeliveryEnv(t)
+	token := setAlertWebhookToken(t)
 	srv, _ := newIntegrationServer(t, integrationAuthOpts{})
 	req, err := http.NewRequest(http.MethodPost, srv.URL+"/alerts/webhook", strings.NewReader(`{"status":"firing","alerts":[]}`))
 	if err != nil {
 		t.Fatal(err)
 	}
 	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+token)
 	res, err := http.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatalf("POST /alerts/webhook: %v", err)
@@ -463,6 +497,7 @@ func TestIntegration_HTTP_AlertWebhookEmptyAlertsNoContent(t *testing.T) {
 
 func TestIntegration_HTTP_AlertWebhookFiringReturnsJSON(t *testing.T) {
 	clearAlertDeliveryEnv(t)
+	token := setAlertWebhookToken(t)
 	srv, _ := newIntegrationServer(t, integrationAuthOpts{})
 	payload := `{"status":"firing","alerts":[{"status":"firing","labels":{"alertname":"ItestAlert"},"annotations":{"summary":"sum","description":"desc"},"startsAt":"2026-01-01T00:00:00Z"}]}`
 	req, err := http.NewRequest(http.MethodPost, srv.URL+"/alerts/webhook", strings.NewReader(payload))
@@ -470,6 +505,7 @@ func TestIntegration_HTTP_AlertWebhookFiringReturnsJSON(t *testing.T) {
 		t.Fatal(err)
 	}
 	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+token)
 	res, err := http.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatalf("POST /alerts/webhook: %v", err)
@@ -493,6 +529,7 @@ func TestIntegration_HTTP_AlertWebhookFiringReturnsJSON(t *testing.T) {
 
 func TestIntegration_HTTP_AlertWebhookResolvedOnlySkipsDeliveryCounters(t *testing.T) {
 	clearAlertDeliveryEnv(t)
+	token := setAlertWebhookToken(t)
 	srv, _ := newIntegrationServer(t, integrationAuthOpts{})
 	payload := `{"status":"resolved","alerts":[{"status":"resolved","labels":{"alertname":"ResolvedOnly"},"annotations":{"summary":"sum","description":"desc"},"startsAt":"2026-01-01T00:00:00Z"}]}`
 	req, err := http.NewRequest(http.MethodPost, srv.URL+"/alerts/webhook", strings.NewReader(payload))
@@ -500,6 +537,7 @@ func TestIntegration_HTTP_AlertWebhookResolvedOnlySkipsDeliveryCounters(t *testi
 		t.Fatal(err)
 	}
 	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+token)
 	res, err := http.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatalf("POST /alerts/webhook: %v", err)
@@ -526,6 +564,7 @@ func TestIntegration_HTTP_AlertWebhookResolvedOnlySkipsDeliveryCounters(t *testi
 
 func TestIntegration_HTTP_AlertWebhookMixedStatusesCountsOnlyFiringDelivery(t *testing.T) {
 	clearAlertDeliveryEnv(t)
+	token := setAlertWebhookToken(t)
 	srv, _ := newIntegrationServer(t, integrationAuthOpts{})
 	payload := `{"status":"firing","alerts":[{"status":"firing","labels":{"alertname":"FiringOne"},"annotations":{"summary":"sum","description":"desc"},"startsAt":"2026-01-01T00:00:00Z"},{"status":"resolved","labels":{"alertname":"ResolvedTwo"},"annotations":{"summary":"sum","description":"desc"},"startsAt":"2026-01-01T00:00:00Z"}]}`
 	req, err := http.NewRequest(http.MethodPost, srv.URL+"/alerts/webhook", strings.NewReader(payload))
@@ -533,6 +572,7 @@ func TestIntegration_HTTP_AlertWebhookMixedStatusesCountsOnlyFiringDelivery(t *t
 		t.Fatal(err)
 	}
 	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+token)
 	res, err := http.DefaultClient.Do(req)
 	if err != nil {
 		t.Fatalf("POST /alerts/webhook: %v", err)

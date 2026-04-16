@@ -3,6 +3,7 @@ package http
 import (
 	"NMS1/internal/domain"
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -83,5 +84,49 @@ func TestDecodeAndResolveITSMInbound(t *testing.T) {
 	}
 	if resolved.Assignee != "noc-l2" {
 		t.Fatalf("assignee=%q", resolved.Assignee)
+	}
+}
+
+func TestDecodeJSONBodyRejectsUnknownFieldsAndTrailingJSON(t *testing.T) {
+	t.Run("unknown field", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodPost, "/x", strings.NewReader(`{"incident_id":42,"extra":"x"}`))
+		rr := httptest.NewRecorder()
+		var input itsmInboundRequest
+		if err := decodeJSONBody(rr, req, &input); err == nil {
+			t.Fatal("expected error for unknown JSON field")
+		}
+	})
+
+	t.Run("trailing json", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodPost, "/x", strings.NewReader(`{"incident_id":42}{"another":1}`))
+		rr := httptest.NewRecorder()
+		var input itsmInboundRequest
+		if err := decodeJSONBody(rr, req, &input); err == nil {
+			t.Fatal("expected error for trailing JSON document")
+		}
+	})
+}
+
+func TestITSMInboundDryRunUsesMappedAssignee(t *testing.T) {
+	req := httptest.NewRequest(http.MethodPost, "/itsm/inbound/dry-run", strings.NewReader(`{"incident_id":42,"status":"open"}`))
+	req.Header.Set("Authorization", "Bearer test-token")
+	rr := httptest.NewRecorder()
+	t.Setenv("NMS_ITSM_INBOUND_TOKEN", "test-token")
+
+	resolved, code, msg := decodeAndResolveITSMInbound(rr, req, func(_ context.Context, provider, status, priority, owner string) (*domain.ITSMInboundMapping, error) {
+		return &domain.ITSMInboundMapping{ID: 11, MappedAssignee: "mapped-owner"}, nil
+	})
+	if code != http.StatusOK {
+		t.Fatalf("code=%d msg=%s", code, msg)
+	}
+	body, err := json.Marshal(map[string]any{
+		"effective_assignee": resolved.Assignee,
+		"applied_mapping_id": resolved.AppliedMappingID,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(body), "mapped-owner") {
+		t.Fatalf("expected mapped assignee in dry-run output, got %s", body)
 	}
 }

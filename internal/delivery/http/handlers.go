@@ -115,6 +115,7 @@ type Handlers struct {
 }
 
 func NewHandlers(repo *postgres.Repo, snmpClient *snmp.Client, scanner *discovery.Scanner, trapsRepo *repository.TrapsRepo, logger *zap.Logger, mibUploadDir string, mib *mibresolver.Resolver) *Handlers {
+	setSessionRevocationStore(repo)
 	dashboardTmpl := template.Must(template.ParseFiles("templates/dashboard.html"))
 	devicesTmpl := template.Must(template.ParseFiles(
 		"templates/devices_table.html",

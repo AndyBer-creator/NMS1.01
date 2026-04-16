@@ -63,6 +63,45 @@ func TestValidateRuntimeSecurity_ProductionRequiresSecretsAndSafeFlags(t *testin
 	}
 }
 
+func TestValidateRuntimeSecurityFor_WorkerDoesNotRequireAPISpecificSettings(t *testing.T) {
+	t.Setenv("NMS_ENV", "production")
+	t.Setenv("NMS_SESSION_SECRET", "")
+	t.Setenv("NMS_TERMINAL_SSH_KNOWN_HOSTS", "")
+	t.Setenv("NMS_ENFORCE_HTTPS", "")
+	t.Setenv("NMS_DB_ENCRYPTION_KEY", "prod-db-enc")
+	t.Setenv("DB_DSN", "host=db port=5432 user=u password=p dbname=nms sslmode=require")
+	t.Setenv("NMS_SMTP_ALLOW_PLAINTEXT", "")
+
+	if err := ValidateRuntimeSecurityFor(RuntimeSecurityRoleWorker); err != nil {
+		t.Fatalf("expected worker config to pass without API-only settings, got %v", err)
+	}
+}
+
+func TestValidateRuntimeSecurityFor_TrapReceiverDoesNotRequireAPISpecificSettings(t *testing.T) {
+	t.Setenv("NMS_ENV", "production")
+	t.Setenv("NMS_SESSION_SECRET", "")
+	t.Setenv("NMS_TERMINAL_SSH_KNOWN_HOSTS", "")
+	t.Setenv("NMS_ENFORCE_HTTPS", "")
+	t.Setenv("NMS_DB_ENCRYPTION_KEY", "prod-db-enc")
+	t.Setenv("DB_DSN", "host=db port=5432 user=u password=p dbname=nms sslmode=require")
+	t.Setenv("NMS_SMTP_ALLOW_PLAINTEXT", "")
+
+	if err := ValidateRuntimeSecurityFor(RuntimeSecurityRoleTrapReceiver); err != nil {
+		t.Fatalf("expected trap receiver config to pass without API-only settings, got %v", err)
+	}
+}
+
+func TestValidateRuntimeSecurityFor_WorkerStillRejectsInsecureSMTPOverride(t *testing.T) {
+	t.Setenv("NMS_ENV", "production")
+	t.Setenv("NMS_DB_ENCRYPTION_KEY", "prod-db-enc")
+	t.Setenv("DB_DSN", "host=db port=5432 user=u password=p dbname=nms sslmode=require")
+	t.Setenv("NMS_SMTP_ALLOW_PLAINTEXT", "true")
+
+	if err := ValidateRuntimeSecurityFor(RuntimeSecurityRoleWorker); err == nil {
+		t.Fatal("expected worker to reject NMS_SMTP_ALLOW_PLAINTEXT in production")
+	}
+}
+
 func TestValidateRuntimeSecurity_ProductionRejectsInsecureSettings(t *testing.T) {
 	t.Setenv("NMS_ENV", "production")
 	t.Setenv("NMS_SESSION_SECRET", "prod-session-secret")

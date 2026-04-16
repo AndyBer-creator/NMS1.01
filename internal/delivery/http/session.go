@@ -2,8 +2,9 @@ package http
 
 import (
 	"NMS1/internal/config"
-	"crypto/rand"
+	"context"
 	"crypto/hmac"
+	"crypto/rand"
 	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/base64"
@@ -32,7 +33,13 @@ var (
 	sessionRevokeMu        sync.Mutex
 	sessionRevokedByJTI    = map[string]int64{}
 	sessionRevokeLastGC    time.Time
+	sessionRevocationStore sharedSessionRevocationStore
 )
+
+type sharedSessionRevocationStore interface {
+	RevokeSessionJTI(ctx context.Context, jti string, expUnix int64) error
+	IsSessionJTIRevoked(ctx context.Context, jti string, nowUnix int64) (bool, error)
+}
 
 func initFallbackSessionKey() {
 	if _, err := rand.Read(fallbackSessionKey[:]); err != nil {
@@ -143,19 +150,38 @@ func revokeSessionToken(token string) {
 	if strings.TrimSpace(c.JTI) == "" || c.Exp <= 0 {
 		return
 	}
-	now := time.Now()
-	sessionRevokeMu.Lock()
-	defer sessionRevokeMu.Unlock()
-	revokeGC(now.Unix())
-	sessionRevokedByJTI[c.JTI] = c.Exp
+	storeLocalSessionRevocation(c.JTI, c.Exp, time.Now().Unix())
+	if sessionRevocationStore != nil {
+		_ = sessionRevocationStore.RevokeSessionJTI(context.Background(), c.JTI, c.Exp)
+	}
 }
 
 func isSessionRevoked(jti string, nowUnix int64) bool {
+	if isSessionRevokedLocally(jti, nowUnix) {
+		return true
+	}
+	if sessionRevocationStore != nil {
+		revoked, err := sessionRevocationStore.IsSessionJTIRevoked(context.Background(), jti, nowUnix)
+		if err == nil && revoked {
+			return true
+		}
+	}
+	return false
+}
+
+func isSessionRevokedLocally(jti string, nowUnix int64) bool {
 	sessionRevokeMu.Lock()
 	defer sessionRevokeMu.Unlock()
 	revokeGC(nowUnix)
 	exp, ok := sessionRevokedByJTI[jti]
 	return ok && exp >= nowUnix
+}
+
+func storeLocalSessionRevocation(jti string, expUnix, nowUnix int64) {
+	sessionRevokeMu.Lock()
+	defer sessionRevokeMu.Unlock()
+	revokeGC(nowUnix)
+	sessionRevokedByJTI[jti] = expUnix
 }
 
 func revokeGC(nowUnix int64) {
@@ -202,4 +228,10 @@ func clearSessionCookie(w http.ResponseWriter, r *http.Request) {
 		SameSite: http.SameSiteLaxMode,
 		Secure:   secure,
 	})
+}
+
+func setSessionRevocationStore(store sharedSessionRevocationStore) {
+	sessionRevokeMu.Lock()
+	defer sessionRevokeMu.Unlock()
+	sessionRevocationStore = store
 }

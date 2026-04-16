@@ -3,6 +3,7 @@ package http
 import (
 	"NMS1/internal/config"
 	"context"
+	"crypto/subtle"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -24,10 +25,36 @@ type alertmanagerWebhookPayload struct {
 	} `json:"alerts"`
 }
 
+func alertWebhookToken() string {
+	return strings.TrimSpace(config.EnvOrFile("NMS_ALERT_WEBHOOK_TOKEN"))
+}
+
+func alertWebhookAuthorized(r *http.Request) bool {
+	if r == nil {
+		return false
+	}
+	want := alertWebhookToken()
+	if want == "" {
+		return false
+	}
+	got := strings.TrimSpace(r.Header.Get("Authorization"))
+	if strings.HasPrefix(strings.ToLower(got), "bearer ") {
+		got = strings.TrimSpace(got[7:])
+	}
+	if len(got) != len(want) {
+		return false
+	}
+	return subtle.ConstantTimeCompare([]byte(got), []byte(want)) == 1
+}
+
 // AlertWebhook receives Alertmanager webhooks and forwards to Telegram/Email.
 func (h *Handlers) AlertWebhook(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if !alertWebhookAuthorized(r) {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
 	}
 	var p alertmanagerWebhookPayload

@@ -20,7 +20,7 @@ func main() {
 	defer func() { _ = logger.Sync() }()
 
 	logger.Info("🚀 SNMP Trap Receiver v1 started")
-	if err := config.ValidateRuntimeSecurity(); err != nil {
+	if err := config.ValidateRuntimeSecurityFor(config.RuntimeSecurityRoleTrapReceiver); err != nil {
 		logger.Fatal("runtime security validation failed", zap.Error(err))
 	}
 

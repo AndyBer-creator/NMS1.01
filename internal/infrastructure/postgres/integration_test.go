@@ -116,6 +116,110 @@ func TestIntegration_AlertEmailSetting(t *testing.T) {
 	}
 }
 
+func TestIntegration_SessionRevocationsRoundTrip(t *testing.T) {
+	repo, _ := openIntegrationRepo(t)
+	jti := fmt.Sprintf("itest-jti-%d", time.Now().UnixNano())
+	revoked, err := repo.IsSessionJTIRevoked(context.Background(), jti, time.Now().Unix())
+	if err != nil {
+		t.Fatalf("IsSessionJTIRevoked before revoke: %v", err)
+	}
+	if revoked {
+		t.Fatal("fresh jti must not be revoked")
+	}
+
+	expUnix := time.Now().Add(10 * time.Minute).Unix()
+	if err := repo.RevokeSessionJTI(context.Background(), jti, expUnix); err != nil {
+		t.Fatalf("RevokeSessionJTI: %v", err)
+	}
+
+	revoked, err = repo.IsSessionJTIRevoked(context.Background(), jti, time.Now().Unix())
+	if err != nil {
+		t.Fatalf("IsSessionJTIRevoked after revoke: %v", err)
+	}
+	if !revoked {
+		t.Fatal("expected revoked jti to be visible via shared store")
+	}
+}
+
+func TestIntegration_PollTransitionsAreAtomic(t *testing.T) {
+	repo, db := openIntegrationRepo(t)
+	ip := uniqueInet(t)
+	_ = repo.DeleteByIP(context.Background(), ip)
+	d := &domain.Device{IP: ip, Name: "poll-atomic", Community: "public", SNMPVersion: "v2c"}
+	if err := repo.CreateDevice(context.Background(), d); err != nil {
+		t.Fatalf("CreateDevice: %v", err)
+	}
+	t.Cleanup(func() { _ = repo.DeleteByIP(context.Background(), ip) })
+
+	details, _ := json.Marshal(map[string]any{"status": "failed_timeout", "error": "timeout"})
+	if err := repo.RecordPollFailureTransition(context.Background(), d.ID, "failed_timeout", "timeout", details, 10*time.Minute); err != nil {
+		t.Fatalf("RecordPollFailureTransition: %v", err)
+	}
+
+	dev, err := repo.GetDeviceByID(context.Background(), d.ID)
+	if err != nil || dev == nil {
+		t.Fatalf("GetDeviceByID after failure: dev=%+v err=%v", dev, err)
+	}
+	if dev.Status != "failed_timeout" || !strings.Contains(dev.LastError, "timeout") {
+		t.Fatalf("unexpected device after failure: %+v", dev)
+	}
+
+	var unavailableEvents int
+	if err := db.QueryRowContext(context.Background(),
+		`SELECT COUNT(*) FROM device_availability_events WHERE device_id = $1 AND kind = 'unavailable'`, d.ID,
+	).Scan(&unavailableEvents); err != nil {
+		t.Fatalf("count unavailable events: %v", err)
+	}
+	if unavailableEvents != 1 {
+		t.Fatalf("expected 1 unavailable event, got %d", unavailableEvents)
+	}
+
+	var openIncidents int
+	if err := db.QueryRowContext(context.Background(),
+		`SELECT COUNT(*) FROM incidents WHERE device_id = $1 AND source = 'polling' AND status IN ('new','acknowledged','in_progress')`, d.ID,
+	).Scan(&openIncidents); err != nil {
+		t.Fatalf("count open incidents: %v", err)
+	}
+	if openIncidents != 1 {
+		t.Fatalf("expected 1 open polling incident, got %d", openIncidents)
+	}
+
+	if err := repo.RecordPollRecoveryTransition(context.Background(), d.ID); err != nil {
+		t.Fatalf("RecordPollRecoveryTransition: %v", err)
+	}
+
+	dev, err = repo.GetDeviceByID(context.Background(), d.ID)
+	if err != nil || dev == nil {
+		t.Fatalf("GetDeviceByID after recovery: dev=%+v err=%v", dev, err)
+	}
+	if dev.Status != "active" || dev.LastError != "" {
+		t.Fatalf("unexpected device after recovery: %+v", dev)
+	}
+	if dev.LastPollOKAt.IsZero() {
+		t.Fatal("expected last_poll_ok_at set after recovery")
+	}
+
+	var availableEvents int
+	if err := db.QueryRowContext(context.Background(),
+		`SELECT COUNT(*) FROM device_availability_events WHERE device_id = $1 AND kind = 'available'`, d.ID,
+	).Scan(&availableEvents); err != nil {
+		t.Fatalf("count available events: %v", err)
+	}
+	if availableEvents != 1 {
+		t.Fatalf("expected 1 available event, got %d", availableEvents)
+	}
+
+	var resolvedIncidents int
+	if err := db.QueryRowContext(context.Background(),
+		`SELECT COUNT(*) FROM incidents WHERE device_id = $1 AND source = 'polling' AND status = 'resolved'`, d.ID,
+	).Scan(&resolvedIncidents); err != nil {
+		t.Fatalf("count resolved incidents: %v", err)
+	}
+	if resolvedIncidents != 1 {
+		t.Fatalf("expected 1 resolved polling incident, got %d", resolvedIncidents)
+	}
+}
+
 func TestIntegration_SNMPRuntimeSettingsRoundTrip(t *testing.T) {
 	repo, _ := openIntegrationRepo(t)
 	prevTimeout := repo.GetSNMPTimeoutSeconds(context.Background(), DefaultSNMPTimeoutSeconds)

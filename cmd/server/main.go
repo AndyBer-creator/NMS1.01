@@ -14,7 +14,7 @@ import (
 func main() {
 	timezone.InitFromEnv()
 	cfg := config.Load()
-	if err := config.ValidateRuntimeSecurity(); err != nil {
+	if err := config.ValidateRuntimeSecurityFor(config.RuntimeSecurityRoleAPI); err != nil {
 		panic(err.Error())
 	}
 	logger := applog.MustNewZapFile("nms-api")

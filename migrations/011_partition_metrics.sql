@@ -84,7 +84,7 @@ ALTER TABLE metrics SET (autovacuum_vacuum_scale_factor = 0.1);
 -- +goose Down
 
 CREATE TABLE IF NOT EXISTS metrics_unpartitioned (
-    id BIGINT PRIMARY KEY,
+    id BIGINT NOT NULL DEFAULT nextval('metrics_id_seq') PRIMARY KEY,
     device_id INTEGER REFERENCES devices(id) ON DELETE CASCADE,
     oid VARCHAR(255) NOT NULL,
     value TEXT,
@@ -98,6 +98,7 @@ FROM metrics;
 DROP TABLE IF EXISTS metrics CASCADE;
 DROP FUNCTION IF EXISTS ensure_metrics_partition_for(timestamptz);
 ALTER TABLE metrics_unpartitioned RENAME TO metrics;
+SELECT setval('metrics_id_seq', COALESCE((SELECT MAX(id) FROM metrics), 0) + 1, false);
 
 CREATE INDEX IF NOT EXISTS idx_metrics_device_oid ON metrics(device_id, oid);
 CREATE INDEX IF NOT EXISTS idx_metrics_device_time ON metrics(device_id, timestamp DESC);

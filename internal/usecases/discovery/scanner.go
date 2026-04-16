@@ -137,7 +137,7 @@ func (s *Scanner) ScanNetwork(ctx context.Context, p ScanParams) (*ScanResult, e
 		mu sync.Mutex
 		wg sync.WaitGroup
 	)
-	sem := make(chan struct{}, workers)
+	jobs := make(chan string)
 
 	base := domain.Device{
 		Community:   comm,
@@ -148,20 +148,14 @@ func (s *Scanner) ScanNetwork(ctx context.Context, p ScanParams) (*ScanResult, e
 		PrivPass:    p.PrivPass,
 	}
 
-	for _, ip := range ips {
-		ipStr := ip.String()
-		wg.Add(1)
-		go func(ipStr string) {
-			defer wg.Done()
-			select {
-			case <-ctx.Done():
+	workerFn := func() {
+		defer wg.Done()
+		for ipStr := range jobs {
+			if ctx.Err() != nil {
 				return
-			case sem <- struct{}{}:
 			}
-			defer func() { <-sem }()
-
 			if p.TCPPrefilter && !tcpPing(ipStr) {
-				return
+				continue
 			}
 
 			probe := base
@@ -172,15 +166,15 @@ func (s *Scanner) ScanNetwork(ctx context.Context, p ScanParams) (*ScanResult, e
 					zap.String("ip", ipStr),
 					zap.String("kind", string(snmp.GetErrorKind(err))),
 					zap.Error(err))
-				return
+				continue
 			}
 			if len(result) == 0 {
-				return
+				continue
 			}
 			// gosnmp может вернуть OID-ключ с ведущей точкой. Берем значение устойчиво.
 			desc := strings.TrimSpace(mibresolver.PickSNMPValue(result, sysDescrOID))
 			if desc == "" {
-				return
+				continue
 			}
 
 			host := FoundHost{IP: ipStr, SysDescr: desc, Added: false}
@@ -199,8 +193,23 @@ func (s *Scanner) ScanNetwork(ctx context.Context, p ScanParams) (*ScanResult, e
 			mu.Lock()
 			found = append(found, host)
 			mu.Unlock()
-		}(ipStr)
+		}
 	}
+
+	for i := 0; i < workers; i++ {
+		wg.Add(1)
+		go workerFn()
+	}
+	for _, ip := range ips {
+		select {
+		case <-ctx.Done():
+			close(jobs)
+			wg.Wait()
+			return nil, ctx.Err()
+		case jobs <- ip.String():
+		}
+	}
+	close(jobs)
 
 	wg.Wait()
 
