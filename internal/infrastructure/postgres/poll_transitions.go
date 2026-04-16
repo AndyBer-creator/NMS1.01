@@ -54,6 +54,10 @@ func createOrTouchOpenIncidentTx(ctx context.Context, tx *sql.Tx, deviceID int, 
 		windowSec = 1
 	}
 	devID := sql.NullInt64{Int64: int64(deviceID), Valid: deviceID > 0}
+	lockKey := incidentDedupLockKey(devID, title, sv, src)
+	if _, err := tx.ExecContext(ctx, `SELECT pg_advisory_xact_lock($1)`, lockKey); err != nil {
+		return err
+	}
 
 	var touchedID int64
 	err = tx.QueryRowContext(ctx, `

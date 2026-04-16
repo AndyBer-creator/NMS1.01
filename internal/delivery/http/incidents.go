@@ -106,7 +106,7 @@ func (h *Handlers) ListIncidents(w http.ResponseWriter, r *http.Request) {
 	page, err := h.repo.ListIncidentsPage(r.Context(), limit, deviceID, status, severity, cursorAt, cursorID)
 	if err != nil {
 		h.logger.Error("ListIncidents failed", zap.Error(err))
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		http.Error(w, "invalid incident query", http.StatusBadRequest)
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
@@ -139,7 +139,7 @@ func (h *Handlers) GetIncident(w http.ResponseWriter, r *http.Request) {
 	item, err := h.repo.GetIncidentByID(r.Context(), id)
 	if err != nil {
 		h.logger.Error("GetIncidentByID failed", zap.Error(err))
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
 		return
 	}
 	if item == nil {
@@ -149,7 +149,7 @@ func (h *Handlers) GetIncident(w http.ResponseWriter, r *http.Request) {
 	transitions, err := h.repo.ListIncidentTransitions(r.Context(), id, 100)
 	if err != nil {
 		h.logger.Error("ListIncidentTransitions failed", zap.Error(err))
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
@@ -185,7 +185,7 @@ func (h *Handlers) CreateIncident(w http.ResponseWriter, r *http.Request) {
 	out, err := h.repo.CreateIncident(r.Context(), item)
 	if err != nil {
 		h.logger.Error("CreateIncident failed", zap.Error(err))
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		http.Error(w, "invalid incident payload", http.StatusBadRequest)
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
@@ -215,7 +215,7 @@ func (h *Handlers) TransitionIncident(w http.ResponseWriter, r *http.Request) {
 	before, err := h.repo.GetIncidentByID(r.Context(), id)
 	if err != nil {
 		h.logger.Error("GetIncidentByID before transition failed", zap.Error(err))
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
 		return
 	}
 	if before == nil {
@@ -225,7 +225,7 @@ func (h *Handlers) TransitionIncident(w http.ResponseWriter, r *http.Request) {
 	item, err := h.repo.TransitionIncidentStatus(r.Context(), id, input.Status, changedBy, input.Comment)
 	if err != nil {
 		h.logger.Error("TransitionIncidentStatus failed", zap.Error(err))
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		http.Error(w, "invalid incident status transition", http.StatusBadRequest)
 		return
 	}
 	if item == nil {
@@ -269,7 +269,7 @@ func (h *Handlers) AssignIncident(w http.ResponseWriter, r *http.Request) {
 	item, err := h.repo.AssignIncident(r.Context(), id, input.Assignee, changedBy, input.Comment)
 	if err != nil {
 		h.logger.Error("AssignIncident failed", zap.Error(err))
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		http.Error(w, "invalid incident assignment change", http.StatusBadRequest)
 		return
 	}
 	if item == nil {

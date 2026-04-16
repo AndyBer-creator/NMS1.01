@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -217,6 +218,44 @@ func TestIntegration_PollTransitionsAreAtomic(t *testing.T) {
 	}
 	if resolvedIncidents != 1 {
 		t.Fatalf("expected 1 resolved polling incident, got %d", resolvedIncidents)
+	}
+}
+
+func TestIntegration_ApplyITSMInboundUpdate_IsAtomic(t *testing.T) {
+	repo, _ := openIntegrationRepo(t)
+	ip := uniqueInet(t)
+	_ = repo.DeleteByIP(context.Background(), ip)
+	d := &domain.Device{IP: ip, Name: "itsm-atomic", Community: "public", SNMPVersion: "v2c"}
+	if err := repo.CreateDevice(context.Background(), d); err != nil {
+		t.Fatalf("CreateDevice: %v", err)
+	}
+	t.Cleanup(func() { _ = repo.DeleteByIP(context.Background(), ip) })
+
+	item, err := repo.CreateIncident(context.Background(), &domain.Incident{
+		DeviceID: &d.ID,
+		Title:    "itsm atomic",
+		Severity: "warning",
+		Source:   "manual",
+	})
+	if err != nil {
+		t.Fatalf("CreateIncident: %v", err)
+	}
+
+	out, statusChanged, assigneeChanged, err := repo.ApplyITSMInboundUpdate(context.Background(), item.ID, "acknowledged", "noc-l2", "itest", "sync")
+	if err != nil {
+		t.Fatalf("ApplyITSMInboundUpdate: %v", err)
+	}
+	if out == nil {
+		t.Fatal("expected updated incident")
+	}
+	if !statusChanged || !assigneeChanged {
+		t.Fatalf("expected both status and assignee changed, got statusChanged=%v assigneeChanged=%v", statusChanged, assigneeChanged)
+	}
+	if out.Status != "acknowledged" {
+		t.Fatalf("status: got %q", out.Status)
+	}
+	if out.Assignee == nil || *out.Assignee != "noc-l2" {
+		t.Fatalf("assignee: %+v", out.Assignee)
 	}
 }
 
@@ -471,5 +510,45 @@ func TestIntegration_IncidentDedupAndAutoResolve(t *testing.T) {
 	}
 	if item == nil || item.Status != "resolved" {
 		t.Fatalf("expected incident resolved, got %+v", item)
+	}
+}
+
+func TestIntegration_CreateOrTouchOpenIncident_ConcurrentDedup(t *testing.T) {
+	repo, db := openIntegrationRepo(t)
+	ip := uniqueInet(t)
+	_ = repo.DeleteByIP(context.Background(), ip)
+	d := &domain.Device{IP: ip, Name: "incident-race", Community: "public", SNMPVersion: "v2c"}
+	if err := repo.CreateDevice(context.Background(), d); err != nil {
+		t.Fatalf("CreateDevice: %v", err)
+	}
+	t.Cleanup(func() { _ = repo.DeleteByIP(context.Background(), ip) })
+
+	details, _ := json.Marshal(map[string]any{"status": "failed_timeout"})
+	var wg sync.WaitGroup
+	errCh := make(chan error, 2)
+	for i := 0; i < 2; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			_, _, err := repo.CreateOrTouchOpenIncident(context.Background(), &d.ID, "SNMP device unavailable", "critical", "polling", details, 10*time.Minute)
+			errCh <- err
+		}()
+	}
+	wg.Wait()
+	close(errCh)
+	for err := range errCh {
+		if err != nil {
+			t.Fatalf("CreateOrTouchOpenIncident concurrent: %v", err)
+		}
+	}
+
+	var cnt int
+	if err := db.QueryRowContext(context.Background(),
+		`SELECT COUNT(*) FROM incidents WHERE device_id = $1 AND source = 'polling' AND title = 'SNMP device unavailable' AND status IN ('new','acknowledged','in_progress')`, d.ID,
+	).Scan(&cnt); err != nil {
+		t.Fatalf("count concurrent polling incidents: %v", err)
+	}
+	if cnt != 1 {
+		t.Fatalf("expected 1 open polling incident after concurrent dedup, got %d", cnt)
 	}
 }

@@ -6,6 +6,8 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+
+	"go.uber.org/zap"
 )
 
 func (h *Handlers) ITSMInboundMappingsPage(w http.ResponseWriter, r *http.Request) {
@@ -26,7 +28,8 @@ func (h *Handlers) ListITSMInboundMappings(w http.ResponseWriter, r *http.Reques
 	}
 	items, err := h.repo.ListITSMInboundMappings(r.Context(), provider, enabled)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		h.logger.Error("ListITSMInboundMappings failed", zap.Error(err))
+		http.Error(w, "failed to load ITSM inbound mappings", http.StatusInternalServerError)
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
@@ -41,7 +44,8 @@ func (h *Handlers) CreateITSMInboundMapping(w http.ResponseWriter, r *http.Reque
 	}
 	created, err := h.repo.CreateITSMInboundMapping(r.Context(), &input)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		h.logger.Warn("CreateITSMInboundMapping failed", zap.Error(err))
+		http.Error(w, "invalid ITSM inbound mapping", http.StatusBadRequest)
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
@@ -61,7 +65,8 @@ func (h *Handlers) UpdateITSMInboundMapping(w http.ResponseWriter, r *http.Reque
 	}
 	updated, err := h.repo.UpdateITSMInboundMapping(r.Context(), id, &input)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		h.logger.Warn("UpdateITSMInboundMapping failed", zap.Int64("id", id), zap.Error(err))
+		http.Error(w, "invalid ITSM inbound mapping update", http.StatusBadRequest)
 		return
 	}
 	if updated == nil {
@@ -80,7 +85,8 @@ func (h *Handlers) DeleteITSMInboundMapping(w http.ResponseWriter, r *http.Reque
 	}
 	deleted, err := h.repo.DeleteITSMInboundMapping(r.Context(), id)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		h.logger.Error("DeleteITSMInboundMapping failed", zap.Int64("id", id), zap.Error(err))
+		http.Error(w, "failed to delete ITSM inbound mapping", http.StatusInternalServerError)
 		return
 	}
 	if !deleted {

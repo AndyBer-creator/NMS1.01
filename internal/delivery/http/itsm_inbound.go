@@ -163,53 +163,35 @@ func (h *Handlers) ITSMInboundWebhook(w http.ResponseWriter, r *http.Request) {
 	}
 	comment := strings.TrimSpace(input.Comment)
 
-	current, err := h.repo.GetIncidentByID(r.Context(), input.IncidentID)
+	item, statusChanged, assigneeChanged, err := h.repo.ApplyITSMInboundUpdate(
+		r.Context(),
+		input.IncidentID,
+		resolved.Status,
+		resolved.Assignee,
+		changedBy,
+		comment,
+	)
 	if err != nil {
-		h.logger.Error("itsm inbound: GetIncidentByID failed", zap.Error(err))
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		h.logger.Warn("itsm inbound: apply failed",
+			zap.Int64("incident_id", input.IncidentID),
+			zap.String("status", resolved.Status),
+			zap.String("assignee", resolved.Assignee),
+			zap.Error(err))
+		if strings.Contains(err.Error(), "invalid status transition") {
+			http.Error(w, "invalid incident status transition", http.StatusBadRequest)
+			return
+		}
+		http.Error(w, "invalid incident assignment change", http.StatusBadRequest)
 		return
 	}
-	if current == nil {
+	if item == nil {
 		http.Error(w, "incident not found", http.StatusNotFound)
 		return
 	}
-
-	item := current
-	if resolved.Status != "" && resolved.Status != current.Status {
-		item, err = h.repo.TransitionIncidentStatus(r.Context(), input.IncidentID, resolved.Status, changedBy, comment)
-		if err != nil {
-			h.logger.Warn("itsm inbound: transition failed",
-				zap.Int64("incident_id", input.IncidentID),
-				zap.String("status", resolved.Status),
-				zap.Error(err))
-			http.Error(w, err.Error(), http.StatusBadRequest)
-			return
-		}
-		if item == nil {
-			http.Error(w, "incident not found", http.StatusNotFound)
-			return
-		}
+	if statusChanged {
 		notifyITSMIncidentAsync(h.logger, "incident.status_changed", changedBy, comment, item)
 	}
-	currentAssignee := ""
-	if item.Assignee != nil {
-		currentAssignee = strings.TrimSpace(*item.Assignee)
-	}
-	if strings.TrimSpace(resolved.Assignee) != currentAssignee {
-		updated, err := h.repo.AssignIncident(r.Context(), input.IncidentID, resolved.Assignee, changedBy, comment)
-		if err != nil {
-			h.logger.Warn("itsm inbound: assignment failed",
-				zap.Int64("incident_id", input.IncidentID),
-				zap.String("assignee", resolved.Assignee),
-				zap.Error(err))
-			http.Error(w, err.Error(), http.StatusBadRequest)
-			return
-		}
-		if updated == nil {
-			http.Error(w, "incident not found", http.StatusNotFound)
-			return
-		}
-		item = updated
+	if assigneeChanged {
 		notifyITSMIncidentAsync(h.logger, "incident.assignment_changed", changedBy, comment, item)
 	}
 

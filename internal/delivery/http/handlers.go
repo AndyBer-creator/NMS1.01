@@ -953,7 +953,7 @@ func (h *Handlers) CreateDevice(w http.ResponseWriter, r *http.Request) {
 
 	if err := h.repo.CreateDevice(r.Context(), device); err != nil {
 		h.logger.Error("CreateDevice failed", zap.Error(err))
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		http.Error(w, "device creation failed", http.StatusInternalServerError)
 		return
 	}
 

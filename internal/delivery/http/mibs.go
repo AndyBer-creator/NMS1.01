@@ -278,7 +278,7 @@ func (h *Handlers) MibResolve(w http.ResponseWriter, r *http.Request) {
 	}
 	oid, err := h.resolveOIDInput(body.Symbol)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		http.Error(w, "invalid MIB symbol", http.StatusBadRequest)
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")

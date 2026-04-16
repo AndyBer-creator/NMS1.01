@@ -7,6 +7,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"hash/fnv"
 	"strconv"
 	"strings"
 	"time"
@@ -146,6 +147,16 @@ func trapVendorsFromInput(oid string, trapVars map[string]string) []string {
 	}
 	add("generic")
 	return out
+}
+
+func trapIncidentDedupLockKey(deviceID sql.NullInt64, title string) int64 {
+	h := fnv.New64a()
+	fmt.Fprintf(h, "trap-incident|title=%s|dev_valid=%t|dev_id=%d",
+		strings.TrimSpace(strings.ToLower(title)),
+		deviceID.Valid,
+		deviceID.Int64,
+	)
+	return int64(h.Sum64())
 }
 
 func trapSignalFromOID(oid string) trapSignalKind {
@@ -338,9 +349,17 @@ func (r *TrapsRepo) CreateOrTouchOpenTrapIncident(ctx context.Context, deviceIP,
 		_, err := r.ResolveOpenTrapIncidents(ctx, devID, []string{"Link loss detected"}, "system", "auto-resolved by recovery trap")
 		return err
 	}
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	if _, err := tx.ExecContext(ctx, `SELECT pg_advisory_xact_lock($1)`, trapIncidentDedupLockKey(devID, title)); err != nil {
+		return err
+	}
 
 	var touchedID int64
-	err := r.db.QueryRowContext(ctx, `
+	err = tx.QueryRowContext(ctx, `
 		UPDATE incidents i
 		   SET updated_at = NOW(),
 		       details = $1::jsonb
@@ -362,7 +381,7 @@ func (r *TrapsRepo) CreateOrTouchOpenTrapIncident(ctx context.Context, deviceIP,
 		return err
 	}
 	if err == nil {
-		return nil
+		return tx.Commit()
 	}
 	var assignee sql.NullString
 	if v := strings.TrimSpace(config.EnvOrFile("NMS_INCIDENT_ASSIGNEE_CRITICAL")); v != "" && strings.EqualFold(severity, "critical") {
@@ -372,12 +391,15 @@ func (r *TrapsRepo) CreateOrTouchOpenTrapIncident(ctx context.Context, deviceIP,
 	} else if v := strings.TrimSpace(config.EnvOrFile("NMS_INCIDENT_ASSIGNEE_DEFAULT")); v != "" {
 		assignee = sql.NullString{String: v, Valid: true}
 	}
-	_, err = r.db.ExecContext(ctx, `
+	_, err = tx.ExecContext(ctx, `
 		INSERT INTO incidents (device_id, assignee, title, severity, status, source, details)
 		VALUES ($1, $2, $3, $4, 'new', 'trap', $5::jsonb)`,
 		devID, assignee, title, severity, string(detailsJSON),
 	)
-	return err
+	if err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 func (r *TrapsRepo) ResolveOpenTrapIncidents(ctx context.Context, deviceID sql.NullInt64, titles []string, changedBy, comment string) (int64, error) {

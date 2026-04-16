@@ -6,6 +6,8 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+
+	"go.uber.org/zap"
 )
 
 func (h *Handlers) TrapOIDMappingsPage(w http.ResponseWriter, r *http.Request) {
@@ -30,7 +32,8 @@ func (h *Handlers) ListTrapOIDMappings(w http.ResponseWriter, r *http.Request) {
 	}
 	items, err := h.TrapsRepo.ListOIDMappings(r.Context(), vendor, enabled)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		h.logger.Error("ListOIDMappings failed", zap.Error(err))
+		http.Error(w, "failed to load trap OID mappings", http.StatusInternalServerError)
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
@@ -49,7 +52,8 @@ func (h *Handlers) CreateTrapOIDMapping(w http.ResponseWriter, r *http.Request) 
 	}
 	created, err := h.TrapsRepo.CreateOIDMapping(r.Context(), &input)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		h.logger.Warn("CreateOIDMapping failed", zap.Error(err))
+		http.Error(w, "invalid trap OID mapping", http.StatusBadRequest)
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
@@ -73,7 +77,8 @@ func (h *Handlers) UpdateTrapOIDMapping(w http.ResponseWriter, r *http.Request) 
 	}
 	updated, err := h.TrapsRepo.UpdateOIDMapping(r.Context(), id, &input)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		h.logger.Warn("UpdateOIDMapping failed", zap.Int64("id", id), zap.Error(err))
+		http.Error(w, "invalid trap OID mapping update", http.StatusBadRequest)
 		return
 	}
 	if updated == nil {
@@ -96,7 +101,8 @@ func (h *Handlers) DeleteTrapOIDMapping(w http.ResponseWriter, r *http.Request) 
 	}
 	deleted, err := h.TrapsRepo.DeleteOIDMapping(r.Context(), id)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		h.logger.Error("DeleteOIDMapping failed", zap.Int64("id", id), zap.Error(err))
+		http.Error(w, "failed to delete trap OID mapping", http.StatusInternalServerError)
 		return
 	}
 	if !deleted {

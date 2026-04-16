@@ -7,6 +7,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"hash/fnv"
 	"strings"
 	"time"
 )
@@ -73,6 +74,18 @@ func normalizeIncidentStatus(v string) (string, error) {
 	default:
 		return "", fmt.Errorf("invalid status %q", v)
 	}
+}
+
+func incidentDedupLockKey(deviceID sql.NullInt64, title, severity, source string) int64 {
+	h := fnv.New64a()
+	fmt.Fprintf(h, "incident|src=%s|sev=%s|title=%s|dev_valid=%t|dev_id=%d",
+		strings.TrimSpace(strings.ToLower(source)),
+		strings.TrimSpace(strings.ToLower(severity)),
+		strings.TrimSpace(strings.ToLower(title)),
+		deviceID.Valid,
+		deviceID.Int64,
+	)
+	return int64(h.Sum64())
 }
 
 func defaultIncidentAssignee(source, severity string) *string {
@@ -328,9 +341,17 @@ func (r *Repo) CreateOrTouchOpenIncident(ctx context.Context, deviceID *int, tit
 	if deviceID != nil && *deviceID > 0 {
 		devID = sql.NullInt64{Int64: int64(*deviceID), Valid: true}
 	}
-
+	lockKey := incidentDedupLockKey(devID, title, sv, src)
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, false, err
+	}
+	defer func() { _ = tx.Rollback() }()
+	if _, err := tx.ExecContext(ctx, `SELECT pg_advisory_xact_lock($1)`, lockKey); err != nil {
+		return nil, false, err
+	}
 	var touchedID int64
-	err = r.db.QueryRowContext(ctx, `
+	err = tx.QueryRowContext(ctx, `
 		UPDATE incidents i
 		   SET updated_at = NOW(),
 		       details = $1::jsonb
@@ -350,23 +371,70 @@ func (r *Repo) CreateOrTouchOpenIncident(ctx context.Context, deviceID *int, tit
 		[]byte(details), src, title, sv, devID, float64(windowSec),
 	).Scan(&touchedID)
 	if err == nil {
+		if err := tx.Commit(); err != nil {
+			return nil, false, err
+		}
 		item, gerr := r.GetIncidentByID(ctx, touchedID)
 		return item, false, gerr
 	}
 	if err != sql.ErrNoRows {
 		return nil, false, err
 	}
-	item, err := r.CreateIncident(ctx, &domain.Incident{
-		DeviceID: deviceID,
-		Title:    title,
-		Severity: sv,
-		Source:   src,
-		Details:  details,
-	})
+	var assignee sql.NullString
+	effectiveAssignee := defaultIncidentAssignee(src, sv)
+	if effectiveAssignee != nil && strings.TrimSpace(*effectiveAssignee) != "" {
+		assignee = sql.NullString{String: strings.TrimSpace(*effectiveAssignee), Valid: true}
+	}
+	var out domain.Incident
+	var outDevID sql.NullInt64
+	var outAssignee sql.NullString
+	var ackAt, resolvedAt, closedAt sql.NullTime
+	err = tx.QueryRowContext(
+		ctx,
+		`INSERT INTO incidents (device_id, assignee, title, severity, status, source, details)
+         VALUES ($1, $2, $3, $4, 'new', $5, $6::jsonb)
+         RETURNING id, device_id, assignee, title, severity, status, source, details,
+                   created_at, updated_at, acknowledged_at, resolved_at, closed_at`,
+		devID, assignee, title, sv, src, []byte(details),
+	).Scan(
+		&out.ID,
+		&outDevID,
+		&outAssignee,
+		&out.Title,
+		&out.Severity,
+		&out.Status,
+		&out.Source,
+		&out.Details,
+		&out.CreatedAt,
+		&out.UpdatedAt,
+		&ackAt,
+		&resolvedAt,
+		&closedAt,
+	)
 	if err != nil {
 		return nil, false, err
 	}
-	return item, true, nil
+	if err := tx.Commit(); err != nil {
+		return nil, false, err
+	}
+	if outDevID.Valid {
+		v := int(outDevID.Int64)
+		out.DeviceID = &v
+	}
+	if outAssignee.Valid {
+		a := strings.TrimSpace(outAssignee.String)
+		out.Assignee = &a
+	}
+	if ackAt.Valid {
+		out.AcknowledgedAt = &ackAt.Time
+	}
+	if resolvedAt.Valid {
+		out.ResolvedAt = &resolvedAt.Time
+	}
+	if closedAt.Valid {
+		out.ClosedAt = &closedAt.Time
+	}
+	return &out, true, nil
 }
 
 func (r *Repo) ResolveOpenIncidentsBySource(ctx context.Context, deviceID int, source, changedBy, comment string) (int64, error) {
@@ -553,6 +621,134 @@ func (r *Repo) AssignIncident(ctx context.Context, incidentID int64, assignee, c
 		return nil, err
 	}
 	return r.GetIncidentByID(ctx, incidentID)
+}
+
+func (r *Repo) ApplyITSMInboundUpdate(ctx context.Context, incidentID int64, toStatus, assignee, changedBy, comment string) (*domain.Incident, bool, bool, error) {
+	if incidentID <= 0 {
+		return nil, false, false, fmt.Errorf("incident id is required")
+	}
+	changedBy = strings.TrimSpace(changedBy)
+	if changedBy == "" {
+		changedBy = "system"
+	}
+	comment = strings.TrimSpace(comment)
+	trimmedAssignee := strings.TrimSpace(assignee)
+	statusRequested := strings.TrimSpace(toStatus) != ""
+	if statusRequested {
+		var err error
+		toStatus, err = normalizeIncidentStatus(toStatus)
+		if err != nil {
+			return nil, false, false, err
+		}
+	}
+
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, false, false, err
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	var out domain.Incident
+	var devID sql.NullInt64
+	var currentAssignee sql.NullString
+	var ackAt, resolvedAt, closedAt sql.NullTime
+	err = tx.QueryRowContext(ctx, `
+		SELECT id, device_id, assignee, title, severity, status, source, details,
+		       created_at, updated_at, acknowledged_at, resolved_at, closed_at
+		  FROM incidents
+		 WHERE id = $1
+		 FOR UPDATE`, incidentID,
+	).Scan(
+		&out.ID,
+		&devID,
+		&currentAssignee,
+		&out.Title,
+		&out.Severity,
+		&out.Status,
+		&out.Source,
+		&out.Details,
+		&out.CreatedAt,
+		&out.UpdatedAt,
+		&ackAt,
+		&resolvedAt,
+		&closedAt,
+	)
+	if err == sql.ErrNoRows {
+		return nil, false, false, nil
+	}
+	if err != nil {
+		return nil, false, false, err
+	}
+
+	fromStatus := out.Status
+	currentAssigneeStr := strings.TrimSpace(currentAssignee.String)
+	statusChanged := false
+	assigneeChanged := false
+
+	if statusRequested && toStatus != fromStatus {
+		nextAllowed := allowedIncidentTransitions[fromStatus]
+		if _, ok := nextAllowed[toStatus]; !ok {
+			return nil, false, false, fmt.Errorf("invalid status transition %q -> %q", fromStatus, toStatus)
+		}
+		if _, err := tx.ExecContext(ctx, `
+			UPDATE incidents
+			   SET status = $1,
+			       updated_at = NOW(),
+			       acknowledged_at = CASE WHEN $1 = 'acknowledged' AND acknowledged_at IS NULL THEN NOW() ELSE acknowledged_at END,
+			       resolved_at = CASE WHEN $1 = 'resolved' THEN NOW() ELSE resolved_at END,
+			       closed_at = CASE WHEN $1 = 'closed' THEN NOW() ELSE closed_at END
+			 WHERE id = $2`, toStatus, incidentID); err != nil {
+			return nil, false, false, err
+		}
+		if _, err := tx.ExecContext(ctx, `
+			INSERT INTO incident_transitions (incident_id, from_status, to_status, changed_by, comment)
+			VALUES ($1, $2, $3, $4, $5)`,
+			incidentID, fromStatus, toStatus, changedBy, comment,
+		); err != nil {
+			return nil, false, false, err
+		}
+		out.Status = toStatus
+		statusChanged = true
+	}
+
+	if trimmedAssignee != currentAssigneeStr {
+		var target sql.NullString
+		if trimmedAssignee != "" {
+			target = sql.NullString{String: trimmedAssignee, Valid: true}
+		}
+		if _, err := tx.ExecContext(ctx, `
+			UPDATE incidents
+			   SET assignee = $1,
+			       updated_at = NOW()
+			 WHERE id = $2`, target, incidentID); err != nil {
+			return nil, false, false, err
+		}
+		auditComment := comment
+		if auditComment == "" {
+			if target.Valid {
+				auditComment = "assigned to " + target.String
+			} else {
+				auditComment = "assignee cleared"
+			}
+		}
+		if _, err := tx.ExecContext(ctx, `
+			INSERT INTO incident_transitions (incident_id, from_status, to_status, changed_by, comment)
+			VALUES ($1, $2, $2, $3, $4)`,
+			incidentID, out.Status, changedBy, auditComment,
+		); err != nil {
+			return nil, false, false, err
+		}
+		assigneeChanged = true
+	}
+
+	if err := tx.Commit(); err != nil {
+		return nil, false, false, err
+	}
+	item, err := r.GetIncidentByID(ctx, incidentID)
+	if err != nil {
+		return nil, false, false, err
+	}
+	return item, statusChanged, assigneeChanged, nil
 }
 
 func (r *Repo) EscalateUnackedIncidents(ctx context.Context, olderThan time.Duration, targetAssignee, changedBy, comment string) (int64, error) {

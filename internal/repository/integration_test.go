@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -257,6 +258,52 @@ func TestIntegration_TrapCorrelation_LinkLossAndRecovery(t *testing.T) {
 	}
 	if status != "resolved" {
 		t.Fatalf("expected resolved status after recovery trap, got %q", status)
+	}
+}
+
+func TestIntegration_TrapCorrelation_ConcurrentDedup(t *testing.T) {
+	db, repo := openTrapsTestDB(t)
+	ctx := context.Background()
+	ip := uniqueTrapIP(t)
+	_, err := db.ExecContext(ctx,
+		`INSERT INTO devices (ip, name, community, snmp_version) VALUES ($1::inet, $2, 'public', 'v2c')`,
+		ip, "integration-trap-race",
+	)
+	if err != nil {
+		t.Fatalf("insert device: %v", err)
+	}
+	t.Cleanup(func() {
+		_, _ = db.ExecContext(context.Background(), `DELETE FROM incident_transitions WHERE incident_id IN (SELECT id FROM incidents WHERE source='trap')`)
+		_, _ = db.ExecContext(context.Background(), `DELETE FROM incidents WHERE source='trap'`)
+		_, _ = db.ExecContext(context.Background(), `DELETE FROM devices WHERE ip = $1::inet`, ip)
+	})
+
+	var wg sync.WaitGroup
+	errCh := make(chan error, 2)
+	for i := 0; i < 2; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			errCh <- repo.CreateOrTouchOpenTrapIncident(ctx, ip, "IF-MIB::linkDown", map[string]string{"ifName": "Gi0/1"}, 10*time.Minute)
+		}()
+	}
+	wg.Wait()
+	close(errCh)
+	for err := range errCh {
+		if err != nil {
+			t.Fatalf("CreateOrTouchOpenTrapIncident concurrent: %v", err)
+		}
+	}
+
+	var cnt int
+	err = db.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM incidents WHERE source='trap' AND device_id = (SELECT id FROM devices WHERE ip = $1::inet) AND title='Link loss detected' AND status IN ('new','acknowledged','in_progress')`, ip,
+	).Scan(&cnt)
+	if err != nil {
+		t.Fatalf("count concurrent trap incidents: %v", err)
+	}
+	if cnt != 1 {
+		t.Fatalf("expected 1 open trap incident after concurrent dedup, got %d", cnt)
 	}
 }
 
