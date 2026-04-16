@@ -22,11 +22,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	logger, err := applog.NewZapFile("nms-worker")
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "nms-worker: logger: %v\n", err)
-		os.Exit(1)
-	}
+	logger := applog.MustNewZapFile("nms-worker")
 	defer func() { _ = logger.Sync() }()
 
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)

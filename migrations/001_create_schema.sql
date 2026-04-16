@@ -39,11 +39,6 @@ CREATE TABLE IF NOT EXISTS traps (
     is_critical BOOLEAN DEFAULT FALSE
 );
 
--- ✅ Тестовый SEWM2G28
-INSERT INTO devices (ip, name, community) VALUES 
-    ('192.168.0.100', 'SEWM2G28', 'public') 
-    ON CONFLICT (ip) DO NOTHING;
-
 -- ✅ ПРОСТЫЕ индексы (работают в транзакции Goose!)
 CREATE INDEX IF NOT EXISTS idx_devices_ip ON devices(ip);
 CREATE INDEX IF NOT EXISTS idx_devices_status ON devices(status);

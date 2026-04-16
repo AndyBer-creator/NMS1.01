@@ -28,15 +28,15 @@ import (
 )
 
 const (
-	telnetIAC  = byte(255)
-	telnetDONT = byte(254)
-	telnetDO   = byte(253)
-	telnetWONT = byte(252)
-	telnetWILL = byte(251)
-	telnetSB   = byte(250)
-	telnetSE   = byte(240)
-	telnetOptSGA  = byte(3)  // Suppress Go Ahead
-	telnetOptECHO = byte(1)  // Echo
+	telnetIAC                  = byte(255)
+	telnetDONT                 = byte(254)
+	telnetDO                   = byte(253)
+	telnetWONT                 = byte(252)
+	telnetWILL                 = byte(251)
+	telnetSB                   = byte(250)
+	telnetSE                   = byte(240)
+	telnetOptSGA               = byte(3) // Suppress Go Ahead
+	telnetOptECHO              = byte(1) // Echo
 	defaultTerminalWSReadLimit = int64(64 * 1024)
 	maxTerminalWSReadLimit     = int64(1024 * 1024)
 	maxTerminalAuthFieldBytes  = 256
@@ -295,7 +295,7 @@ func (h *Handlers) TerminalWS(w http.ResponseWriter, r *http.Request) {
 	kind := terminalKindFromQuery(r)
 	h.logger.Info("terminal ws kind resolved", zap.String("kind", kind), zap.Int("device_id", id))
 
-	dev, err := h.repo.GetDeviceByID(id)
+	dev, err := h.repo.GetDeviceByID(r.Context(), id)
 	if err != nil || dev == nil {
 		http.Error(w, "device not found", http.StatusNotFound)
 		return
@@ -759,7 +759,6 @@ func wsWriteText(conn *websocket.Conn, mu *sync.Mutex, payload []byte) error {
 	return conn.WriteMessage(websocket.TextMessage, payload)
 }
 
-
 func wsWriteControl(conn *websocket.Conn, mu *sync.Mutex, messageType int, data []byte, timeout time.Duration) error {
 	if mu != nil {
 		mu.Lock()
@@ -796,7 +795,7 @@ func (h *Handlers) TerminalPage(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "bad device id", http.StatusBadRequest)
 		return
 	}
-	dev, err := h.repo.GetDeviceByID(id)
+	dev, err := h.repo.GetDeviceByID(r.Context(), id)
 	if err != nil || dev == nil {
 		http.Error(w, "device not found", http.StatusNotFound)
 		return
@@ -834,4 +833,3 @@ func (h *Handlers) TerminalPage(w http.ResponseWriter, r *http.Request) {
 		h.logger.Error("terminal page", zap.Error(err))
 	}
 }
-

@@ -145,7 +145,12 @@
         return p ? decodeURIComponent(p.slice('nms_csrf='.length)) : '';
     }
     function esc(v) {
-        return String(v || '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
+        return String(v || '')
+            .replaceAll('&', '&amp;')
+            .replaceAll('<', '&lt;')
+            .replaceAll('>', '&gt;')
+            .replaceAll('"', '&quot;')
+            .replaceAll("'", '&#39;');
     }
     function row(m) {
         return '<tr class="border-b border-gray-700/70 hover:bg-gray-700/30">' +
@@ -303,6 +308,7 @@
     }
     async function deleteMapping(id) {
         if (submitInFlight) return;
+        if (!window.confirm('Удалить ITSM mapping #' + id + '?')) return;
         submitInFlight = true;
         setSubmitControlsDisabled(true);
         try {

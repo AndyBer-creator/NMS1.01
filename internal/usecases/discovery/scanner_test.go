@@ -7,6 +7,8 @@ import (
 	"strings"
 	"testing"
 
+	"NMS1/internal/domain"
+
 	"go.uber.org/zap"
 )
 
@@ -22,8 +24,8 @@ func TestNormalizeSNMPVersion(t *testing.T) {
 		{"weird", "v2c"},
 	}
 	for _, tc := range cases {
-		if got := normalizeSNMPVersion(tc.in); got != tc.want {
-			t.Fatalf("normalizeSNMPVersion(%q)=%q want %q", tc.in, got, tc.want)
+		if got := domain.NormalizeSNMPVersionOrDefault(tc.in); got != tc.want {
+			t.Fatalf("NormalizeSNMPVersionOrDefault(%q)=%q want %q", tc.in, got, tc.want)
 		}
 	}
 }

@@ -43,7 +43,7 @@ func (h *Handlers) CreateTrapOIDMapping(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	var input domain.TrapOIDMapping
-	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+	if err := decodeJSONBody(w, r, &input); err != nil {
 		http.Error(w, "invalid json body", http.StatusBadRequest)
 		return
 	}
@@ -67,7 +67,7 @@ func (h *Handlers) UpdateTrapOIDMapping(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	var input domain.TrapOIDMapping
-	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+	if err := decodeJSONBody(w, r, &input); err != nil {
 		http.Error(w, "invalid json body", http.StatusBadRequest)
 		return
 	}

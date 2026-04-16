@@ -30,7 +30,13 @@ func RotateDeviceSNMPSecrets(ctx context.Context, db *sql.DB, oldKey, newKey str
 		return stats, fmt.Errorf("rotation requires NMS_DB_ENCRYPTION_KEY")
 	}
 
-	rows, err := db.QueryContext(ctx, `
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		return stats, err
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	rows, err := tx.QueryContext(ctx, `
 		SELECT id,
 		       COALESCE(community, ''),
 		       community_enc,
@@ -117,7 +123,7 @@ func RotateDeviceSNMPSecrets(ctx context.Context, db *sql.DB, oldKey, newKey str
 	}
 
 	for _, u := range updates {
-		_, err := db.ExecContext(ctx, `
+		_, err := tx.ExecContext(ctx, `
 			UPDATE devices
 			SET community = $1,
 			    community_enc = $2,
@@ -139,6 +145,9 @@ func RotateDeviceSNMPSecrets(ctx context.Context, db *sql.DB, oldKey, newKey str
 		}
 	}
 
+	if err := tx.Commit(); err != nil {
+		return stats, err
+	}
 	return stats, nil
 }
 

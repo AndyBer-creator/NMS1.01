@@ -22,7 +22,7 @@ func TestLoad_SetsDefaultsFromEnv(t *testing.T) {
 	if cfg.HTTP.Addr != ":8080" {
 		t.Fatalf("HTTP.Addr: got %q", cfg.HTTP.Addr)
 	}
-	if cfg.SNMP.Port != 161 || cfg.SNMP.Timeout != 10 || cfg.SNMP.Retries != 5 {
+	if cfg.SNMP.Port != 161 || cfg.SNMP.Timeout != 3 || cfg.SNMP.Retries != 1 {
 		t.Fatalf("SNMP defaults: %+v", cfg.SNMP)
 	}
 	wantUpload := filepath.Join("mibs", "uploads")

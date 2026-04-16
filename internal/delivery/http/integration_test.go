@@ -2,6 +2,7 @@ package http
 
 import (
 	"bytes"
+	"context"
 	"crypto/rand"
 	"database/sql"
 	"encoding/json"
@@ -650,7 +651,7 @@ func TestIntegration_HTTP_CreateAndDeleteDeviceWithAuth(t *testing.T) {
 	client, jar, base := adminIntegrationCSRF(t, srv, adminUser, adminPass)
 
 	ip := testDeviceIP(t)
-	t.Cleanup(func() { _ = repo.DeleteByIP(ip) })
+	t.Cleanup(func() { _ = repo.DeleteByIP(context.Background(), ip) })
 
 	token := csrfFromJar(t, jar, base)
 	payload := fmt.Sprintf(`{"ip":%q,"name":"http-itest","community":"public","snmp_version":"v2c"}`, ip)
@@ -823,9 +824,9 @@ func TestIntegration_HTTP_AdminPostWorkerPollIntervalRoundTrip(t *testing.T) {
 		AdminUser: adminUser, AdminPass: adminPass,
 	})
 
-	prev := repo.GetWorkerPollIntervalSeconds()
+	prev := repo.GetWorkerPollIntervalSeconds(context.Background())
 	t.Cleanup(func() {
-		if err := repo.SetWorkerPollIntervalSeconds(prev); err != nil {
+		if err := repo.SetWorkerPollIntervalSeconds(context.Background(), prev); err != nil {
 			t.Logf("restore worker poll interval: %v", err)
 		}
 	})
@@ -850,8 +851,78 @@ func TestIntegration_HTTP_AdminPostWorkerPollIntervalRoundTrip(t *testing.T) {
 	if res1.StatusCode != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", res1.StatusCode, body)
 	}
-	if got := repo.GetWorkerPollIntervalSeconds(); got != wantSec {
+	if got := repo.GetWorkerPollIntervalSeconds(context.Background()); got != wantSec {
 		t.Fatalf("repo interval: got %d want %d", got, wantSec)
+	}
+}
+
+func TestIntegration_HTTP_ViewerPostSNMPRuntimeForbidden(t *testing.T) {
+	const (
+		adminUser, adminPass   = "itest-snmp-rt-admin", "itest-snmp-rt-admin-secret"
+		viewerUser, viewerPass = "itest-snmp-rt-viewer", "itest-snmp-rt-viewer-secret"
+	)
+	srv, _ := newIntegrationServer(t, integrationAuthOpts{
+		AdminUser: adminUser, AdminPass: adminPass,
+		ViewerUser: viewerUser, ViewerPass: viewerPass,
+	})
+
+	client, token := viewerIntegrationCSRF(t, srv, viewerUser, viewerPass)
+	post, err := http.NewRequest(http.MethodPost, srv.URL+"/settings/snmp-runtime",
+		strings.NewReader("timeout_sec=4&retries=1"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	post.SetBasicAuth(viewerUser, viewerPass)
+	post.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	post.Header.Set("X-CSRF-Token", token)
+	res, err := client.Do(post)
+	if err != nil {
+		t.Fatalf("POST /settings/snmp-runtime: %v", err)
+	}
+	defer func() { _ = res.Body.Close() }()
+	body, _ := io.ReadAll(res.Body)
+	if res.StatusCode != http.StatusForbidden {
+		t.Fatalf("expected 403 Forbidden for viewer on snmp runtime settings, got %d: %s", res.StatusCode, body)
+	}
+}
+
+func TestIntegration_HTTP_AdminPostSNMPRuntimeRoundTrip(t *testing.T) {
+	const adminUser, adminPass = "itest-snmp-rt-ok-admin", "itest-snmp-rt-ok-secret"
+	srv, repo := newIntegrationServer(t, integrationAuthOpts{
+		AdminUser: adminUser, AdminPass: adminPass,
+	})
+
+	prevTimeout := repo.GetSNMPTimeoutSeconds(context.Background(), postgres.DefaultSNMPTimeoutSeconds)
+	prevRetries := repo.GetSNMPRetries(context.Background(), postgres.DefaultSNMPRetries)
+	t.Cleanup(func() {
+		_ = repo.SetSNMPTimeoutSeconds(context.Background(), prevTimeout)
+		_ = repo.SetSNMPRetries(context.Background(), prevRetries)
+	})
+
+	client, jar, base := adminIntegrationCSRF(t, srv, adminUser, adminPass)
+	token := csrfFromJar(t, jar, base)
+	post, err := http.NewRequest(http.MethodPost, srv.URL+"/settings/snmp-runtime",
+		strings.NewReader("timeout_sec=4&retries=2"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	post.SetBasicAuth(adminUser, adminPass)
+	post.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	post.Header.Set("X-CSRF-Token", token)
+	res, err := client.Do(post)
+	if err != nil {
+		t.Fatalf("POST /settings/snmp-runtime: %v", err)
+	}
+	defer func() { _ = res.Body.Close() }()
+	body, _ := io.ReadAll(res.Body)
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", res.StatusCode, body)
+	}
+	if got := repo.GetSNMPTimeoutSeconds(context.Background(), postgres.DefaultSNMPTimeoutSeconds); got != 4 {
+		t.Fatalf("repo timeout: got %d want 4", got)
+	}
+	if got := repo.GetSNMPRetries(context.Background(), postgres.DefaultSNMPRetries); got != 2 {
+		t.Fatalf("repo retries: got %d want 2", got)
 	}
 }
 
@@ -891,9 +962,9 @@ func TestIntegration_HTTP_AdminPostAlertEmailRoundTrip(t *testing.T) {
 		AdminUser: adminUser, AdminPass: adminPass,
 	})
 
-	prev := repo.GetAlertEmailTo()
+	prev := repo.GetAlertEmailTo(context.Background())
 	t.Cleanup(func() {
-		if err := repo.SetAlertEmailTo(prev); err != nil {
+		if err := repo.SetAlertEmailTo(context.Background(), prev); err != nil {
 			t.Logf("restore alert email: %v", err)
 		}
 	})
@@ -919,7 +990,7 @@ func TestIntegration_HTTP_AdminPostAlertEmailRoundTrip(t *testing.T) {
 	if res1.StatusCode != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", res1.StatusCode, body)
 	}
-	if got := repo.GetAlertEmailTo(); got != wantEmail {
+	if got := repo.GetAlertEmailTo(context.Background()); got != wantEmail {
 		t.Fatalf("repo alert email: got %q want %q", got, wantEmail)
 	}
 }
@@ -1103,9 +1174,9 @@ func TestIntegration_HTTP_AdminPostAlertEmailInvalidReturnsPanelWithError(t *tes
 		AdminUser: adminUser, AdminPass: adminPass,
 	})
 
-	prev := repo.GetAlertEmailTo()
+	prev := repo.GetAlertEmailTo(context.Background())
 	t.Cleanup(func() {
-		if err := repo.SetAlertEmailTo(prev); err != nil {
+		if err := repo.SetAlertEmailTo(context.Background(), prev); err != nil {
 			t.Logf("restore alert email: %v", err)
 		}
 	})
@@ -1132,7 +1203,7 @@ func TestIntegration_HTTP_AdminPostAlertEmailInvalidReturnsPanelWithError(t *tes
 	if !strings.Contains(string(body), "Неверный") {
 		t.Fatalf("expected validation message in HTML body, got %q", string(body))
 	}
-	if got := repo.GetAlertEmailTo(); got != prev {
+	if got := repo.GetAlertEmailTo(context.Background()); got != prev {
 		t.Fatalf("repo alert email should be unchanged on validation error, got %q want %q", got, prev)
 	}
 }

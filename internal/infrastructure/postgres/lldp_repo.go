@@ -3,46 +3,45 @@ package postgres
 import (
 	"context"
 	"database/sql"
-	"fmt"
 )
 
 // LldpLink — сырые данные ребра (сопоставление/лейблы делаем в endpoint).
 type LldpLink struct {
-	LocalDeviceIP   string
-	LocalPortNum    int
+	LocalDeviceIP  string
+	LocalPortNum   int
 	LocalPortDesc  string
-	RemoteDeviceIP  *string
-	RemoteSysName   string
-	RemoteSysDesc   string
-	RemotePortID    string
-	RemotePortDesc  string
+	RemoteDeviceIP *string
+	RemoteSysName  string
+	RemoteSysDesc  string
+	RemotePortID   string
+	RemotePortDesc string
 }
 
 type LldpLinkView struct {
-	LocalIP         string
-	LocalName       string
-	LocalPortNum    int
-	LocalPortDesc   string
+	LocalIP       string
+	LocalName     string
+	LocalPortNum  int
+	LocalPortDesc string
 
-	RemoteIP        *string
-	RemoteName      string
-	RemoteSysName   string
-	RemoteSysDesc   string
-	RemotePortID    string
-	RemotePortDesc  string
+	RemoteIP       *string
+	RemoteName     string
+	RemoteSysName  string
+	RemoteSysDesc  string
+	RemotePortID   string
+	RemotePortDesc string
 }
 
-func (r *Repo) CreateLldpScan() (int64, error) {
+func (r *Repo) CreateLldpScan(ctx context.Context) (int64, error) {
 	var id int64
-	err := r.db.QueryRowContext(context.Background(),
+	err := r.db.QueryRowContext(ctx,
 		`INSERT INTO lldp_topology_scans DEFAULT VALUES RETURNING id`).Scan(&id)
 	return id, err
 }
 
 // InsertLldpLink возвращает число реально вставленных строк (0 если конфликт по UNIQUE).
-func (r *Repo) InsertLldpLink(scanID int64, link LldpLink) (int64, error) {
+func (r *Repo) InsertLldpLink(ctx context.Context, scanID int64, link LldpLink) (int64, error) {
 	// remote_device_ip может быть NULL — для этого используем *string.
-	res, err := r.db.ExecContext(context.Background(),
+	res, err := r.db.ExecContext(ctx,
 		`INSERT INTO lldp_links
 			(scan_id, local_device_ip, local_port_num, local_port_desc,
 			 remote_device_ip, remote_sys_name, remote_sys_desc,
@@ -69,9 +68,9 @@ func (r *Repo) InsertLldpLink(scanID int64, link LldpLink) (int64, error) {
 	return affected, nil
 }
 
-func (r *Repo) GetLatestLldpLinks() ([]LldpLinkView, error) {
+func (r *Repo) GetLatestLldpLinks(ctx context.Context) ([]LldpLinkView, error) {
 	var scanID int64
-	err := r.db.QueryRowContext(context.Background(),
+	err := r.db.QueryRowContext(ctx,
 		`SELECT id FROM lldp_topology_scans ORDER BY id DESC LIMIT 1`).Scan(&scanID)
 	if err == sql.ErrNoRows {
 		return nil, nil
@@ -80,7 +79,7 @@ func (r *Repo) GetLatestLldpLinks() ([]LldpLinkView, error) {
 		return nil, err
 	}
 
-	rows, err := r.db.QueryContext(context.Background(), fmt.Sprintf(`
+	rows, err := r.db.QueryContext(ctx, `
 		SELECT
 			l.local_device_ip::text AS local_ip,
 			COALESCE(ld.name, '') AS local_name,
@@ -95,8 +94,8 @@ func (r *Repo) GetLatestLldpLinks() ([]LldpLinkView, error) {
 		FROM lldp_links l
 		LEFT JOIN devices ld ON ld.ip = l.local_device_ip
 		LEFT JOIN devices rd ON rd.ip = l.remote_device_ip
-		WHERE l.scan_id = %d
-	`, scanID))
+		WHERE l.scan_id = $1
+	`, scanID)
 	if err != nil {
 		return nil, err
 	}
@@ -128,13 +127,12 @@ func (r *Repo) GetLatestLldpLinks() ([]LldpLinkView, error) {
 	return out, rows.Err()
 }
 
-func (r *Repo) GetLatestLldpScanID() (int64, error) {
+func (r *Repo) GetLatestLldpScanID(ctx context.Context) (int64, error) {
 	var scanID int64
-	err := r.db.QueryRowContext(context.Background(),
+	err := r.db.QueryRowContext(ctx,
 		`SELECT id FROM lldp_topology_scans ORDER BY id DESC LIMIT 1`).Scan(&scanID)
 	if err == sql.ErrNoRows {
 		return 0, nil
 	}
 	return scanID, err
 }
-

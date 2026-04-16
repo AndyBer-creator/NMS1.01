@@ -26,9 +26,10 @@ func (h *Handlers) LoginPage(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	_ = h.loginTmpl.ExecuteTemplate(w, "login.html", map[string]any{
-		"Error": "",
-		"Next":  safeNext(r.URL.Query().Get("next")),
-		"CSPNonce": cspNonceFromContext(r),
+		"Error":     "",
+		"Next":      safeNext(r.URL.Query().Get("next")),
+		"CSRFToken": csrfTokenFromContext(r),
+		"CSPNonce":  cspNonceFromContext(r),
 	})
 }
 
@@ -61,9 +62,10 @@ func (h *Handlers) LoginPost(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		w.WriteHeader(http.StatusTooManyRequests)
 		_ = h.loginTmpl.ExecuteTemplate(w, "login.html", map[string]any{
-			"Error": msg,
-			"Next":  next,
-			"CSPNonce": cspNonceFromContext(r),
+			"Error":     msg,
+			"Next":      next,
+			"CSRFToken": csrfTokenFromContext(r),
+			"CSPNonce":  cspNonceFromContext(r),
 		})
 		h.logger.Warn("login throttled", zap.String("ip", ip), zap.String("user", user), zap.Duration("retry_after", retryAfter))
 		return
@@ -80,9 +82,10 @@ func (h *Handlers) LoginPost(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		w.WriteHeader(http.StatusUnauthorized)
 		_ = h.loginTmpl.ExecuteTemplate(w, "login.html", map[string]any{
-			"Error": "Неверный логин или пароль.",
-			"Next":  next,
-			"CSPNonce": cspNonceFromContext(r),
+			"Error":     "Неверный логин или пароль.",
+			"Next":      next,
+			"CSRFToken": csrfTokenFromContext(r),
+			"CSPNonce":  cspNonceFromContext(r),
 		})
 		h.logger.Warn("login failed", zap.String("ip", ip), zap.String("user", user))
 		return

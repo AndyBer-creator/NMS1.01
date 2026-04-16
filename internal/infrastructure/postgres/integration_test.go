@@ -1,6 +1,7 @@
 package postgres
 
 import (
+	"context"
 	"crypto/rand"
 	"database/sql"
 	"encoding/json"
@@ -57,23 +58,23 @@ func openIntegrationRepo(t *testing.T) (*Repo, *sql.DB) {
 func TestIntegration_AvailabilityEvents(t *testing.T) {
 	repo, _ := openIntegrationRepo(t)
 	ip := uniqueInet(t)
-	_ = repo.DeleteByIP(ip)
+	_ = repo.DeleteByIP(context.Background(), ip)
 
 	d := &domain.Device{IP: ip, Name: "avail", Community: "public", SNMPVersion: "v2c"}
-	if err := repo.CreateDevice(d); err != nil {
+	if err := repo.CreateDevice(context.Background(), d); err != nil {
 		t.Fatalf("CreateDevice: %v", err)
 	}
-	t.Cleanup(func() { _ = repo.DeleteByIP(ip) })
+	t.Cleanup(func() { _ = repo.DeleteByIP(context.Background(), ip) })
 
-	if err := repo.InsertAvailabilityEvent(d.ID, "unavailable", "poll failed"); err != nil {
+	if err := repo.InsertAvailabilityEvent(context.Background(), d.ID, "unavailable", "poll failed"); err != nil {
 		t.Fatalf("InsertAvailabilityEvent: %v", err)
 	}
-	if err := repo.InsertAvailabilityEvent(d.ID, "bogus", "x"); err != nil {
+	if err := repo.InsertAvailabilityEvent(context.Background(), d.ID, "bogus", "x"); err != nil {
 		t.Fatalf("invalid kind should return nil err: %v", err)
 	}
 
 	devID := d.ID
-	events, err := repo.ListAvailabilityEvents(50, &devID)
+	events, err := repo.ListAvailabilityEvents(context.Background(), 50, &devID)
 	if err != nil {
 		t.Fatalf("ListAvailabilityEvents: %v", err)
 	}
@@ -84,40 +85,75 @@ func TestIntegration_AvailabilityEvents(t *testing.T) {
 
 func TestIntegration_WorkerPollSettingsRoundTrip(t *testing.T) {
 	repo, _ := openIntegrationRepo(t)
-	prev := repo.GetWorkerPollIntervalSeconds()
-	t.Cleanup(func() { _ = repo.SetWorkerPollIntervalSeconds(prev) })
+	prev := repo.GetWorkerPollIntervalSeconds(context.Background())
+	t.Cleanup(func() { _ = repo.SetWorkerPollIntervalSeconds(context.Background(), prev) })
 
-	if err := repo.SetWorkerPollIntervalSeconds(333); err != nil {
+	if err := repo.SetWorkerPollIntervalSeconds(context.Background(), 333); err != nil {
 		t.Fatalf("SetWorkerPollIntervalSeconds: %v", err)
 	}
-	if got := repo.GetWorkerPollIntervalSeconds(); got != 333 {
+	if got := repo.GetWorkerPollIntervalSeconds(context.Background()); got != 333 {
 		t.Fatalf("got %d want 333", got)
 	}
 	// clamp low
-	if err := repo.SetWorkerPollIntervalSeconds(3); err != nil {
+	if err := repo.SetWorkerPollIntervalSeconds(context.Background(), 3); err != nil {
 		t.Fatal(err)
 	}
-	if got := repo.GetWorkerPollIntervalSeconds(); got != MinWorkerPollIntervalSeconds {
+	if got := repo.GetWorkerPollIntervalSeconds(context.Background()); got != MinWorkerPollIntervalSeconds {
 		t.Fatalf("clamp low: got %d", got)
 	}
 }
 
 func TestIntegration_AlertEmailSetting(t *testing.T) {
 	repo, _ := openIntegrationRepo(t)
-	prev := repo.GetAlertEmailTo()
-	t.Cleanup(func() { _ = repo.SetAlertEmailTo(prev) })
+	prev := repo.GetAlertEmailTo(context.Background())
+	t.Cleanup(func() { _ = repo.SetAlertEmailTo(context.Background(), prev) })
 
-	if err := repo.SetAlertEmailTo("  itest@example.com  "); err != nil {
+	if err := repo.SetAlertEmailTo(context.Background(), "  itest@example.com  "); err != nil {
 		t.Fatalf("SetAlertEmailTo: %v", err)
 	}
-	if got := repo.GetAlertEmailTo(); got != "itest@example.com" {
+	if got := repo.GetAlertEmailTo(context.Background()); got != "itest@example.com" {
 		t.Fatalf("got %q", got)
+	}
+}
+
+func TestIntegration_SNMPRuntimeSettingsRoundTrip(t *testing.T) {
+	repo, _ := openIntegrationRepo(t)
+	prevTimeout := repo.GetSNMPTimeoutSeconds(context.Background(), DefaultSNMPTimeoutSeconds)
+	prevRetries := repo.GetSNMPRetries(context.Background(), DefaultSNMPRetries)
+	t.Cleanup(func() {
+		_ = repo.SetSNMPTimeoutSeconds(context.Background(), prevTimeout)
+		_ = repo.SetSNMPRetries(context.Background(), prevRetries)
+	})
+
+	if err := repo.SetSNMPTimeoutSeconds(context.Background(), 7); err != nil {
+		t.Fatalf("SetSNMPTimeoutSeconds: %v", err)
+	}
+	if err := repo.SetSNMPRetries(context.Background(), 2); err != nil {
+		t.Fatalf("SetSNMPRetries: %v", err)
+	}
+	if got := repo.GetSNMPTimeoutSeconds(context.Background(), DefaultSNMPTimeoutSeconds); got != 7 {
+		t.Fatalf("timeout: got %d want 7", got)
+	}
+	if got := repo.GetSNMPRetries(context.Background(), DefaultSNMPRetries); got != 2 {
+		t.Fatalf("retries: got %d want 2", got)
+	}
+	if err := repo.SetSNMPTimeoutSeconds(context.Background(), 0); err != nil {
+		t.Fatal(err)
+	}
+	if err := repo.SetSNMPRetries(context.Background(), -1); err != nil {
+		t.Fatal(err)
+	}
+	if got := repo.GetSNMPTimeoutSeconds(context.Background(), DefaultSNMPTimeoutSeconds); got != MinSNMPTimeoutSeconds {
+		t.Fatalf("timeout clamp low: got %d", got)
+	}
+	if got := repo.GetSNMPRetries(context.Background(), DefaultSNMPRetries); got != MinSNMPRetries {
+		t.Fatalf("retries clamp low: got %d", got)
 	}
 }
 
 func TestIntegration_LldpScanAndLink(t *testing.T) {
 	repo, _ := openIntegrationRepo(t)
-	scanID, err := repo.CreateLldpScan()
+	scanID, err := repo.CreateLldpScan(context.Background())
 	if err != nil || scanID <= 0 {
 		t.Fatalf("CreateLldpScan: id=%d err=%v", scanID, err)
 	}
@@ -132,7 +168,7 @@ func TestIntegration_LldpScanAndLink(t *testing.T) {
 		RemotePortID:   "1/1",
 		RemotePortDesc: "uplink",
 	}
-	n, err := repo.InsertLldpLink(scanID, link)
+	n, err := repo.InsertLldpLink(context.Background(), scanID, link)
 	if err != nil {
 		t.Fatalf("InsertLldpLink: %v", err)
 	}
@@ -144,14 +180,14 @@ func TestIntegration_LldpScanAndLink(t *testing.T) {
 func TestIntegration_IncidentsLifecycle(t *testing.T) {
 	repo, _ := openIntegrationRepo(t)
 	ip := uniqueInet(t)
-	_ = repo.DeleteByIP(ip)
+	_ = repo.DeleteByIP(context.Background(), ip)
 	d := &domain.Device{IP: ip, Name: "incident-dev", Community: "public", SNMPVersion: "v2c"}
-	if err := repo.CreateDevice(d); err != nil {
+	if err := repo.CreateDevice(context.Background(), d); err != nil {
 		t.Fatalf("CreateDevice: %v", err)
 	}
-	t.Cleanup(func() { _ = repo.DeleteByIP(ip) })
+	t.Cleanup(func() { _ = repo.DeleteByIP(context.Background(), ip) })
 
-	item, err := repo.CreateIncident(&domain.Incident{
+	item, err := repo.CreateIncident(context.Background(), &domain.Incident{
 		DeviceID: &d.ID,
 		Title:    "port down",
 		Severity: "critical",
@@ -164,19 +200,19 @@ func TestIntegration_IncidentsLifecycle(t *testing.T) {
 		t.Fatalf("unexpected incident: %+v", item)
 	}
 
-	item, err = repo.TransitionIncidentStatus(item.ID, "acknowledged", "itest", "ack")
+	item, err = repo.TransitionIncidentStatus(context.Background(), item.ID, "acknowledged", "itest", "ack")
 	if err != nil {
 		t.Fatalf("Transition to acknowledged: %v", err)
 	}
-	item, err = repo.TransitionIncidentStatus(item.ID, "in_progress", "itest", "work")
+	item, err = repo.TransitionIncidentStatus(context.Background(), item.ID, "in_progress", "itest", "work")
 	if err != nil {
 		t.Fatalf("Transition to in_progress: %v", err)
 	}
-	item, err = repo.TransitionIncidentStatus(item.ID, "resolved", "itest", "fixed")
+	item, err = repo.TransitionIncidentStatus(context.Background(), item.ID, "resolved", "itest", "fixed")
 	if err != nil {
 		t.Fatalf("Transition to resolved: %v", err)
 	}
-	item, err = repo.TransitionIncidentStatus(item.ID, "closed", "itest", "done")
+	item, err = repo.TransitionIncidentStatus(context.Background(), item.ID, "closed", "itest", "done")
 	if err != nil {
 		t.Fatalf("Transition to closed: %v", err)
 	}
@@ -184,7 +220,7 @@ func TestIntegration_IncidentsLifecycle(t *testing.T) {
 		t.Fatalf("expected closed status, got %q", item.Status)
 	}
 
-	items, err := repo.ListIncidents(50, &d.ID, "closed", "critical")
+	items, err := repo.ListIncidents(context.Background(), 50, &d.ID, "closed", "critical")
 	if err != nil {
 		t.Fatalf("ListIncidents: %v", err)
 	}
@@ -192,7 +228,7 @@ func TestIntegration_IncidentsLifecycle(t *testing.T) {
 		t.Fatal("expected at least one incident in list")
 	}
 
-	trs, err := repo.ListIncidentTransitions(item.ID, 10)
+	trs, err := repo.ListIncidentTransitions(context.Background(), item.ID, 10)
 	if err != nil {
 		t.Fatalf("ListIncidentTransitions: %v", err)
 	}
@@ -203,7 +239,7 @@ func TestIntegration_IncidentsLifecycle(t *testing.T) {
 
 func TestIntegration_IncidentEscalationByAckTimeout(t *testing.T) {
 	repo, db := openIntegrationRepo(t)
-	item, err := repo.CreateIncident(&domain.Incident{
+	item, err := repo.CreateIncident(context.Background(), &domain.Incident{
 		Title:    "escalation-test",
 		Severity: "warning",
 		Source:   "manual",
@@ -219,21 +255,21 @@ func TestIntegration_IncidentEscalationByAckTimeout(t *testing.T) {
 		t.Fatalf("force old created_at: %v", err)
 	}
 
-	changed, err := repo.EscalateUnackedIncidents(10*time.Minute, "noc-escalation", "itest", "escalated-by-test")
+	changed, err := repo.EscalateUnackedIncidents(context.Background(), 10*time.Minute, "noc-escalation", "itest", "escalated-by-test")
 	if err != nil {
 		t.Fatalf("EscalateUnackedIncidents: %v", err)
 	}
 	if changed < 1 {
 		t.Fatalf("expected >=1 escalated incidents, got %d", changed)
 	}
-	updated, err := repo.GetIncidentByID(item.ID)
+	updated, err := repo.GetIncidentByID(context.Background(), item.ID)
 	if err != nil {
 		t.Fatalf("GetIncidentByID: %v", err)
 	}
 	if updated == nil || updated.Assignee == nil || *updated.Assignee != "noc-escalation" {
 		t.Fatalf("expected assignee noc-escalation, got %+v", updated)
 	}
-	trs, err := repo.ListIncidentTransitions(item.ID, 20)
+	trs, err := repo.ListIncidentTransitions(context.Background(), item.ID, 20)
 	if err != nil {
 		t.Fatalf("ListIncidentTransitions: %v", err)
 	}
@@ -252,7 +288,7 @@ func TestIntegration_IncidentEscalationByAckTimeout(t *testing.T) {
 func TestIntegration_IncidentEscalation_OnlyIfUnassigned(t *testing.T) {
 	repo, db := openIntegrationRepo(t)
 	assignee := "already-assigned"
-	item, err := repo.CreateIncident(&domain.Incident{
+	item, err := repo.CreateIncident(context.Background(), &domain.Incident{
 		Title:    "escalation-unassigned-guard",
 		Severity: "warning",
 		Source:   "manual",
@@ -265,6 +301,7 @@ func TestIntegration_IncidentEscalation_OnlyIfUnassigned(t *testing.T) {
 		t.Fatalf("force old created_at: %v", err)
 	}
 	changed, err := repo.EscalateUnackedIncidentsWithFilter(
+		context.Background(),
 		10*time.Minute,
 		"noc-stage1",
 		"itest",
@@ -279,7 +316,7 @@ func TestIntegration_IncidentEscalation_OnlyIfUnassigned(t *testing.T) {
 	if changed != 0 {
 		t.Fatalf("expected 0 changes for assigned incident, got %d", changed)
 	}
-	updated, err := repo.GetIncidentByID(item.ID)
+	updated, err := repo.GetIncidentByID(context.Background(), item.ID)
 	if err != nil {
 		t.Fatalf("GetIncidentByID: %v", err)
 	}
@@ -291,22 +328,22 @@ func TestIntegration_IncidentEscalation_OnlyIfUnassigned(t *testing.T) {
 func TestIntegration_IncidentDedupAndAutoResolve(t *testing.T) {
 	repo, _ := openIntegrationRepo(t)
 	ip := uniqueInet(t)
-	_ = repo.DeleteByIP(ip)
+	_ = repo.DeleteByIP(context.Background(), ip)
 	d := &domain.Device{IP: ip, Name: "incident-dedup", Community: "public", SNMPVersion: "v2c"}
-	if err := repo.CreateDevice(d); err != nil {
+	if err := repo.CreateDevice(context.Background(), d); err != nil {
 		t.Fatalf("CreateDevice: %v", err)
 	}
-	t.Cleanup(func() { _ = repo.DeleteByIP(ip) })
+	t.Cleanup(func() { _ = repo.DeleteByIP(context.Background(), ip) })
 
 	details, _ := json.Marshal(map[string]any{"status": "failed_timeout"})
-	first, created, err := repo.CreateOrTouchOpenIncident(&d.ID, "SNMP device unavailable", "critical", "polling", details, 10*time.Minute)
+	first, created, err := repo.CreateOrTouchOpenIncident(context.Background(), &d.ID, "SNMP device unavailable", "critical", "polling", details, 10*time.Minute)
 	if err != nil {
 		t.Fatalf("CreateOrTouchOpenIncident first: %v", err)
 	}
 	if !created || first == nil {
 		t.Fatalf("expected first incident created, got created=%v first=%+v", created, first)
 	}
-	second, created2, err := repo.CreateOrTouchOpenIncident(&d.ID, "SNMP device unavailable", "critical", "polling", details, 10*time.Minute)
+	second, created2, err := repo.CreateOrTouchOpenIncident(context.Background(), &d.ID, "SNMP device unavailable", "critical", "polling", details, 10*time.Minute)
 	if err != nil {
 		t.Fatalf("CreateOrTouchOpenIncident second: %v", err)
 	}
@@ -317,14 +354,14 @@ func TestIntegration_IncidentDedupAndAutoResolve(t *testing.T) {
 		t.Fatalf("expected same incident id on dedup, first=%+v second=%+v", first, second)
 	}
 
-	resolvedN, err := repo.ResolveOpenIncidentsBySource(d.ID, "polling", "itest", "auto")
+	resolvedN, err := repo.ResolveOpenIncidentsBySource(context.Background(), d.ID, "polling", "itest", "auto")
 	if err != nil {
 		t.Fatalf("ResolveOpenIncidentsBySource: %v", err)
 	}
 	if resolvedN < 1 {
 		t.Fatalf("expected at least one resolved incident, got %d", resolvedN)
 	}
-	item, err := repo.GetIncidentByID(first.ID)
+	item, err := repo.GetIncidentByID(context.Background(), first.ID)
 	if err != nil {
 		t.Fatalf("GetIncidentByID: %v", err)
 	}

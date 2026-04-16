@@ -3,6 +3,8 @@ package http
 import (
 	"NMS1/internal/config"
 	"NMS1/internal/domain"
+	"context"
+	"crypto/subtle"
 	"encoding/json"
 	"net/http"
 	"strings"
@@ -89,7 +91,14 @@ func requestITSMToken(r *http.Request) string {
 	return strings.TrimSpace(r.Header.Get("X-ITSM-Token"))
 }
 
-func decodeAndResolveITSMInbound(r *http.Request, resolveMapping func(provider, status, priority, owner string) (*domain.ITSMInboundMapping, error)) (*itsmInboundResolved, int, string) {
+func constantTimeTokenEqual(a, b string) bool {
+	if len(a) != len(b) || a == "" {
+		return false
+	}
+	return subtle.ConstantTimeCompare([]byte(a), []byte(b)) == 1
+}
+
+func decodeAndResolveITSMInbound(w http.ResponseWriter, r *http.Request, resolveMapping func(ctx context.Context, provider, status, priority, owner string) (*domain.ITSMInboundMapping, error)) (*itsmInboundResolved, int, string) {
 	if r == nil {
 		return nil, http.StatusBadRequest, "invalid request"
 	}
@@ -97,11 +106,11 @@ func decodeAndResolveITSMInbound(r *http.Request, resolveMapping func(provider, 
 	if want == "" {
 		return nil, http.StatusServiceUnavailable, "itsm inbound is not configured"
 	}
-	if requestITSMToken(r) != want {
+	if !constantTimeTokenEqual(requestITSMToken(r), want) {
 		return nil, http.StatusUnauthorized, "unauthorized"
 	}
 	var input itsmInboundRequest
-	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+	if err := decodeJSONBody(w, r, &input); err != nil {
 		return nil, http.StatusBadRequest, "invalid json body"
 	}
 	if input.IncidentID <= 0 {
@@ -114,7 +123,7 @@ func decodeAndResolveITSMInbound(r *http.Request, resolveMapping func(provider, 
 		provider = inboundITSMProviderDefault()
 	}
 	var appliedMappingID int64
-	mapping, err := resolveMapping(provider, input.Status, input.Priority, input.Owner)
+	mapping, err := resolveMapping(r.Context(), provider, input.Status, input.Priority, input.Owner)
 	if err != nil {
 		return nil, http.StatusInternalServerError, err.Error()
 	}
@@ -139,7 +148,7 @@ func (h *Handlers) ITSMInboundWebhook(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	resolved, code, msg := decodeAndResolveITSMInbound(r, h.repo.ResolveITSMInboundMapping)
+	resolved, code, msg := decodeAndResolveITSMInbound(w, r, h.repo.ResolveITSMInboundMapping)
 	if code != http.StatusOK {
 		if code >= 500 {
 			h.logger.Error("itsm inbound: resolve failed", zap.Int("status", code), zap.String("error", msg))
@@ -154,7 +163,7 @@ func (h *Handlers) ITSMInboundWebhook(w http.ResponseWriter, r *http.Request) {
 	}
 	comment := strings.TrimSpace(input.Comment)
 
-	current, err := h.repo.GetIncidentByID(input.IncidentID)
+	current, err := h.repo.GetIncidentByID(r.Context(), input.IncidentID)
 	if err != nil {
 		h.logger.Error("itsm inbound: GetIncidentByID failed", zap.Error(err))
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -167,7 +176,7 @@ func (h *Handlers) ITSMInboundWebhook(w http.ResponseWriter, r *http.Request) {
 
 	item := current
 	if resolved.Status != "" && resolved.Status != current.Status {
-		item, err = h.repo.TransitionIncidentStatus(input.IncidentID, resolved.Status, changedBy, comment)
+		item, err = h.repo.TransitionIncidentStatus(r.Context(), input.IncidentID, resolved.Status, changedBy, comment)
 		if err != nil {
 			h.logger.Warn("itsm inbound: transition failed",
 				zap.Int64("incident_id", input.IncidentID),
@@ -183,7 +192,7 @@ func (h *Handlers) ITSMInboundWebhook(w http.ResponseWriter, r *http.Request) {
 		notifyITSMIncidentAsync(h.logger, "incident.status_changed", changedBy, comment, item)
 	}
 	if strings.TrimSpace(input.Assignee) != "" || (item.Assignee != nil && resolved.Assignee == "") {
-		updated, err := h.repo.AssignIncident(input.IncidentID, resolved.Assignee, changedBy, comment)
+		updated, err := h.repo.AssignIncident(r.Context(), input.IncidentID, resolved.Assignee, changedBy, comment)
 		if err != nil {
 			h.logger.Warn("itsm inbound: assignment failed",
 				zap.Int64("incident_id", input.IncidentID),
@@ -213,7 +222,7 @@ func (h *Handlers) ITSMInboundDryRun(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	resolved, code, msg := decodeAndResolveITSMInbound(r, h.repo.ResolveITSMInboundMapping)
+	resolved, code, msg := decodeAndResolveITSMInbound(w, r, h.repo.ResolveITSMInboundMapping)
 	if code != http.StatusOK {
 		if code >= 500 {
 			h.logger.Error("itsm inbound dry-run: resolve failed", zap.Int("status", code), zap.String("error", msg))

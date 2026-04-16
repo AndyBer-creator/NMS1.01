@@ -21,10 +21,10 @@ func (h *Handlers) AlertEmailPanel(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	u := userFromContext(r.Context())
-	admin := u == nil || u.role == roleAdmin
+	admin := u != nil && u.role == roleAdmin
 	vm := alertEmailPanelVM{
 		Admin: admin,
-		Email: h.repo.GetAlertEmailTo(),
+		Email: h.repo.GetAlertEmailTo(r.Context()),
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	_ = h.devicesTmpl.ExecuteTemplate(w, "alertEmailPanel", vm)
@@ -49,7 +49,7 @@ func (h *Handlers) SetAlertEmail(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	if err := h.repo.SetAlertEmailTo(email); err != nil {
+	if err := h.repo.SetAlertEmailTo(r.Context(), email); err != nil {
 		h.logger.Error("SetAlertEmail", zap.Error(err))
 		vm.Err = "Не удалось сохранить: " + err.Error()
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")

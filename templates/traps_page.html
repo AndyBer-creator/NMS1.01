@@ -79,7 +79,9 @@
             return String(v ?? '')
                 .replaceAll('&', '&amp;')
                 .replaceAll('<', '&lt;')
-                .replaceAll('>', '&gt;');
+                .replaceAll('>', '&gt;')
+                .replaceAll('"', '&quot;')
+                .replaceAll("'", '&#39;');
         }
 
         function row(t) {
@@ -146,9 +148,18 @@
             }
         }
 
+        const trapsTimer = setInterval(loadTraps, 15000);
+        const deviceOptionsTimer = setInterval(loadDeviceOptions, 60000);
+        let cleanedUp = false;
+        function cleanup() {
+            if (cleanedUp) return;
+            cleanedUp = true;
+            clearInterval(trapsTimer);
+            clearInterval(deviceOptionsTimer);
+        }
+        window.addEventListener('pagehide', cleanup, { once: true });
+        window.addEventListener('beforeunload', cleanup, { once: true });
         refreshBtn.addEventListener('click', loadTraps);
-        setInterval(loadTraps, 15000);
-        setInterval(loadDeviceOptions, 60000);
         loadDeviceOptions().then(loadTraps);
     })();
 </script>

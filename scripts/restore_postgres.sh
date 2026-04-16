@@ -31,6 +31,13 @@ TARGET_DB="${2:-${POSTGRES_DB:-NMS}}"
 RESTORE_DRILL_LOG="${RESTORE_DRILL_LOG:-}"
 restore_started_epoch="$(date +%s)"
 
+# Accept only simple PostgreSQL identifiers to prevent SQL injection.
+# (unquoted identifier: starts with letter/_ and then letter/digit/_)
+if [[ ! "$TARGET_DB" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]]; then
+  echo "Invalid target_db: '$TARGET_DB'. Allowed pattern: ^[A-Za-z_][A-Za-z0-9_]*$" >&2
+  exit 1
+fi
+
 echo "[restore] source: $dump_file"
 echo "[restore] target database: $TARGET_DB"
 

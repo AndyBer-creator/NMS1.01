@@ -24,18 +24,6 @@ import (
 	"go.uber.org/zap"
 )
 
-func envDurationOrDefault(name string, fallback time.Duration) time.Duration {
-	v := strings.TrimSpace(os.Getenv(name))
-	if v == "" {
-		return fallback
-	}
-	d, err := time.ParseDuration(v)
-	if err != nil || d <= 0 {
-		return fallback
-	}
-	return d
-}
-
 func envIntOrDefault(name string, fallback int) int {
 	v := strings.TrimSpace(os.Getenv(name))
 	if v == "" {
@@ -103,10 +91,10 @@ func run(ctx context.Context, cfg *config.Config, log *zap.Logger, onListen func
 
 	srv := &http.Server{
 		Handler:           handler,
-		ReadHeaderTimeout: envDurationOrDefault("NMS_HTTP_READ_HEADER_TIMEOUT", 5*time.Second),
-		ReadTimeout:       envDurationOrDefault("NMS_HTTP_READ_TIMEOUT", 15*time.Second),
-		WriteTimeout:      envDurationOrDefault("NMS_HTTP_WRITE_TIMEOUT", 30*time.Second),
-		IdleTimeout:       envDurationOrDefault("NMS_HTTP_IDLE_TIMEOUT", 60*time.Second),
+		ReadHeaderTimeout: config.EnvDurationOrDefault("NMS_HTTP_READ_HEADER_TIMEOUT", 5*time.Second),
+		ReadTimeout:       config.EnvDurationOrDefault("NMS_HTTP_READ_TIMEOUT", 15*time.Second),
+		WriteTimeout:      config.EnvDurationOrDefault("NMS_HTTP_WRITE_TIMEOUT", 30*time.Second),
+		IdleTimeout:       config.EnvDurationOrDefault("NMS_HTTP_IDLE_TIMEOUT", 60*time.Second),
 		MaxHeaderBytes:    envIntOrDefault("NMS_HTTP_MAX_HEADER_BYTES", 1<<20), // 1 MiB
 	}
 	errCh := make(chan error, 1)

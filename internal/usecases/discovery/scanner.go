@@ -95,7 +95,7 @@ func (s *Scanner) ScanNetwork(ctx context.Context, p ScanParams) (*ScanResult, e
 		return nil, err
 	}
 
-	ver := normalizeSNMPVersion(p.SNMPVersion)
+	ver := domain.NormalizeSNMPVersionOrDefault(p.SNMPVersion)
 	if ver == "v3" {
 		if strings.TrimSpace(p.AuthProto) == "" || p.AuthPass == "" {
 			return nil, &ScanError{Msg: "for snmp_version=v3 require auth_proto and auth_pass"}
@@ -188,7 +188,7 @@ func (s *Scanner) ScanNetwork(ctx context.Context, p ScanParams) (*ScanResult, e
 				name := deviceNameFromDescr(ipStr, desc)
 				d := probe
 				d.Name = name
-				if err := s.repo.CreateDevice(&d); err != nil {
+				if err := s.repo.CreateDevice(ctx, &d); err != nil {
 					s.logger.Debug("scan skip insert", zap.String("ip", ipStr), zap.Error(err))
 				} else {
 					host.Added = true
@@ -222,7 +222,7 @@ func (s *Scanner) ScanNetwork(ctx context.Context, p ScanParams) (*ScanResult, e
 }
 
 func emptyScanHints(p ScanParams) []string {
-	ver := normalizeSNMPVersion(p.SNMPVersion)
+	ver := domain.NormalizeSNMPVersionOrDefault(p.SNMPVersion)
 	h := []string{
 		"Проверьте community и snmp_version: по умолчанию v2c и community \"public\"; при другом community или только SNMPv3 укажите их в теле запроса.",
 		"Если NMS (api) запущен в Docker, контейнер должен иметь сетевой доступ к этой подсети (часто нужен host network, macvlan или маршрут; иначе UDP/SNMP до коммутаторов не доходит).",
@@ -243,19 +243,6 @@ type ScanError struct {
 }
 
 func (e *ScanError) Error() string { return e.Msg }
-
-func normalizeSNMPVersion(v string) string {
-	switch strings.ToLower(strings.TrimSpace(v)) {
-	case "v1":
-		return "v1"
-	case "v3":
-		return "v3"
-	case "2c", "v2c", "":
-		return "v2c"
-	default:
-		return "v2c"
-	}
-}
 
 func deviceNameFromDescr(ip, descr string) string {
 	const maxLen = 120

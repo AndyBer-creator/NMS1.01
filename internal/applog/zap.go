@@ -48,3 +48,11 @@ func NewZapFile(serviceName string) (*zap.Logger, error) {
 
 	return zap.New(core, zap.AddCaller()), nil
 }
+
+func MustNewZapFile(serviceName string) *zap.Logger {
+	logger, err := NewZapFile(serviceName)
+	if err != nil {
+		panic(err)
+	}
+	return logger
+}

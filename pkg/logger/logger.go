@@ -5,8 +5,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strconv"
-
-	"NMS1/internal/applog"
+	"strings"
 
 	logrus "github.com/sirupsen/logrus"
 	"gopkg.in/natefinch/lumberjack.v2"
@@ -20,7 +19,7 @@ type Logger struct {
 func New(serviceName string) *Logger {
 	log := logrus.New()
 
-	logDir := applog.ResolveLogDir()
+	logDir := resolveLogDir()
 	// Продакшен ротация логов
 	log.Out = &lumberjack.Logger{
 		Filename:   filepath.Join(logDir, serviceName+".log"),
@@ -45,6 +44,16 @@ func New(serviceName string) *Logger {
 	_ = os.MkdirAll(logDir, 0755)
 
 	return &Logger{Logger: log, serviceName: serviceName}
+}
+
+func resolveLogDir() string {
+	if d := strings.TrimSpace(os.Getenv("NMS_LOG_DIR")); d != "" {
+		return d
+	}
+	if os.Getenv("NMS_ENV") == "docker" {
+		return "/app/logs"
+	}
+	return "./logs"
 }
 
 func (l *Logger) WithDevice(ip, name string) *logrus.Entry {

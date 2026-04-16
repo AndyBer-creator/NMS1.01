@@ -20,18 +20,6 @@ import (
 	"go.uber.org/zap"
 )
 
-func envDurationOrDefault(name string, fallback time.Duration) time.Duration {
-	v := strings.TrimSpace(os.Getenv(name))
-	if v == "" {
-		return fallback
-	}
-	d, err := time.ParseDuration(v)
-	if err != nil || d <= 0 {
-		return fallback
-	}
-	return d
-}
-
 func envIntOrDefault(name string, fallback int) int {
 	v := strings.TrimSpace(os.Getenv(name))
 	if v == "" {
@@ -45,15 +33,23 @@ func envIntOrDefault(name string, fallback int) int {
 }
 
 func escalationAckTimeout() time.Duration {
-	return envDurationOrDefault("NMS_INCIDENT_ESCALATION_ACK_TIMEOUT", 0)
+	return config.EnvDurationOrDefault("NMS_INCIDENT_ESCALATION_ACK_TIMEOUT", 0)
 }
 
 func escalationCheckInterval() time.Duration {
-	return envDurationOrDefault("NMS_INCIDENT_ESCALATION_CHECK_INTERVAL", time.Minute)
+	return config.EnvDurationOrDefault("NMS_INCIDENT_ESCALATION_CHECK_INTERVAL", time.Minute)
 }
 
 func escalationTargetAssignee() string {
 	return strings.TrimSpace(config.EnvOrFile("NMS_INCIDENT_ASSIGNEE_ESCALATION"))
+}
+
+func metricsRetentionMonths() int {
+	return envIntOrDefault("NMS_METRICS_RETENTION_MONTHS", 6)
+}
+
+func metricsRetentionCheckInterval() time.Duration {
+	return config.EnvDurationOrDefault("NMS_METRICS_RETENTION_CHECK_INTERVAL", 24*time.Hour)
 }
 
 type incidentEscalationPolicy struct {
@@ -90,7 +86,7 @@ func loadEscalationPoliciesV2() []incidentEscalationPolicy {
 	})
 	policies = appendEscalationPolicy(policies, incidentEscalationPolicy{
 		name:             "stage1.critical",
-		olderThan:        envDurationOrDefault("NMS_INCIDENT_ESCALATION_CRITICAL_ACK_TIMEOUT", 0),
+		olderThan:        config.EnvDurationOrDefault("NMS_INCIDENT_ESCALATION_CRITICAL_ACK_TIMEOUT", 0),
 		targetAssignee:   strings.TrimSpace(config.EnvOrFile("NMS_INCIDENT_ESCALATION_CRITICAL_ASSIGNEE")),
 		severity:         "critical",
 		onlyIfUnassigned: true,
@@ -98,7 +94,7 @@ func loadEscalationPoliciesV2() []incidentEscalationPolicy {
 	})
 	policies = appendEscalationPolicy(policies, incidentEscalationPolicy{
 		name:             "stage1.trap",
-		olderThan:        envDurationOrDefault("NMS_INCIDENT_ESCALATION_TRAP_ACK_TIMEOUT", 0),
+		olderThan:        config.EnvDurationOrDefault("NMS_INCIDENT_ESCALATION_TRAP_ACK_TIMEOUT", 0),
 		targetAssignee:   strings.TrimSpace(config.EnvOrFile("NMS_INCIDENT_ESCALATION_TRAP_ASSIGNEE")),
 		source:           "trap",
 		onlyIfUnassigned: true,
@@ -106,7 +102,7 @@ func loadEscalationPoliciesV2() []incidentEscalationPolicy {
 	})
 	policies = appendEscalationPolicy(policies, incidentEscalationPolicy{
 		name:             "stage1.polling",
-		olderThan:        envDurationOrDefault("NMS_INCIDENT_ESCALATION_POLLING_ACK_TIMEOUT", 0),
+		olderThan:        config.EnvDurationOrDefault("NMS_INCIDENT_ESCALATION_POLLING_ACK_TIMEOUT", 0),
 		targetAssignee:   strings.TrimSpace(config.EnvOrFile("NMS_INCIDENT_ESCALATION_POLLING_ASSIGNEE")),
 		source:           "polling",
 		onlyIfUnassigned: true,
@@ -114,7 +110,7 @@ func loadEscalationPoliciesV2() []incidentEscalationPolicy {
 	})
 	policies = appendEscalationPolicy(policies, incidentEscalationPolicy{
 		name:             "stage1.manual",
-		olderThan:        envDurationOrDefault("NMS_INCIDENT_ESCALATION_MANUAL_ACK_TIMEOUT", 0),
+		olderThan:        config.EnvDurationOrDefault("NMS_INCIDENT_ESCALATION_MANUAL_ACK_TIMEOUT", 0),
 		targetAssignee:   strings.TrimSpace(config.EnvOrFile("NMS_INCIDENT_ESCALATION_MANUAL_ASSIGNEE")),
 		source:           "manual",
 		onlyIfUnassigned: true,
@@ -122,7 +118,7 @@ func loadEscalationPoliciesV2() []incidentEscalationPolicy {
 	})
 	policies = appendEscalationPolicy(policies, incidentEscalationPolicy{
 		name:           "stage2.default",
-		olderThan:      envDurationOrDefault("NMS_INCIDENT_ESCALATION_STAGE2_ACK_TIMEOUT", 0),
+		olderThan:      config.EnvDurationOrDefault("NMS_INCIDENT_ESCALATION_STAGE2_ACK_TIMEOUT", 0),
 		targetAssignee: strings.TrimSpace(config.EnvOrFile("NMS_INCIDENT_ESCALATION_STAGE2_ASSIGNEE")),
 		comment:        "auto-escalated stage2: no ack within extended timeout",
 	})
@@ -173,6 +169,20 @@ func run(ctx context.Context, cfg *config.Config, log *zap.Logger, opts workerOp
 
 	loopCtx, cancelLoop := context.WithCancel(ctx)
 	defer cancelLoop()
+	refreshSNMPRuntimeConfig := func() {
+		current := snmpClient.Config()
+		fallbackTimeoutSec := int(current.Timeout / time.Second)
+		if fallbackTimeoutSec <= 0 {
+			fallbackTimeoutSec = postgres.DefaultSNMPTimeoutSeconds
+		}
+		timeoutSec := repo.GetSNMPTimeoutSeconds(loopCtx, fallbackTimeoutSec)
+		retries := repo.GetSNMPRetries(loopCtx, current.Retries)
+		if current.Timeout == time.Duration(timeoutSec)*time.Second && current.Retries == retries {
+			return
+		}
+		snmpClient.ApplyRuntimeConfig(time.Duration(timeoutSec)*time.Second, retries)
+		log.Info("SNMP runtime config updated", zap.Int("timeout_sec", timeoutSec), zap.Int("retries", retries))
+	}
 
 	var snmpWg sync.WaitGroup
 	snmpWg.Add(1)
@@ -182,7 +192,7 @@ func run(ctx context.Context, cfg *config.Config, log *zap.Logger, opts workerOp
 			if loopCtx.Err() != nil {
 				return
 			}
-			intervalSec := repo.GetWorkerPollIntervalSeconds()
+			intervalSec := repo.GetWorkerPollIntervalSeconds(loopCtx)
 			log.Info("SNMP poll: пауза до следующего цикла", zap.Int("interval_sec", intervalSec))
 			timer := time.NewTimer(time.Duration(intervalSec) * time.Second)
 			select {
@@ -196,6 +206,7 @@ func run(ctx context.Context, cfg *config.Config, log *zap.Logger, opts workerOp
 			if loopCtx.Err() != nil {
 				return
 			}
+			refreshSNMPRuntimeConfig()
 			log.Info("=== Polling cycle ===", zap.Int("interval_sec", intervalSec))
 			start := time.Now()
 			success, failed, err := pollAllDevices(loopCtx, repo, snmpClient, log)
@@ -234,6 +245,7 @@ func run(ctx context.Context, cfg *config.Config, log *zap.Logger, opts workerOp
 				case <-ticker.C:
 					for _, p := range policies {
 						n, err := repo.EscalateUnackedIncidentsWithFilter(
+							loopCtx,
 							p.olderThan,
 							p.targetAssignee,
 							"system-escalation",
@@ -264,6 +276,44 @@ func run(ctx context.Context, cfg *config.Config, log *zap.Logger, opts workerOp
 			zap.String("reason", "no_valid_policies"))
 	}
 
+	var metricsRetentionWg sync.WaitGroup
+	retainMonths := metricsRetentionMonths()
+	retentionInterval := metricsRetentionCheckInterval()
+	if retainMonths > 0 {
+		log.Info("Metrics retention enabled",
+			zap.Int("retain_months", retainMonths),
+			zap.Duration("check_interval", retentionInterval))
+		metricsRetentionWg.Add(1)
+		go func() {
+			defer metricsRetentionWg.Done()
+			ticker := time.NewTicker(retentionInterval)
+			defer ticker.Stop()
+
+			runPrune := func() {
+				dropped, err := repo.PruneOldMetricPartitions(loopCtx, retainMonths)
+				if err != nil {
+					log.Warn("Metrics retention prune failed", zap.Error(err))
+					return
+				}
+				if dropped > 0 {
+					log.Info("Metrics retention prune completed", zap.Int("dropped_partitions", dropped))
+				}
+			}
+
+			runPrune()
+			for {
+				select {
+				case <-loopCtx.Done():
+					return
+				case <-ticker.C:
+					runPrune()
+				}
+			}
+		}()
+	}
+
+	var lldpWg sync.WaitGroup
+
 	lldpTicker := time.NewTicker(5 * time.Minute)
 	defer lldpTicker.Stop()
 
@@ -276,16 +326,21 @@ func run(ctx context.Context, cfg *config.Config, log *zap.Logger, opts workerOp
 			cancelLoop()
 			snmpWg.Wait()
 			escalationWg.Wait()
+			metricsRetentionWg.Wait()
+			lldpWg.Wait()
 			return nil
 		case <-lldpTicker.C:
 			if !lldpBusy.CompareAndSwap(false, true) {
 				log.Warn("LLDP scan skipped: previous run still in progress")
 			} else {
+				lldpWg.Add(1)
 				go func() {
+					defer lldpWg.Done()
 					defer lldpBusy.Store(false)
+					refreshSNMPRuntimeConfig()
 					log.Info("=== LLDP topology cycle ===", zap.String("interval", "5m"))
 					start := time.Now()
-					summary, err := lldp.ScanAllDevicesLLDP(ctx, repo, snmpClient, log, lldp.ScanParams{})
+					summary, err := lldp.ScanAllDevicesLLDP(loopCtx, repo, snmpClient, log, lldp.ScanParams{})
 					lldpScanDurationSeconds.Observe(time.Since(start).Seconds())
 					if summary != nil {
 						lldpLinksFoundGauge.Set(float64(summary.LinksFound))
@@ -308,10 +363,10 @@ func startMetricsHTTPServer(addr string, log *zap.Logger) (*http.Server, net.Add
 	mux.Handle("/metrics", promhttp.Handler())
 	srv := &http.Server{
 		Handler:           mux,
-		ReadHeaderTimeout: envDurationOrDefault("NMS_WORKER_HTTP_READ_HEADER_TIMEOUT", 5*time.Second),
-		ReadTimeout:       envDurationOrDefault("NMS_WORKER_HTTP_READ_TIMEOUT", 10*time.Second),
-		WriteTimeout:      envDurationOrDefault("NMS_WORKER_HTTP_WRITE_TIMEOUT", 20*time.Second),
-		IdleTimeout:       envDurationOrDefault("NMS_WORKER_HTTP_IDLE_TIMEOUT", 60*time.Second),
+		ReadHeaderTimeout: config.EnvDurationOrDefault("NMS_WORKER_HTTP_READ_HEADER_TIMEOUT", 5*time.Second),
+		ReadTimeout:       config.EnvDurationOrDefault("NMS_WORKER_HTTP_READ_TIMEOUT", 10*time.Second),
+		WriteTimeout:      config.EnvDurationOrDefault("NMS_WORKER_HTTP_WRITE_TIMEOUT", 20*time.Second),
+		IdleTimeout:       config.EnvDurationOrDefault("NMS_WORKER_HTTP_IDLE_TIMEOUT", 60*time.Second),
 		MaxHeaderBytes:    envIntOrDefault("NMS_WORKER_HTTP_MAX_HEADER_BYTES", 1<<20), // 1 MiB
 	}
 

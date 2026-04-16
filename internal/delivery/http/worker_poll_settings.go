@@ -26,8 +26,8 @@ func (h *Handlers) WorkerPollSettingsPanel(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	u := userFromContext(r.Context())
-	admin := u == nil || u.role == roleAdmin
-	sec := h.repo.GetWorkerPollIntervalSeconds()
+	admin := u != nil && u.role == roleAdmin
+	sec := h.repo.GetWorkerPollIntervalSeconds(r.Context())
 	vm := workerPollPanelVM{
 		Admin:       admin,
 		IntervalSec: sec,
@@ -52,7 +52,7 @@ func (h *Handlers) SetWorkerPollInterval(w http.ResponseWriter, r *http.Request)
 	n, err := strconv.Atoi(raw)
 	vm := workerPollPanelVM{
 		Admin:       true,
-		IntervalSec: h.repo.GetWorkerPollIntervalSeconds(),
+		IntervalSec: h.repo.GetWorkerPollIntervalSeconds(r.Context()),
 		MinSec:      postgres.MinWorkerPollIntervalSeconds,
 		MaxSec:      postgres.MaxWorkerPollIntervalSeconds,
 	}
@@ -62,14 +62,14 @@ func (h *Handlers) SetWorkerPollInterval(w http.ResponseWriter, r *http.Request)
 		_ = h.devicesTmpl.ExecuteTemplate(w, "workerPollPanel", vm)
 		return
 	}
-	if err := h.repo.SetWorkerPollIntervalSeconds(n); err != nil {
+	if err := h.repo.SetWorkerPollIntervalSeconds(r.Context(), n); err != nil {
 		h.logger.Error("SetWorkerPollInterval", zap.Error(err))
 		vm.ErrMsg = "Не удалось сохранить: " + err.Error()
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		_ = h.devicesTmpl.ExecuteTemplate(w, "workerPollPanel", vm)
 		return
 	}
-	vm.IntervalSec = h.repo.GetWorkerPollIntervalSeconds()
+	vm.IntervalSec = h.repo.GetWorkerPollIntervalSeconds(r.Context())
 	vm.Saved = true
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	_ = h.devicesTmpl.ExecuteTemplate(w, "workerPollPanel", vm)

@@ -2,8 +2,6 @@ package main
 
 import (
 	"context"
-	"fmt"
-	"os"
 	"os/signal"
 	"strings"
 	"syscall"
@@ -18,11 +16,7 @@ import (
 func main() {
 	timezone.InitFromEnv()
 
-	logger, err := applog.NewZapFile("nms-trap-receiver")
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "nms-trap-receiver: logger: %v\n", err)
-		os.Exit(1)
-	}
+	logger := applog.MustNewZapFile("nms-trap-receiver")
 	defer func() { _ = logger.Sync() }()
 
 	logger.Info("🚀 SNMP Trap Receiver v1 started")

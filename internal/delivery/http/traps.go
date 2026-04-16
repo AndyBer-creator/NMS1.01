@@ -31,7 +31,7 @@ func (h *Handlers) ListTraps(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "invalid device_id", http.StatusBadRequest)
 			return
 		}
-		dev, derr := h.repo.GetDeviceByID(id)
+		dev, derr := h.repo.GetDeviceByID(ctx, id)
 		if derr != nil {
 			h.logger.Error("GetDeviceByID for traps filter", zap.Int("id", id), zap.Error(derr))
 			http.Error(w, "Internal error", http.StatusInternalServerError)
@@ -69,7 +69,7 @@ func (h *Handlers) testAlert(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var input testAlertRequest
-	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+	if err := decodeJSONBody(w, r, &input); err != nil {
 		http.Error(w, "Invalid JSON", http.StatusBadRequest)
 		return
 	}

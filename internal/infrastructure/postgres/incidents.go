@@ -105,7 +105,7 @@ func defaultIncidentAssignee(source, severity string) *string {
 	return nil
 }
 
-func (r *Repo) CreateIncident(input *domain.Incident) (*domain.Incident, error) {
+func (r *Repo) CreateIncident(ctx context.Context, input *domain.Incident) (*domain.Incident, error) {
 	if input == nil {
 		return nil, fmt.Errorf("incident input is required")
 	}
@@ -142,7 +142,7 @@ func (r *Repo) CreateIncident(input *domain.Incident) (*domain.Incident, error) 
 	var outAssignee sql.NullString
 	var ackAt, resolvedAt, closedAt sql.NullTime
 	if err := r.db.QueryRowContext(
-		context.Background(),
+		ctx,
 		`INSERT INTO incidents (device_id, assignee, title, severity, status, source, details)
          VALUES ($1, $2, $3, $4, 'new', $5, $6::jsonb)
          RETURNING id, device_id, assignee, title, severity, status, source, details,
@@ -176,7 +176,7 @@ func (r *Repo) CreateIncident(input *domain.Incident) (*domain.Incident, error) 
 	return &out, nil
 }
 
-func (r *Repo) GetIncidentByID(id int64) (*domain.Incident, error) {
+func (r *Repo) GetIncidentByID(ctx context.Context, id int64) (*domain.Incident, error) {
 	if id <= 0 {
 		return nil, nil
 	}
@@ -185,7 +185,7 @@ func (r *Repo) GetIncidentByID(id int64) (*domain.Incident, error) {
 	var assignee sql.NullString
 	var ackAt, resolvedAt, closedAt sql.NullTime
 	err := r.db.QueryRowContext(
-		context.Background(),
+		ctx,
 		`SELECT id, device_id, assignee, title, severity, status, source, details,
                 created_at, updated_at, acknowledged_at, resolved_at, closed_at
          FROM incidents WHERE id = $1`,
@@ -231,15 +231,15 @@ func (r *Repo) GetIncidentByID(id int64) (*domain.Incident, error) {
 	return &out, nil
 }
 
-func (r *Repo) ListIncidents(limit int, deviceID *int, status, severity string) ([]domain.Incident, error) {
-	page, err := r.ListIncidentsPage(limit, deviceID, status, severity, nil, nil)
+func (r *Repo) ListIncidents(ctx context.Context, limit int, deviceID *int, status, severity string) ([]domain.Incident, error) {
+	page, err := r.ListIncidentsPage(ctx, limit, deviceID, status, severity, nil, nil)
 	if err != nil {
 		return nil, err
 	}
 	return page.Items, nil
 }
 
-func (r *Repo) ListIncidentsPage(limit int, deviceID *int, status, severity string, cursorUpdatedAt *time.Time, cursorID *int64) (*IncidentListPage, error) {
+func (r *Repo) ListIncidentsPage(ctx context.Context, limit int, deviceID *int, status, severity string, cursorUpdatedAt *time.Time, cursorID *int64) (*IncidentListPage, error) {
 	if limit <= 0 || limit > 5000 {
 		limit = 200
 	}
@@ -277,7 +277,7 @@ func (r *Repo) ListIncidentsPage(limit int, deviceID *int, status, severity stri
 		query += " WHERE " + strings.Join(conds, " AND ")
 	}
 	query += fmt.Sprintf(" ORDER BY updated_at DESC, id DESC LIMIT $%d", len(args))
-	rows, err := r.db.QueryContext(context.Background(), query, args...)
+	rows, err := r.db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -301,7 +301,7 @@ func (r *Repo) ListIncidentsPage(limit int, deviceID *int, status, severity stri
 	return page, nil
 }
 
-func (r *Repo) CreateOrTouchOpenIncident(deviceID *int, title, severity, source string, details json.RawMessage, suppressionWindow time.Duration) (*domain.Incident, bool, error) {
+func (r *Repo) CreateOrTouchOpenIncident(ctx context.Context, deviceID *int, title, severity, source string, details json.RawMessage, suppressionWindow time.Duration) (*domain.Incident, bool, error) {
 	title = strings.TrimSpace(title)
 	if title == "" {
 		return nil, false, fmt.Errorf("title is required")
@@ -330,7 +330,7 @@ func (r *Repo) CreateOrTouchOpenIncident(deviceID *int, title, severity, source 
 	}
 
 	var touchedID int64
-	err = r.db.QueryRowContext(context.Background(), `
+	err = r.db.QueryRowContext(ctx, `
 		UPDATE incidents i
 		   SET updated_at = NOW(),
 		       details = $1::jsonb
@@ -350,13 +350,13 @@ func (r *Repo) CreateOrTouchOpenIncident(deviceID *int, title, severity, source 
 		[]byte(details), src, title, sv, devID, float64(windowSec),
 	).Scan(&touchedID)
 	if err == nil {
-		item, gerr := r.GetIncidentByID(touchedID)
+		item, gerr := r.GetIncidentByID(ctx, touchedID)
 		return item, false, gerr
 	}
 	if err != sql.ErrNoRows {
 		return nil, false, err
 	}
-	item, err := r.CreateIncident(&domain.Incident{
+	item, err := r.CreateIncident(ctx, &domain.Incident{
 		DeviceID: deviceID,
 		Title:    title,
 		Severity: sv,
@@ -369,7 +369,7 @@ func (r *Repo) CreateOrTouchOpenIncident(deviceID *int, title, severity, source 
 	return item, true, nil
 }
 
-func (r *Repo) ResolveOpenIncidentsBySource(deviceID int, source, changedBy, comment string) (int64, error) {
+func (r *Repo) ResolveOpenIncidentsBySource(ctx context.Context, deviceID int, source, changedBy, comment string) (int64, error) {
 	if deviceID <= 0 {
 		return 0, nil
 	}
@@ -385,7 +385,6 @@ func (r *Repo) ResolveOpenIncidentsBySource(deviceID int, source, changedBy, com
 	if comment == "" {
 		comment = "auto-resolved"
 	}
-	ctx := context.Background()
 	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
 		return 0, err
@@ -442,7 +441,7 @@ func (r *Repo) ResolveOpenIncidentsBySource(deviceID int, source, changedBy, com
 	return changed, nil
 }
 
-func (r *Repo) TransitionIncidentStatus(incidentID int64, toStatus, changedBy, comment string) (*domain.Incident, error) {
+func (r *Repo) TransitionIncidentStatus(ctx context.Context, incidentID int64, toStatus, changedBy, comment string) (*domain.Incident, error) {
 	if incidentID <= 0 {
 		return nil, fmt.Errorf("incident id is required")
 	}
@@ -456,7 +455,6 @@ func (r *Repo) TransitionIncidentStatus(incidentID int64, toStatus, changedBy, c
 	}
 	comment = strings.TrimSpace(comment)
 
-	ctx := context.Background()
 	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
 		return nil, err
@@ -499,10 +497,10 @@ func (r *Repo) TransitionIncidentStatus(incidentID int64, toStatus, changedBy, c
 	if err := tx.Commit(); err != nil {
 		return nil, err
 	}
-	return r.GetIncidentByID(incidentID)
+	return r.GetIncidentByID(ctx, incidentID)
 }
 
-func (r *Repo) AssignIncident(incidentID int64, assignee, changedBy, comment string) (*domain.Incident, error) {
+func (r *Repo) AssignIncident(ctx context.Context, incidentID int64, assignee, changedBy, comment string) (*domain.Incident, error) {
 	if incidentID <= 0 {
 		return nil, fmt.Errorf("incident id is required")
 	}
@@ -516,7 +514,6 @@ func (r *Repo) AssignIncident(incidentID int64, assignee, changedBy, comment str
 	if trimmedAssignee != "" {
 		target = sql.NullString{String: trimmedAssignee, Valid: true}
 	}
-	ctx := context.Background()
 	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
 		return nil, err
@@ -555,14 +552,14 @@ func (r *Repo) AssignIncident(incidentID int64, assignee, changedBy, comment str
 	if err := tx.Commit(); err != nil {
 		return nil, err
 	}
-	return r.GetIncidentByID(incidentID)
+	return r.GetIncidentByID(ctx, incidentID)
 }
 
-func (r *Repo) EscalateUnackedIncidents(olderThan time.Duration, targetAssignee, changedBy, comment string) (int64, error) {
-	return r.EscalateUnackedIncidentsWithFilter(olderThan, targetAssignee, changedBy, comment, "", "", false)
+func (r *Repo) EscalateUnackedIncidents(ctx context.Context, olderThan time.Duration, targetAssignee, changedBy, comment string) (int64, error) {
+	return r.EscalateUnackedIncidentsWithFilter(ctx, olderThan, targetAssignee, changedBy, comment, "", "", false)
 }
 
-func (r *Repo) EscalateUnackedIncidentsWithFilter(olderThan time.Duration, targetAssignee, changedBy, comment, severity, source string, onlyIfUnassigned bool) (int64, error) {
+func (r *Repo) EscalateUnackedIncidentsWithFilter(ctx context.Context, olderThan time.Duration, targetAssignee, changedBy, comment, severity, source string, onlyIfUnassigned bool) (int64, error) {
 	if olderThan <= 0 {
 		return 0, nil
 	}
@@ -592,7 +589,6 @@ func (r *Repo) EscalateUnackedIncidentsWithFilter(olderThan time.Duration, targe
 		}
 	}
 
-	ctx := context.Background()
 	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
 		return 0, err
@@ -657,7 +653,7 @@ func (r *Repo) EscalateUnackedIncidentsWithFilter(olderThan time.Duration, targe
 	return changed, nil
 }
 
-func (r *Repo) ListIncidentTransitions(incidentID int64, limit int) ([]domain.IncidentTransition, error) {
+func (r *Repo) ListIncidentTransitions(ctx context.Context, incidentID int64, limit int) ([]domain.IncidentTransition, error) {
 	if incidentID <= 0 {
 		return nil, fmt.Errorf("incident id is required")
 	}
@@ -665,7 +661,7 @@ func (r *Repo) ListIncidentTransitions(incidentID int64, limit int) ([]domain.In
 		limit = 100
 	}
 	rows, err := r.db.QueryContext(
-		context.Background(),
+		ctx,
 		`SELECT id, incident_id, from_status, to_status, changed_by, comment, changed_at
          FROM incident_transitions
          WHERE incident_id = $1
@@ -688,7 +684,7 @@ func (r *Repo) ListIncidentTransitions(incidentID int64, limit int) ([]domain.In
 	return out, rows.Err()
 }
 
-func (r *Repo) TransitionIncidentsStatus(incidentIDs []int64, toStatus, changedBy, comment string) ([]domain.Incident, error) {
+func (r *Repo) TransitionIncidentsStatus(ctx context.Context, incidentIDs []int64, toStatus, changedBy, comment string) ([]domain.Incident, error) {
 	out := make([]domain.Incident, 0, len(incidentIDs))
 	seen := map[int64]struct{}{}
 	for _, id := range incidentIDs {
@@ -699,7 +695,7 @@ func (r *Repo) TransitionIncidentsStatus(incidentIDs []int64, toStatus, changedB
 			continue
 		}
 		seen[id] = struct{}{}
-		item, err := r.TransitionIncidentStatus(id, toStatus, changedBy, comment)
+		item, err := r.TransitionIncidentStatus(ctx, id, toStatus, changedBy, comment)
 		if err != nil {
 			return nil, err
 		}

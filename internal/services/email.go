@@ -1,12 +1,13 @@
 package services
 
 import (
+	"context"
 	"crypto/tls"
 	"fmt"
 	"net"
 	"net/smtp"
-	"strconv"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -39,6 +40,10 @@ func allowPlainSMTP() bool {
 }
 
 func (c *SMTPClient) Send(to, subject, body string) error {
+	return c.SendContext(context.Background(), to, subject, body)
+}
+
+func (c *SMTPClient) SendContext(ctx context.Context, to, subject, body string) error {
 	if !c.Enabled() {
 		return fmt.Errorf("smtp is not configured")
 	}
@@ -61,36 +66,37 @@ func (c *SMTPClient) Send(to, subject, body string) error {
 
 	// For common SMTPS ports (465), use direct TLS.
 	if c.Port == "465" {
-		return c.sendTLS(addr, to, []byte(msg))
+		return c.sendTLS(ctx, addr, to, []byte(msg))
 	}
 	// For all non-465 ports, require STARTTLS by default.
 	// Legacy plaintext SMTP is allowed only with explicit override.
 	if c.Port == "587" || !allowPlainSMTP() {
-		return c.sendStartTLS(addr, to, []byte(msg))
+		return c.sendStartTLS(ctx, addr, to, []byte(msg))
 	}
-	var auth smtp.Auth
-	if c.User != "" || c.Pass != "" {
-		auth = smtp.PlainAuth("", c.User, c.Pass, c.Host)
-	}
-	return smtp.SendMail(addr, auth, c.From, []string{to}, []byte(msg))
+	return c.sendPlain(ctx, addr, to, []byte(msg))
 }
 
-func (c *SMTPClient) dialTimeout(network, addr string) (net.Conn, error) {
+func (c *SMTPClient) dialTimeout(ctx context.Context, network, addr string) (net.Conn, error) {
 	d := net.Dialer{Timeout: 6 * time.Second}
-	return d.Dial(network, addr)
+	return d.DialContext(ctx, network, addr)
 }
 
-func (c *SMTPClient) sendTLS(addr, to string, msg []byte) error {
-	conn, err := tls.DialWithDialer(&net.Dialer{Timeout: 6 * time.Second}, "tcp", addr, &tls.Config{
-		ServerName: c.Host,
-		MinVersion: tls.VersionTLS12,
-	})
+func (c *SMTPClient) sendTLS(ctx context.Context, addr, to string, msg []byte) error {
+	conn, err := c.dialTimeout(ctx, "tcp", addr)
 	if err != nil {
 		return err
 	}
-	defer func() { _ = conn.Close() }()
+	tlsConn := tls.Client(conn, &tls.Config{
+		ServerName: c.Host,
+		MinVersion: tls.VersionTLS12,
+	})
+	if err := tlsConn.HandshakeContext(ctx); err != nil {
+		_ = tlsConn.Close()
+		return err
+	}
+	defer func() { _ = tlsConn.Close() }()
 
-	client, err := smtp.NewClient(conn, c.Host)
+	client, err := smtp.NewClient(tlsConn, c.Host)
 	if err != nil {
 		return err
 	}
@@ -139,8 +145,8 @@ func smtpDialAddr(host, port string) string {
 	return net.JoinHostPort(h, strings.TrimSpace(port))
 }
 
-func (c *SMTPClient) sendStartTLS(addr, to string, msg []byte) error {
-	conn, err := c.dialTimeout("tcp", addr)
+func (c *SMTPClient) sendStartTLS(ctx context.Context, addr, to string, msg []byte) error {
+	conn, err := c.dialTimeout(ctx, "tcp", addr)
 	if err != nil {
 		return err
 	}
@@ -158,6 +164,42 @@ func (c *SMTPClient) sendStartTLS(addr, to string, msg []byte) error {
 	} else if !allowPlainSMTP() {
 		return fmt.Errorf("smtp server does not support STARTTLS")
 	}
+	if c.User != "" || c.Pass != "" {
+		if err := client.Auth(smtp.PlainAuth("", c.User, c.Pass, c.Host)); err != nil {
+			return err
+		}
+	}
+	if err := client.Mail(c.From); err != nil {
+		return err
+	}
+	if err := client.Rcpt(to); err != nil {
+		return err
+	}
+	w, err := client.Data()
+	if err != nil {
+		return err
+	}
+	if _, err := w.Write(msg); err != nil {
+		_ = w.Close()
+		return err
+	}
+	if err := w.Close(); err != nil {
+		return err
+	}
+	return client.Quit()
+}
+
+func (c *SMTPClient) sendPlain(ctx context.Context, addr, to string, msg []byte) error {
+	conn, err := c.dialTimeout(ctx, "tcp", addr)
+	if err != nil {
+		return err
+	}
+	client, err := smtp.NewClient(conn, c.Host)
+	if err != nil {
+		_ = conn.Close()
+		return err
+	}
+	defer func() { _ = client.Close() }()
 	if c.User != "" || c.Pass != "" {
 		if err := client.Auth(smtp.PlainAuth("", c.User, c.Pass, c.Host)); err != nil {
 			return err

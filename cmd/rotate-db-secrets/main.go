@@ -1,6 +1,7 @@
 package main
 
 import (
+	"NMS1/internal/applog"
 	"NMS1/internal/config"
 	"NMS1/internal/infrastructure/postgres"
 	"context"
@@ -8,11 +9,11 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"log"
 	"os"
 	"time"
 
 	_ "github.com/jackc/pgx/v5/stdlib"
+	"go.uber.org/zap"
 )
 
 func main() {
@@ -20,16 +21,19 @@ func main() {
 	timeout := flag.Duration("timeout", 5*time.Minute, "overall rotation timeout")
 	flag.Parse()
 
+	logger := applog.MustNewZapFile("nms-rotate-db-secrets")
+	defer func() { _ = logger.Sync() }()
+
 	dsn := config.EnvOrFile("DB_DSN")
 	oldKey := config.EnvOrFile("NMS_DB_ENCRYPTION_OLD_KEY")
 	newKey := config.EnvOrFile("NMS_DB_ENCRYPTION_KEY")
 	if err := validateRotateEnv(dsn, oldKey, newKey); err != nil {
-		log.Fatal(err)
+		logger.Fatal("validate rotation env", zap.Error(err))
 	}
 
 	db, err := sql.Open("pgx", dsn)
 	if err != nil {
-		log.Fatal(err)
+		logger.Fatal("open database", zap.Error(err))
 	}
 	defer func() { _ = db.Close() }()
 
@@ -38,9 +42,15 @@ func main() {
 
 	stats, err := postgres.RotateDeviceSNMPSecrets(ctx, db, oldKey, newKey, *dryRun)
 	if err != nil {
-		log.Fatal(err)
+		logger.Fatal("rotate device secrets", zap.Error(err))
 	}
 	mode := rotationMode(*dryRun)
+	logger.Info("db secret rotation completed",
+		zap.String("mode", mode),
+		zap.Int("scanned", stats.Scanned),
+		zap.Int("updated", stats.Updated),
+		zap.Int("skipped", stats.Skipped),
+	)
 	_, _ = fmt.Fprintf(os.Stdout, "db-secret-rotation (%s): scanned=%d updated=%d skipped=%d\n", mode, stats.Scanned, stats.Updated, stats.Skipped)
 }
 

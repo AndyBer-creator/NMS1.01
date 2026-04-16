@@ -1,10 +1,11 @@
 package snmp
 
 import (
+	"NMS1/internal/domain"
 	"errors"
 	"fmt"
-	"NMS1/internal/domain"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/gosnmp/gosnmp"
@@ -16,6 +17,13 @@ type Client struct {
 	Timeout time.Duration
 	Retries int
 	logger  *zap.Logger
+	mu      sync.RWMutex
+}
+
+type RuntimeConfig struct {
+	Port    int
+	Timeout time.Duration
+	Retries int
 }
 
 type ErrorKind string
@@ -94,6 +102,23 @@ func New(port int, timeout time.Duration, retries int) *Client {
 	}
 }
 
+func (c *Client) Config() RuntimeConfig {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return RuntimeConfig{
+		Port:    c.Port,
+		Timeout: c.Timeout,
+		Retries: c.Retries,
+	}
+}
+
+func (c *Client) ApplyRuntimeConfig(timeout time.Duration, retries int) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.Timeout = timeout
+	c.Retries = retries
+}
+
 // pduValueString превращает значение PDU в строку для UI/API.
 // OCTET STRING приходит как []byte; fmt.Sprintf("%v", []byte) даёт "[83 121 ...]" вместо текста.
 func pduValueString(v interface{}) string {
@@ -160,13 +185,14 @@ func (c *Client) SetDevice(device *domain.Device, oid string, pduType gosnmp.Asn
 }
 
 func (c *Client) getV2c(ip string, community string, oids []string) (map[string]string, error) {
+	cfg := c.Config()
 	conn := &gosnmp.GoSNMP{
 		Target:    ip,
-		Port:      uint16(c.Port),
+		Port:      uint16(cfg.Port),
 		Community: community, // ✅ Простая строка вместо device
-		Timeout:   c.Timeout,
+		Timeout:   cfg.Timeout,
 		Version:   gosnmp.Version2c,
-		Retries:   c.Retries,
+		Retries:   cfg.Retries,
 	}
 
 	if err := conn.Connect(); err != nil {
@@ -206,13 +232,14 @@ func (c *Client) getV3(device *domain.Device, oids []string) (map[string]string,
 }
 
 func (c *Client) walkV2c(ip string, community string, baseOID string) (map[string]string, error) {
+	cfg := c.Config()
 	conn := &gosnmp.GoSNMP{
 		Target:         ip,
-		Port:           uint16(c.Port),
+		Port:           uint16(cfg.Port),
 		Community:      community,
-		Timeout:        c.Timeout,
+		Timeout:        cfg.Timeout,
 		Version:        gosnmp.Version2c,
-		Retries:        c.Retries,
+		Retries:        cfg.Retries,
 		MaxRepetitions: 25,
 	}
 
@@ -265,13 +292,14 @@ func (c *Client) walkV3(device *domain.Device, baseOID string) (map[string]strin
 }
 
 func (c *Client) setV2c(ip, community, oid string, pduType gosnmp.Asn1BER, value interface{}) error {
+	cfg := c.Config()
 	conn := &gosnmp.GoSNMP{
 		Target:    ip,
-		Port:      uint16(c.Port),
+		Port:      uint16(cfg.Port),
 		Community: community,
-		Timeout:   c.Timeout,
+		Timeout:   cfg.Timeout,
 		Version:   gosnmp.Version2c,
-		Retries:   c.Retries,
+		Retries:   cfg.Retries,
 	}
 
 	if err := conn.Connect(); err != nil {
@@ -314,6 +342,7 @@ func (c *Client) setV3(device *domain.Device, oid string, pduType gosnmp.Asn1BER
 }
 
 func (c *Client) newV3Conn(device *domain.Device) (*gosnmp.GoSNMP, error) {
+	cfg := c.Config()
 	userName := strings.TrimSpace(device.Community) // для v3 используем community-колонку как username
 	if userName == "" {
 		return nil, fmt.Errorf("snmpv3: community/username must be set")
@@ -346,13 +375,13 @@ func (c *Client) newV3Conn(device *domain.Device) (*gosnmp.GoSNMP, error) {
 	}
 
 	conn := &gosnmp.GoSNMP{
-		Target:             device.IP,
-		Port:               uint16(c.Port),
-		Version:            gosnmp.Version3,
-		Timeout:            c.Timeout,
-		Retries:            c.Retries,
-		MsgFlags:           msgFlags,
-		SecurityModel:      gosnmp.UserSecurityModel,
+		Target:        device.IP,
+		Port:          uint16(cfg.Port),
+		Version:       gosnmp.Version3,
+		Timeout:       cfg.Timeout,
+		Retries:       cfg.Retries,
+		MsgFlags:      msgFlags,
+		SecurityModel: gosnmp.UserSecurityModel,
 		SecurityParameters: &gosnmp.UsmSecurityParameters{
 			UserName:                 userName,
 			AuthenticationProtocol:   authProtocol,

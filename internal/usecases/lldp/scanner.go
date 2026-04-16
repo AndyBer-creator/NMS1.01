@@ -15,8 +15,8 @@ const (
 	lldpLocPortDescBase = "1.0.8802.1.1.2.1.3.7.1.4"
 	lldpLocPortIdBase   = "1.0.8802.1.1.2.1.3.7.1.3"
 
-	lldpRemSysNameBase = "1.0.8802.1.1.2.1.4.1.1.9"
-	lldpRemSysDescBase = "1.0.8802.1.1.2.1.4.1.1.10"
+	lldpRemSysNameBase  = "1.0.8802.1.1.2.1.4.1.1.9"
+	lldpRemSysDescBase  = "1.0.8802.1.1.2.1.4.1.1.10"
 	lldpRemPortIdBase   = "1.0.8802.1.1.2.1.4.1.1.7"
 	lldpRemPortDescBase = "1.0.8802.1.1.2.1.4.1.1.8"
 )
@@ -38,10 +38,10 @@ type ScanParams struct {
 }
 
 type ScanSummary struct {
-	ScanID        int64
+	ScanID         int64
 	DevicesScanned int
-	LinksFound    int
-	LinksInserted int
+	LinksFound     int
+	LinksInserted  int
 }
 
 func normalizeKey(s string) string {
@@ -97,7 +97,7 @@ func parseRemoteIndexes(fullOID, baseOID string) (localPortNum int, remIndex int
 // ScanAllDevicesLLDP делает один снимок топологии и пишет links в БД.
 func ScanAllDevicesLLDP(ctx context.Context, repo *postgres.Repo, client *snmp.Client, logger *zap.Logger, _ ScanParams) (*ScanSummary, error) {
 	// Статусы/версии в LLDP обычно важны только для credentials.
-	devices, err := repo.ListDevices()
+	devices, err := repo.ListDevices(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -114,7 +114,7 @@ func ScanAllDevicesLLDP(ctx context.Context, repo *postgres.Repo, client *snmp.C
 		nameToIP[normalizeKey(d.Name)] = d.IP
 	}
 
-	scanID, err := repo.CreateLldpScan()
+	scanID, err := repo.CreateLldpScan(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -264,9 +264,9 @@ func ScanAllDevicesLLDP(ctx context.Context, repo *postgres.Repo, client *snmp.C
 			}
 
 			link := postgres.LldpLink{
-				LocalDeviceIP:  d.IP,
-				LocalPortNum:   entry.LocalPortNum,
-				LocalPortDesc:  localPortDesc,
+				LocalDeviceIP: d.IP,
+				LocalPortNum:  entry.LocalPortNum,
+				LocalPortDesc: localPortDesc,
 
 				RemoteDeviceIP: remoteIPPtr,
 				RemoteSysName:  entry.SysName,
@@ -276,7 +276,7 @@ func ScanAllDevicesLLDP(ctx context.Context, repo *postgres.Repo, client *snmp.C
 				RemotePortDesc: entry.PortDesc,
 			}
 
-			inserted, err := repo.InsertLldpLink(scanID, link)
+			inserted, err := repo.InsertLldpLink(ctx, scanID, link)
 			if err != nil {
 				logger.Warn("LLDP: insert link failed", zap.String("local_ip", d.IP), zap.Error(err))
 				continue
@@ -299,4 +299,3 @@ func ScanAllDevicesLLDP(ctx context.Context, repo *postgres.Repo, client *snmp.C
 	logger.Info("LLDP scan finished", zap.Int64("scan_id", scanID))
 	return summary, nil
 }
-

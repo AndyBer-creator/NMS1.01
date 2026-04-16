@@ -73,7 +73,12 @@
     const summary = document.getElementById('ev-summary');
 
     function esc(s) {
-        return String(s ?? '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
+        return String(s ?? '')
+            .replaceAll('&', '&amp;')
+            .replaceAll('<', '&lt;')
+            .replaceAll('>', '&gt;')
+            .replaceAll('"', '&quot;')
+            .replaceAll("'", '&#39;');
     }
 
     function kindLabel(k) {
@@ -130,7 +135,15 @@
 
     btn.addEventListener('click', load);
     load();
-    setInterval(load, 60000);
+    const refreshTimer = setInterval(load, 60000);
+    let cleanedUp = false;
+    function cleanup() {
+        if (cleanedUp) return;
+        cleanedUp = true;
+        clearInterval(refreshTimer);
+    }
+    window.addEventListener('pagehide', cleanup, { once: true });
+    window.addEventListener('beforeunload', cleanup, { once: true });
 })();
 </script>
 </body>

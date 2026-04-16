@@ -24,10 +24,10 @@ func TestDevice_JSONOmitsSecrets(t *testing.T) {
 		t.Fatalf("marshal: %v", err)
 	}
 	s := string(b)
-	if strings.Contains(s, "secret-auth") || strings.Contains(s, "secret-priv") {
+	if strings.Contains(s, "secret-auth") || strings.Contains(s, "secret-priv") || strings.Contains(s, "public") {
 		t.Fatalf("JSON must not contain passwords: %s", s)
 	}
-	if !strings.Contains(s, "sw1") || !strings.Contains(s, "10.0.0.1") || !strings.Contains(s, "public") {
+	if !strings.Contains(s, "sw1") || !strings.Contains(s, "10.0.0.1") {
 		t.Fatalf("JSON should include non-secret fields: %s", s)
 	}
 }

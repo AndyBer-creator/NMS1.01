@@ -17,6 +17,7 @@ RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /app/trap-receiver ./c
 
 FROM alpine:3.22
 RUN apk --no-cache add tzdata ca-certificates net-snmp-tools && \
+    addgroup -S nms && adduser -S -G nms -h /app -s /sbin/nologin nms && \
     mkdir -p /app/logs /app/static /app/templates /app/mibs && \
     chmod 755 /app/logs /app/static /app/templates /app/mibs
 
@@ -30,7 +31,10 @@ COPY static/ /app/static/
 COPY templates/ /app/templates/
 COPY mibs/ /app/mibs/
 
+RUN chown -R nms:nms /app
+
 WORKDIR /app
+USER nms
 EXPOSE 8080 162/udp
 
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \

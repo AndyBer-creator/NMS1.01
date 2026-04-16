@@ -48,8 +48,8 @@ func mainRouter(handlers *Handlers) *chi.Mux {
 	r.Get("/.well-known/security.txt", serveWellKnownSecurityTxt)
 	r.Handle("/metrics", promhttp.Handler())
 
-	r.Get("/login", handlers.LoginPage)
-	r.Post("/login", handlers.LoginPost)
+	r.With(RequireCSRF).Get("/login", handlers.LoginPage)
+	r.With(RequireCSRF).Post("/login", handlers.LoginPost)
 	r.Post("/alerts/webhook", handlers.AlertWebhook)
 	r.Post("/itsm/inbound", handlers.ITSMInboundWebhook)
 	r.Post("/itsm/inbound/dry-run", handlers.ITSMInboundDryRun)
@@ -76,9 +76,11 @@ func mainRouter(handlers *Handlers) *chi.Mux {
 		r.With(RequireAdmin).Post("/discovery/scan", handlers.DiscoverScan)
 
 		r.Get("/settings/worker-poll-panel", handlers.WorkerPollSettingsPanel)
+		r.Get("/settings/snmp-runtime-panel", handlers.SNMPRuntimeSettingsPanel)
 		r.Get("/settings/incident-automation-panel", handlers.IncidentAutomationPanel)
 		r.Get("/settings/incident-automation-snapshot", handlers.IncidentAutomationSnapshot)
 		r.With(RequireAdmin).Post("/settings/worker-poll-interval", handlers.SetWorkerPollInterval)
+		r.With(RequireAdmin).Post("/settings/snmp-runtime", handlers.SetSNMPRuntimeSettings)
 		r.Get("/settings/alert-email-panel", handlers.AlertEmailPanel)
 		r.With(RequireAdmin).Post("/settings/alert-email", handlers.SetAlertEmail)
 

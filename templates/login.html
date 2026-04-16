@@ -20,6 +20,7 @@
         <div class="mb-4 p-3 rounded-lg bg-red-500/15 border border-red-500/40 text-red-300 text-sm">{{.Error}}</div>
         {{end}}
         <form method="post" action="/login" class="space-y-5">
+            <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
             <input type="hidden" name="next" value="{{.Next}}">
             <div>
                 <label class="block text-sm text-gray-400 mb-2">Логин</label>

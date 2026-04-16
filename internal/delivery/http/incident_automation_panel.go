@@ -98,11 +98,11 @@ func (h *Handlers) IncidentAutomationPanel(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	u := userFromContext(r.Context())
-	admin := u == nil || u.role == roleAdmin
+	admin := u != nil && u.role == roleAdmin
 	policies, warnings := escalationPoliciesForPanel()
 	interval := envDurationWithDefault("NMS_INCIDENT_ESCALATION_CHECK_INTERVAL", time.Minute)
 	enabled := true
-	mappings, err := h.repo.ListITSMInboundMappings("", &enabled)
+	mappings, err := h.repo.ListITSMInboundMappings(r.Context(), "", &enabled)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -128,7 +128,7 @@ func (h *Handlers) IncidentAutomationSnapshot(w http.ResponseWriter, r *http.Req
 	policies, warnings := escalationPoliciesForPanel()
 	interval := envDurationWithDefault("NMS_INCIDENT_ESCALATION_CHECK_INTERVAL", time.Minute)
 	enabled := true
-	items, err := h.repo.ListITSMInboundMappings("", &enabled)
+	items, err := h.repo.ListITSMInboundMappings(r.Context(), "", &enabled)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return

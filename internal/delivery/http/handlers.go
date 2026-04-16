@@ -93,25 +93,25 @@ var (
 )
 
 type Handlers struct {
-	repo          *postgres.Repo
-	snmp          *snmp.Client
-	scanner       *discovery.Scanner
-	TrapsRepo     *repository.TrapsRepo
-	logger        *zap.Logger
-	dashboardTmpl *template.Template
-	devicesTmpl   *template.Template // devicesTable + devicesPage
-	mibPanelTmpl  *template.Template
-	loginTmpl     *template.Template
-	terminalTmpl  *template.Template
-	trapsPageTmpl *template.Template
-	eventsPageTmpl *template.Template
-	incidentsPageTmpl *template.Template
-	trapOIDMappingsPageTmpl *template.Template
+	repo                        *postgres.Repo
+	snmp                        *snmp.Client
+	scanner                     *discovery.Scanner
+	TrapsRepo                   *repository.TrapsRepo
+	logger                      *zap.Logger
+	dashboardTmpl               *template.Template
+	devicesTmpl                 *template.Template // devicesTable + devicesPage
+	mibPanelTmpl                *template.Template
+	loginTmpl                   *template.Template
+	terminalTmpl                *template.Template
+	trapsPageTmpl               *template.Template
+	eventsPageTmpl              *template.Template
+	incidentsPageTmpl           *template.Template
+	trapOIDMappingsPageTmpl     *template.Template
 	itsmInboundMappingsPageTmpl *template.Template
-	topologyTmpl  *template.Template
-	mibUploadDir  string
-	mib           *mibresolver.Resolver
-	httpClient    *http.Client
+	topologyTmpl                *template.Template
+	mibUploadDir                string
+	mib                         *mibresolver.Resolver
+	httpClient                  *http.Client
 }
 
 func NewHandlers(repo *postgres.Repo, snmpClient *snmp.Client, scanner *discovery.Scanner, trapsRepo *repository.TrapsRepo, logger *zap.Logger, mibUploadDir string, mib *mibresolver.Resolver) *Handlers {
@@ -120,6 +120,7 @@ func NewHandlers(repo *postgres.Repo, snmpClient *snmp.Client, scanner *discover
 		"templates/devices_table.html",
 		"templates/devices_page.html",
 		"templates/worker_poll_panel.html",
+		"templates/snmp_runtime_panel.html",
 		"templates/alert_email_panel.html",
 	))
 	mibPanelTmpl := template.Must(template.ParseFiles("templates/mibs_panel.html"))
@@ -133,27 +134,44 @@ func NewHandlers(repo *postgres.Repo, snmpClient *snmp.Client, scanner *discover
 	topologyTmpl := template.Must(template.ParseFiles("templates/topology_lldp_page.html"))
 
 	h := &Handlers{
-		repo:          repo,
-		snmp:          snmpClient,
-		scanner:       scanner,
-		TrapsRepo:     trapsRepo,
-		logger:        logger,
-		dashboardTmpl: dashboardTmpl,
-		devicesTmpl:   devicesTmpl,
-		mibPanelTmpl:  mibPanelTmpl,
-		loginTmpl:     loginTmpl,
-		terminalTmpl:  terminalTmpl,
-		trapsPageTmpl: trapsPageTmpl,
-		eventsPageTmpl: eventsPageTmpl,
-		incidentsPageTmpl: incidentsPageTmpl,
-		trapOIDMappingsPageTmpl: trapOIDMappingsPageTmpl,
+		repo:                        repo,
+		snmp:                        snmpClient,
+		scanner:                     scanner,
+		TrapsRepo:                   trapsRepo,
+		logger:                      logger,
+		dashboardTmpl:               dashboardTmpl,
+		devicesTmpl:                 devicesTmpl,
+		mibPanelTmpl:                mibPanelTmpl,
+		loginTmpl:                   loginTmpl,
+		terminalTmpl:                terminalTmpl,
+		trapsPageTmpl:               trapsPageTmpl,
+		eventsPageTmpl:              eventsPageTmpl,
+		incidentsPageTmpl:           incidentsPageTmpl,
+		trapOIDMappingsPageTmpl:     trapOIDMappingsPageTmpl,
 		itsmInboundMappingsPageTmpl: itsmInboundMappingsPageTmpl,
-		topologyTmpl:  topologyTmpl,
-		mibUploadDir:  mibUploadDir,
-		mib:           mib,
-		httpClient:    &http.Client{Timeout: 1200 * time.Millisecond},
+		topologyTmpl:                topologyTmpl,
+		mibUploadDir:                mibUploadDir,
+		mib:                         mib,
+		httpClient:                  &http.Client{Timeout: 1200 * time.Millisecond},
 	}
 	return h
+}
+
+func (h *Handlers) syncSNMPRuntimeConfig(ctx context.Context) {
+	if h == nil || h.snmp == nil || h.repo == nil {
+		return
+	}
+	current := h.snmp.Config()
+	fallbackTimeoutSec := int(current.Timeout / time.Second)
+	if fallbackTimeoutSec <= 0 {
+		fallbackTimeoutSec = postgres.DefaultSNMPTimeoutSeconds
+	}
+	timeoutSec := h.repo.GetSNMPTimeoutSeconds(ctx, fallbackTimeoutSec)
+	retries := h.repo.GetSNMPRetries(ctx, current.Retries)
+	if current.Timeout == time.Duration(timeoutSec)*time.Second && current.Retries == retries {
+		return
+	}
+	h.snmp.ApplyRuntimeConfig(time.Duration(timeoutSec)*time.Second, retries)
 }
 
 // resolveOIDInput: числовой OID как есть; иначе snmptranslate (net-snmp-tools, MIBDIRS из конфига).
@@ -175,8 +193,8 @@ func init() {
 }
 
 type devicesTableRow struct {
-	ID          int
-	IP          string
+	ID int
+	IP string
 	// IPHost — host для URL (IPv6 в квадратных скобках, при zone — %25… по RFC 6874).
 	IPHost      string
 	Name        string
@@ -213,7 +231,7 @@ func isAllowedSetOID(numericOID string) bool {
 	return false
 }
 
-// normalizeSNMPVersionInput совпадает с логикой postgres.normalizeSNMPVersion (v1 / v2c / v3).
+// normalizeSNMPVersionInput использует общий строгий normalizer SNMP версии.
 // ipHostForURL возвращает host для authority в http/https/ssh/telnet URL.
 // IPv4 и имена хостов без изменений; IPv6 — [addr]; с зоной — [addr%25zone].
 func ipHostForURL(s string) string {
@@ -249,16 +267,7 @@ func ipHostForURL(s string) string {
 }
 
 func normalizeSNMPVersionInput(v string) (string, error) {
-	switch strings.ToLower(strings.TrimSpace(v)) {
-	case "v1":
-		return "v1", nil
-	case "v3":
-		return "v3", nil
-	case "2c", "v2c", "":
-		return "v2c", nil
-	default:
-		return "", fmt.Errorf("invalid snmp_version %q (allowed: v1, v2c, v3)", v)
-	}
+	return domain.NormalizeSNMPVersion(v)
 }
 
 func devicesTableViewModelFromDevices(devices []*domain.Device) devicesTableViewModel {
@@ -380,15 +389,15 @@ func (h *Handlers) dashboardExternalHealth(ctx context.Context, admin bool) exte
 func (h *Handlers) Dashboard(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	u := userFromContext(r.Context())
-	admin := u == nil || u.role == roleAdmin
+	admin := u != nil && u.role == roleAdmin
 	extHealth := h.dashboardExternalHealth(r.Context(), admin)
 	_ = h.dashboardTmpl.Execute(w, map[string]any{
-		"Admin":     admin,
-		"CSRFToken": csrfTokenFromContext(r),
-		"CSPNonce":  cspNonceFromContext(r),
+		"Admin":                 admin,
+		"CSRFToken":             csrfTokenFromContext(r),
+		"CSPNonce":              cspNonceFromContext(r),
 		"GrafanaIncidentSLAURL": grafanaIncidentSLAURL(),
-		"GrafanaHealth": extHealth.Grafana,
-		"PrometheusHealth": extHealth.Prometheus,
+		"GrafanaHealth":         extHealth.Grafana,
+		"PrometheusHealth":      extHealth.Prometheus,
 	})
 }
 
@@ -400,7 +409,7 @@ func (h *Handlers) ListDevices(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	devices, err := h.repo.ListDevices()
+	devices, err := h.repo.ListDevices(r.Context())
 	if err != nil {
 		h.logger.Error("ListDevices failed", zap.Error(err))
 		http.Error(w, "Database error", http.StatusInternalServerError)
@@ -413,7 +422,7 @@ func (h *Handlers) ListDevices(w http.ResponseWriter, r *http.Request) {
 
 // ✅ /devices/table → HTML fragment для HTMX Dashboard
 func (h *Handlers) DevicesTable(w http.ResponseWriter, r *http.Request) {
-	devices, err := h.repo.ListDevices()
+	devices, err := h.repo.ListDevices(r.Context())
 	if err != nil {
 		http.Error(w, "Database error", http.StatusInternalServerError)
 		return
@@ -423,7 +432,7 @@ func (h *Handlers) DevicesTable(w http.ResponseWriter, r *http.Request) {
 
 	vm := devicesTableViewModelFromDevices(devices)
 	u := userFromContext(r.Context())
-	vm.Admin = u == nil || u.role == roleAdmin
+	vm.Admin = u != nil && u.role == roleAdmin
 	vm.CSRFToken = csrfTokenFromContext(r)
 	for i := range vm.Devices {
 		vm.Devices[i].Admin = vm.Admin
@@ -440,7 +449,7 @@ func (h *Handlers) EditDeviceRow(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Invalid device id", http.StatusBadRequest)
 		return
 	}
-	device, err := h.repo.GetDeviceByID(id)
+	device, err := h.repo.GetDeviceByID(r.Context(), id)
 	if err != nil {
 		http.Error(w, "Database error", http.StatusInternalServerError)
 		return
@@ -459,7 +468,7 @@ func (h *Handlers) UpdateDevice(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Invalid device id", http.StatusBadRequest)
 		return
 	}
-	existing, err := h.repo.GetDeviceByID(id)
+	existing, err := h.repo.GetDeviceByID(r.Context(), id)
 	if err != nil {
 		http.Error(w, "Database error", http.StatusInternalServerError)
 		return
@@ -530,7 +539,7 @@ func (h *Handlers) UpdateDevice(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	updated, err := h.repo.UpdateDeviceByID(id, patch)
+	updated, err := h.repo.UpdateDeviceByID(r.Context(), id, patch)
 	if err != nil {
 		http.Error(w, "Update failed: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -542,7 +551,7 @@ func (h *Handlers) UpdateDevice(w http.ResponseWriter, r *http.Request) {
 
 // DevicesListPage — полная HTML-страница таблицы устройств (дизайн как у дашборда).
 func (h *Handlers) DevicesListPage(w http.ResponseWriter, r *http.Request) {
-	devices, err := h.repo.ListDevices()
+	devices, err := h.repo.ListDevices(r.Context())
 	if err != nil {
 		h.logger.Error("DevicesListPage failed", zap.Error(err))
 		http.Error(w, "Database error", http.StatusInternalServerError)
@@ -553,7 +562,7 @@ func (h *Handlers) DevicesListPage(w http.ResponseWriter, r *http.Request) {
 
 	vm := devicesTableViewModelFromDevices(devices)
 	u := userFromContext(r.Context())
-	vm.Admin = u == nil || u.role == roleAdmin
+	vm.Admin = u != nil && u.role == roleAdmin
 	vm.CSPNonce = cspNonceFromContext(r)
 	for i := range vm.Devices {
 		vm.Devices[i].Admin = vm.Admin
@@ -567,7 +576,7 @@ func (h *Handlers) DevicesListPage(w http.ResponseWriter, r *http.Request) {
 
 // ✅ /devices/page → Отладочная страница
 func (h *Handlers) DevicesPage(w http.ResponseWriter, r *http.Request) {
-	devices, err := h.repo.ListDevices()
+	devices, err := h.repo.ListDevices(r.Context())
 	if err != nil {
 		http.Error(w, "DB error: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -587,6 +596,7 @@ func (h *Handlers) DevicesPage(w http.ResponseWriter, r *http.Request) {
 // SNMP метрика /devices/{id}/metric/{oid}
 
 func (h *Handlers) GetMetric(w http.ResponseWriter, r *http.Request) {
+	h.syncSNMPRuntimeConfig(r.Context())
 	id, err := deviceIDFromChi(r)
 	if err != nil {
 		http.Error(w, "Invalid device id", http.StatusBadRequest)
@@ -600,7 +610,7 @@ func (h *Handlers) GetMetric(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	device, err := h.repo.GetDeviceByID(id)
+	device, err := h.repo.GetDeviceByID(r.Context(), id)
 	if err != nil {
 		h.logger.Error("GetDeviceByID failed", zap.Int("id", id), zap.Error(err))
 		http.Error(w, "DB error", http.StatusInternalServerError)
@@ -620,7 +630,7 @@ func (h *Handlers) GetMetric(w http.ResponseWriter, r *http.Request) {
 	}
 
 	val := mibresolver.PickSNMPValue(result, numericOID)
-	if err := h.repo.SaveMetric(device.ID, numericOID, val); err != nil {
+	if err := h.repo.SaveMetric(r.Context(), device.ID, numericOID, val); err != nil {
 		h.logger.Warn("SaveMetric", zap.Error(err))
 	}
 
@@ -631,6 +641,7 @@ func (h *Handlers) GetMetric(w http.ResponseWriter, r *http.Request) {
 
 // ✅ POST /devices/{id}/snmp/set → SNMP SET (v2c/v3) для одного OID
 func (h *Handlers) SetSNMP(w http.ResponseWriter, r *http.Request) {
+	h.syncSNMPRuntimeConfig(r.Context())
 	id, err := deviceIDFromChi(r)
 	if err != nil {
 		h.writeAPIError(w, http.StatusBadRequest, "validation_error", "invalid device id")
@@ -643,7 +654,7 @@ func (h *Handlers) SetSNMP(w http.ResponseWriter, r *http.Request) {
 		Value        json.RawMessage `json:"value"`         // тип зависит от Type
 		ValidateOnly bool            `json:"validate_only"` // только валидация, без SNMP SET
 	}
-	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+	if err := decodeJSONBody(w, r, &input); err != nil {
 		h.writeAPIError(w, http.StatusBadRequest, "invalid_json", "Invalid JSON")
 		return
 	}
@@ -668,7 +679,7 @@ func (h *Handlers) SetSNMP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	device, err := h.repo.GetDeviceByID(id)
+	device, err := h.repo.GetDeviceByID(r.Context(), id)
 	if err != nil {
 		h.logger.Error("GetDeviceByID failed", zap.Int("id", id), zap.Error(err))
 		h.writeAPIError(w, http.StatusInternalServerError, "db_error", "Database error")
@@ -690,7 +701,7 @@ func (h *Handlers) SetSNMP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if input.ValidateOnly {
-		_ = h.repo.InsertSNMPSetAudit(postgres.SNMPSetAuditRecord{
+		_ = h.repo.InsertSNMPSetAudit(r.Context(), postgres.SNMPSetAuditRecord{
 			UserName: username,
 			DeviceID: sql.NullInt64{Int64: int64(device.ID), Valid: true},
 			OID:      numericOID,
@@ -712,7 +723,7 @@ func (h *Handlers) SetSNMP(w http.ResponseWriter, r *http.Request) {
 
 	if err := h.snmp.SetDevice(device, numericOID, pduType, value); err != nil {
 		h.logger.Error("SNMP SET failed", zap.String("ip", device.IP), zap.String("oid", numericOID), zap.String("type", input.Type), zap.Error(err))
-		_ = h.repo.InsertSNMPSetAudit(postgres.SNMPSetAuditRecord{
+		_ = h.repo.InsertSNMPSetAudit(r.Context(), postgres.SNMPSetAuditRecord{
 			UserName: username,
 			DeviceID: sql.NullInt64{Int64: int64(device.ID), Valid: true},
 			OID:      numericOID,
@@ -725,7 +736,7 @@ func (h *Handlers) SetSNMP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_ = h.repo.InsertSNMPSetAudit(postgres.SNMPSetAuditRecord{
+	_ = h.repo.InsertSNMPSetAudit(r.Context(), postgres.SNMPSetAuditRecord{
 		UserName: username,
 		DeviceID: sql.NullInt64{Int64: int64(device.ID), Valid: true},
 		OID:      numericOID,
@@ -892,7 +903,7 @@ func (h *Handlers) CreateDevice(w http.ResponseWriter, r *http.Request) {
 	// HTMX формы по умолчанию отправляют application/x-www-form-urlencoded,
 	// поэтому сначала пробуем разобрать как form. JSON поддерживаем отдельно.
 	if strings.HasPrefix(r.Header.Get("Content-Type"), "application/json") {
-		if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+		if err := decodeJSONBody(w, r, &input); err != nil {
 			http.Error(w, "Invalid JSON", http.StatusBadRequest)
 			return
 		}
@@ -939,7 +950,7 @@ func (h *Handlers) CreateDevice(w http.ResponseWriter, r *http.Request) {
 		PrivPass:    input.PrivPass,
 	}
 
-	if err := h.repo.CreateDevice(device); err != nil {
+	if err := h.repo.CreateDevice(r.Context(), device); err != nil {
 		h.logger.Error("CreateDevice failed", zap.Error(err))
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -964,7 +975,7 @@ func (h *Handlers) DeleteDevice(w http.ResponseWriter, r *http.Request) {
 
 	h.logger.Info("Deleting device", zap.Int("id", id))
 
-	if err := h.repo.DeleteByID(id); err != nil {
+	if err := h.repo.DeleteByID(r.Context(), id); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			http.Error(w, "Device not found", http.StatusNotFound)
 			return
@@ -1052,13 +1063,13 @@ func hashShort(s string) string {
 
 // LldpTopologyData отдает JSON: узлы и ребра последнего LLDP-снимка.
 func (h *Handlers) LldpTopologyData(w http.ResponseWriter, r *http.Request) {
-	scanID, err := h.repo.GetLatestLldpScanID()
+	scanID, err := h.repo.GetLatestLldpScanID(r.Context())
 	if err != nil {
 		http.Error(w, "Failed to load latest LLDP scan: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	links, err := h.repo.GetLatestLldpLinks()
+	links, err := h.repo.GetLatestLldpLinks(r.Context())
 	if err != nil {
 		http.Error(w, "Failed to load LLDP links: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -1150,6 +1161,7 @@ func (h *Handlers) LldpTopologyData(w http.ResponseWriter, r *http.Request) {
 
 // DiscoverScan — POST /discovery/scan: поиск SNMP-агентов в подсети (Get sysDescr).
 func (h *Handlers) DiscoverScan(w http.ResponseWriter, r *http.Request) {
+	h.syncSNMPRuntimeConfig(r.Context())
 	if r.Method != http.MethodPost {
 		w.Header().Set("Allow", "POST")
 		h.writeAPIError(w, http.StatusMethodNotAllowed, "method_not_allowed", "Method not allowed")
@@ -1169,7 +1181,7 @@ func (h *Handlers) DiscoverScan(w http.ResponseWriter, r *http.Request) {
 		Concurrency  int    `json:"concurrency"`
 		MaxHosts     int    `json:"max_hosts"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+	if err := decodeJSONBody(w, r, &body); err != nil {
 		h.writeAPIError(w, http.StatusBadRequest, "invalid_json", "Invalid JSON")
 		return
 	}
@@ -1249,4 +1261,3 @@ func (h *Handlers) writeAPIError(w http.ResponseWriter, status int, code, msg st
 		Status: status,
 	})
 }
-

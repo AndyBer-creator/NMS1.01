@@ -28,26 +28,26 @@ func truncateDetail(s string) string {
 	return s[:maxAvailabilityDetailLen] + "…"
 }
 
-func (r *Repo) InsertAvailabilityEvent(deviceID int, kind, detail string) error {
+func (r *Repo) InsertAvailabilityEvent(ctx context.Context, deviceID int, kind, detail string) error {
 	kind = strings.TrimSpace(strings.ToLower(kind))
 	if kind != "unavailable" && kind != "available" {
 		return nil
 	}
-	_, err := r.db.ExecContext(context.Background(),
+	_, err := r.db.ExecContext(ctx,
 		`INSERT INTO device_availability_events (device_id, kind, detail) VALUES ($1, $2, $3)`,
 		deviceID, kind, truncateDetail(detail),
 	)
 	return err
 }
 
-func (r *Repo) ListAvailabilityEvents(limit int, deviceID *int) ([]AvailabilityEvent, error) {
+func (r *Repo) ListAvailabilityEvents(ctx context.Context, limit int, deviceID *int) ([]AvailabilityEvent, error) {
 	if limit <= 0 || limit > 5000 {
 		limit = 200
 	}
 	var rows *sql.Rows
 	var err error
 	if deviceID != nil && *deviceID > 0 {
-		rows, err = r.db.QueryContext(context.Background(), `
+		rows, err = r.db.QueryContext(ctx, `
 			SELECT e.id, e.device_id, d.ip::text, COALESCE(d.name, ''), e.occurred_at, e.kind, COALESCE(e.detail, '')
 			FROM device_availability_events e
 			JOIN devices d ON d.id = e.device_id
@@ -55,7 +55,7 @@ func (r *Repo) ListAvailabilityEvents(limit int, deviceID *int) ([]AvailabilityE
 			ORDER BY e.occurred_at DESC
 			LIMIT $2`, *deviceID, limit)
 	} else {
-		rows, err = r.db.QueryContext(context.Background(), `
+		rows, err = r.db.QueryContext(ctx, `
 			SELECT e.id, e.device_id, d.ip::text, COALESCE(d.name, ''), e.occurred_at, e.kind, COALESCE(e.detail, '')
 			FROM device_availability_events e
 			JOIN devices d ON d.id = e.device_id

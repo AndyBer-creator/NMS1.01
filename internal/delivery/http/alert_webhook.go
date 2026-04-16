@@ -2,6 +2,7 @@ package http
 
 import (
 	"NMS1/internal/config"
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -30,7 +31,7 @@ func (h *Handlers) AlertWebhook(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var p alertmanagerWebhookPayload
-	if err := json.NewDecoder(r.Body).Decode(&p); err != nil {
+	if err := decodeJSONBody(w, r, &p); err != nil {
 		http.Error(w, "Invalid JSON", http.StatusBadRequest)
 		return
 	}
@@ -39,7 +40,7 @@ func (h *Handlers) AlertWebhook(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	emailTo := h.repo.GetAlertEmailTo()
+	emailTo := h.repo.GetAlertEmailTo(r.Context())
 	smtpClient := services.NewSMTPClient(
 		config.EnvOrFile("SMTP_HOST"),
 		defaultIfEmpty(config.EnvOrFile("SMTP_PORT"), "587"),
@@ -72,18 +73,20 @@ func (h *Handlers) AlertWebhook(w http.ResponseWriter, r *http.Request) {
 
 		// Telegram (best-effort).
 		if telegram.BotToken != "" && telegram.ChatID != "" {
-			if err := runWithTimeout(5*time.Second, func() error {
-				return telegram.SendCriticalTrap("alertmanager", name, body)
-			}); err != nil {
+			sendCtx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+			err := telegram.SendCriticalTrapContext(sendCtx, "alertmanager", name, body)
+			cancel()
+			if err != nil {
 				h.logger.Warn("telegram alert send failed", zap.Error(err), zap.String("alert", name))
 			}
 		}
 
 		// Email (best-effort).
 		if emailTo != "" && smtpClient.Enabled() {
-			if err := runWithTimeout(6*time.Second, func() error {
-				return smtpClient.Send(emailTo, "[NMS] "+summary, body)
-			}); err != nil {
+			sendCtx, cancel := context.WithTimeout(r.Context(), 6*time.Second)
+			err := smtpClient.SendContext(sendCtx, emailTo, "[NMS] "+summary, body)
+			cancel()
+			if err != nil {
 				h.logger.Warn("email alert send failed", zap.Error(err), zap.String("alert", name), zap.String("to", emailTo))
 			} else {
 				sent++
@@ -105,19 +108,6 @@ func (h *Handlers) AlertWebhook(w http.ResponseWriter, r *http.Request) {
 		"email_sent":    sent,
 		"email_skipped": skipped,
 	})
-}
-
-func runWithTimeout(timeout time.Duration, fn func() error) error {
-	ch := make(chan error, 1)
-	go func() {
-		ch <- fn()
-	}()
-	select {
-	case err := <-ch:
-		return err
-	case <-time.After(timeout):
-		return fmt.Errorf("timeout after %s", timeout)
-	}
 }
 
 func defaultIfEmpty(v, def string) string {

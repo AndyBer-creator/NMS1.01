@@ -57,10 +57,10 @@ func Load() *Config {
 		cfg.SNMP.Port = 161
 	}
 	if cfg.SNMP.Timeout == 0 {
-		cfg.SNMP.Timeout = 10
+		cfg.SNMP.Timeout = 3
 	}
 	if cfg.SNMP.Retries == 0 {
-		cfg.SNMP.Retries = 5
+		cfg.SNMP.Retries = 1
 	}
 	if cfg.Paths.MibUploadDir == "" {
 		if os.Getenv("NMS_ENV") == "docker" {
@@ -73,6 +73,18 @@ func Load() *Config {
 		cfg.Paths.MibUploadDir = v
 	}
 	return &cfg
+}
+
+func EnvDurationOrDefault(name string, fallback time.Duration) time.Duration {
+	v := strings.TrimSpace(os.Getenv(name))
+	if v == "" {
+		return fallback
+	}
+	d, err := time.ParseDuration(v)
+	if err != nil || d <= 0 {
+		return fallback
+	}
+	return d
 }
 
 // MIBSearchDirs — каталоги для MIBDIRS (snmptranslate): uploads, опционально из конфига, иначе public/vendor рядом с mibs/.

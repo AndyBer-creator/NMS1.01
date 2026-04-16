@@ -35,7 +35,7 @@ func normalizeMappedIncidentStatus(v string) (string, error) {
 	}
 }
 
-func (r *Repo) ListITSMInboundMappings(provider string, enabled *bool) ([]domain.ITSMInboundMapping, error) {
+func (r *Repo) ListITSMInboundMappings(ctx context.Context, provider string, enabled *bool) ([]domain.ITSMInboundMapping, error) {
 	args := make([]any, 0, 2)
 	conds := make([]string, 0, 2)
 	if p := strings.TrimSpace(provider); p != "" {
@@ -53,7 +53,7 @@ func (r *Repo) ListITSMInboundMappings(provider string, enabled *bool) ([]domain
 		query += " WHERE " + strings.Join(conds, " AND ")
 	}
 	query += " ORDER BY priority ASC, id ASC"
-	rows, err := r.db.QueryContext(context.Background(), query, args...)
+	rows, err := r.db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -72,7 +72,7 @@ func (r *Repo) ListITSMInboundMappings(provider string, enabled *bool) ([]domain
 	return out, rows.Err()
 }
 
-func (r *Repo) CreateITSMInboundMapping(in *domain.ITSMInboundMapping) (*domain.ITSMInboundMapping, error) {
+func (r *Repo) CreateITSMInboundMapping(ctx context.Context, in *domain.ITSMInboundMapping) (*domain.ITSMInboundMapping, error) {
 	if in == nil {
 		return nil, fmt.Errorf("mapping input is required")
 	}
@@ -93,7 +93,7 @@ func (r *Repo) CreateITSMInboundMapping(in *domain.ITSMInboundMapping) (*domain.
 		priority = 100
 	}
 	var out domain.ITSMInboundMapping
-	err = r.db.QueryRowContext(context.Background(), `
+	err = r.db.QueryRowContext(ctx, `
 		INSERT INTO itsm_inbound_mappings
 		    (provider, external_status, external_priority, external_owner, mapped_status, mapped_assignee, enabled, priority)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
@@ -110,7 +110,7 @@ func (r *Repo) CreateITSMInboundMapping(in *domain.ITSMInboundMapping) (*domain.
 	return &out, nil
 }
 
-func (r *Repo) UpdateITSMInboundMapping(id int64, in *domain.ITSMInboundMapping) (*domain.ITSMInboundMapping, error) {
+func (r *Repo) UpdateITSMInboundMapping(ctx context.Context, id int64, in *domain.ITSMInboundMapping) (*domain.ITSMInboundMapping, error) {
 	if id <= 0 {
 		return nil, fmt.Errorf("mapping id is required")
 	}
@@ -134,7 +134,7 @@ func (r *Repo) UpdateITSMInboundMapping(id int64, in *domain.ITSMInboundMapping)
 		priority = 100
 	}
 	var out domain.ITSMInboundMapping
-	err = r.db.QueryRowContext(context.Background(), `
+	err = r.db.QueryRowContext(ctx, `
 		UPDATE itsm_inbound_mappings
 		   SET provider = $1,
 		       external_status = $2,
@@ -161,11 +161,11 @@ func (r *Repo) UpdateITSMInboundMapping(id int64, in *domain.ITSMInboundMapping)
 	return &out, nil
 }
 
-func (r *Repo) DeleteITSMInboundMapping(id int64) (bool, error) {
+func (r *Repo) DeleteITSMInboundMapping(ctx context.Context, id int64) (bool, error) {
 	if id <= 0 {
 		return false, fmt.Errorf("mapping id is required")
 	}
-	res, err := r.db.ExecContext(context.Background(), `DELETE FROM itsm_inbound_mappings WHERE id = $1`, id)
+	res, err := r.db.ExecContext(ctx, `DELETE FROM itsm_inbound_mappings WHERE id = $1`, id)
 	if err != nil {
 		return false, err
 	}
@@ -176,14 +176,14 @@ func (r *Repo) DeleteITSMInboundMapping(id int64) (bool, error) {
 	return n > 0, nil
 }
 
-func (r *Repo) ResolveITSMInboundMapping(provider, externalStatus, externalPriority, externalOwner string) (*domain.ITSMInboundMapping, error) {
+func (r *Repo) ResolveITSMInboundMapping(ctx context.Context, provider, externalStatus, externalPriority, externalOwner string) (*domain.ITSMInboundMapping, error) {
 	provider = normalizeITSMProvider(provider)
 	externalStatus = strings.ToLower(strings.TrimSpace(externalStatus))
 	externalPriority = strings.ToLower(strings.TrimSpace(externalPriority))
 	externalOwner = strings.ToLower(strings.TrimSpace(externalOwner))
 
 	var out domain.ITSMInboundMapping
-	err := r.db.QueryRowContext(context.Background(), `
+	err := r.db.QueryRowContext(ctx, `
 		SELECT id, provider, external_status, external_priority, external_owner,
 		       mapped_status, mapped_assignee, enabled, priority, created_at
 		  FROM itsm_inbound_mappings

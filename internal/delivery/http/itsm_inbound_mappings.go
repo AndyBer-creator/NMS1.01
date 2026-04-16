@@ -24,7 +24,7 @@ func (h *Handlers) ListITSMInboundMappings(w http.ResponseWriter, r *http.Reques
 		}
 		enabled = &v
 	}
-	items, err := h.repo.ListITSMInboundMappings(provider, enabled)
+	items, err := h.repo.ListITSMInboundMappings(r.Context(), provider, enabled)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -35,11 +35,11 @@ func (h *Handlers) ListITSMInboundMappings(w http.ResponseWriter, r *http.Reques
 
 func (h *Handlers) CreateITSMInboundMapping(w http.ResponseWriter, r *http.Request) {
 	var input domain.ITSMInboundMapping
-	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+	if err := decodeJSONBody(w, r, &input); err != nil {
 		http.Error(w, "invalid json body", http.StatusBadRequest)
 		return
 	}
-	created, err := h.repo.CreateITSMInboundMapping(&input)
+	created, err := h.repo.CreateITSMInboundMapping(r.Context(), &input)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -55,11 +55,11 @@ func (h *Handlers) UpdateITSMInboundMapping(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	var input domain.ITSMInboundMapping
-	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+	if err := decodeJSONBody(w, r, &input); err != nil {
 		http.Error(w, "invalid json body", http.StatusBadRequest)
 		return
 	}
-	updated, err := h.repo.UpdateITSMInboundMapping(id, &input)
+	updated, err := h.repo.UpdateITSMInboundMapping(r.Context(), id, &input)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -78,7 +78,7 @@ func (h *Handlers) DeleteITSMInboundMapping(w http.ResponseWriter, r *http.Reque
 		http.Error(w, "bad mapping id", http.StatusBadRequest)
 		return
 	}
-	deleted, err := h.repo.DeleteITSMInboundMapping(id)
+	deleted, err := h.repo.DeleteITSMInboundMapping(r.Context(), id)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return

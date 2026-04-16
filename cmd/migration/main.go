@@ -3,34 +3,40 @@ package main
 import (
 	"database/sql"
 	"errors"
-	"log"
 
+	"NMS1/internal/applog"
 	"NMS1/internal/config"
 	"NMS1/internal/timezone"
 
 	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/pressly/goose/v3"
+	"go.uber.org/zap"
 )
 
 func main() {
 	timezone.InitFromEnv()
+	logger := applog.MustNewZapFile("nms-migration")
+	defer func() { _ = logger.Sync() }()
+
 	dsn, err := migrationDSN()
 	if err != nil {
-		log.Fatal(err)
+		logger.Fatal("migration dsn", zap.Error(err))
 	}
 
 	db, err := sql.Open("pgx", dsn)
 	if err != nil {
-		log.Fatal(err)
+		logger.Fatal("migration db open", zap.Error(err))
 	}
 	defer func() { _ = db.Close() }()
 
 	if err := goose.SetDialect("postgres"); err != nil {
-		log.Fatal(err)
+		logger.Fatal("migration dialect", zap.Error(err))
 	}
+	logger.Info("starting database migration")
 	if err := goose.Up(db, "migrations"); err != nil {
-		log.Fatal(err)
+		logger.Fatal("migration failed", zap.Error(err))
 	}
+	logger.Info("database migration completed")
 }
 
 func migrationDSN() (string, error) {

@@ -133,7 +133,12 @@
     }
 
     function esc(v) {
-        return String(v || '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
+        return String(v || '')
+            .replaceAll('&', '&amp;')
+            .replaceAll('<', '&lt;')
+            .replaceAll('>', '&gt;')
+            .replaceAll('"', '&quot;')
+            .replaceAll("'", '&#39;');
     }
 
     function row(m) {
@@ -313,6 +318,9 @@
 
     async function deleteMapping(id) {
         if (submitInFlight) {
+            return;
+        }
+        if (!window.confirm('Удалить mapping #' + id + '?')) {
             return;
         }
         submitInFlight = true;

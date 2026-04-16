@@ -2,6 +2,7 @@ package http
 
 import (
 	"NMS1/internal/domain"
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -62,9 +63,10 @@ func TestApplyITSMInboundMapping(t *testing.T) {
 func TestDecodeAndResolveITSMInbound(t *testing.T) {
 	body := `{"incident_id":42,"status":"open","priority":"p1"}`
 	req := httptest.NewRequest(http.MethodPost, "/itsm/inbound/dry-run", strings.NewReader(body))
+	rr := httptest.NewRecorder()
 	req.Header.Set("Authorization", "Bearer test-token")
 	t.Setenv("NMS_ITSM_INBOUND_TOKEN", "test-token")
-	resolved, code, msg := decodeAndResolveITSMInbound(req, func(provider, status, priority, owner string) (*domain.ITSMInboundMapping, error) {
+	resolved, code, msg := decodeAndResolveITSMInbound(rr, req, func(_ context.Context, provider, status, priority, owner string) (*domain.ITSMInboundMapping, error) {
 		return &domain.ITSMInboundMapping{
 			ID:             7,
 			MappedAssignee: "noc-l2",

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"NMS1/internal/applog"
 	"NMS1/internal/config"
 	"NMS1/internal/timezone"
 	"context"
@@ -16,7 +17,7 @@ func main() {
 	if err := config.ValidateRuntimeSecurity(); err != nil {
 		panic(err.Error())
 	}
-	logger, _ := zap.NewProduction()
+	logger := applog.MustNewZapFile("nms-api")
 	defer func() { _ = logger.Sync() }()
 
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)

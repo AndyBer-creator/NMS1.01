@@ -62,7 +62,7 @@ func (r *Repo) Ping(ctx context.Context) error {
 }
 
 // Devices
-func (r *Repo) GetDeviceByIP(ip string) (*domain.Device, error) {
+func (r *Repo) GetDeviceByIP(ctx context.Context, ip string) (*domain.Device, error) {
 	device := &domain.Device{}
 	var lastSeenSql sql.NullTime
 	var lastErrorAt sql.NullTime
@@ -84,7 +84,7 @@ func (r *Repo) GetDeviceByIP(ip string) (*domain.Device, error) {
         FROM devices WHERE ip = $1`
 
 	var secrets deviceSecretSnapshot
-	err := r.db.QueryRowContext(context.Background(), query, ip).Scan(
+	err := r.db.QueryRowContext(ctx, query, ip).Scan(
 		&device.ID,
 		&device.IP,
 		&device.Name,
@@ -123,7 +123,7 @@ func (r *Repo) GetDeviceByIP(ip string) (*domain.Device, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err := r.migrateDeviceSecretsIfNeeded(device.ID, secrets); err != nil {
+	if err := r.migrateDeviceSecretsIfNeeded(ctx, device.ID, secrets); err != nil {
 		return nil, err
 	}
 	if lastSeenSql.Valid {
@@ -139,7 +139,7 @@ func (r *Repo) GetDeviceByIP(ip string) (*domain.Device, error) {
 }
 
 // GetDeviceByID загружает устройство по id (стабильные URL вместо IP/IPv6 в пути).
-func (r *Repo) GetDeviceByID(id int) (*domain.Device, error) {
+func (r *Repo) GetDeviceByID(ctx context.Context, id int) (*domain.Device, error) {
 	if id <= 0 {
 		return nil, nil
 	}
@@ -164,7 +164,7 @@ func (r *Repo) GetDeviceByID(id int) (*domain.Device, error) {
         FROM devices WHERE id = $1`
 
 	var secrets deviceSecretSnapshot
-	err := r.db.QueryRowContext(context.Background(), query, id).Scan(
+	err := r.db.QueryRowContext(ctx, query, id).Scan(
 		&device.ID,
 		&device.IP,
 		&device.Name,
@@ -203,7 +203,7 @@ func (r *Repo) GetDeviceByID(id int) (*domain.Device, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err := r.migrateDeviceSecretsIfNeeded(device.ID, secrets); err != nil {
+	if err := r.migrateDeviceSecretsIfNeeded(ctx, device.ID, secrets); err != nil {
 		return nil, err
 	}
 	if lastSeenSql.Valid {
@@ -218,8 +218,8 @@ func (r *Repo) GetDeviceByID(id int) (*domain.Device, error) {
 	return device, err
 }
 
-func (r *Repo) ListDevices() ([]*domain.Device, error) {
-	rows, err := r.db.QueryContext(context.Background(),
+func (r *Repo) ListDevices(ctx context.Context) ([]*domain.Device, error) {
+	rows, err := r.db.QueryContext(ctx,
 		`SELECT id,
                  ip,
                  name,
@@ -298,7 +298,7 @@ func (r *Repo) ListDevices() ([]*domain.Device, error) {
 	return devices, nil
 }
 
-func (r *Repo) migrateDeviceSecretsIfNeeded(deviceID int, s deviceSecretSnapshot) error {
+func (r *Repo) migrateDeviceSecretsIfNeeded(ctx context.Context, deviceID int, s deviceSecretSnapshot) error {
 	if !r.protector.enabled || deviceID <= 0 {
 		return nil
 	}
@@ -320,7 +320,7 @@ func (r *Repo) migrateDeviceSecretsIfNeeded(deviceID int, s deviceSecretSnapshot
 	if err != nil {
 		return err
 	}
-	_, err = r.db.ExecContext(context.Background(), `
+	_, err = r.db.ExecContext(ctx, `
 		UPDATE devices
 		SET community = $1,
 		    community_enc = $2,
@@ -340,8 +340,8 @@ func (r *Repo) migrateDeviceSecretsIfNeeded(deviceID int, s deviceSecretSnapshot
 	return err
 }
 
-func (r *Repo) DeleteByIP(ip string) error {
-	res, err := r.db.ExecContext(context.Background(),
+func (r *Repo) DeleteByIP(ctx context.Context, ip string) error {
+	res, err := r.db.ExecContext(ctx,
 		`DELETE FROM devices WHERE ip = $1`, ip)
 	if err != nil {
 		return err
@@ -357,11 +357,11 @@ func (r *Repo) DeleteByIP(ip string) error {
 	return nil
 }
 
-func (r *Repo) DeleteByID(id int) error {
+func (r *Repo) DeleteByID(ctx context.Context, id int) error {
 	if id <= 0 {
 		return sql.ErrNoRows
 	}
-	res, err := r.db.ExecContext(context.Background(),
+	res, err := r.db.ExecContext(ctx,
 		`DELETE FROM devices WHERE id = $1`, id)
 	if err != nil {
 		return err
@@ -376,7 +376,7 @@ func (r *Repo) DeleteByID(id int) error {
 	return nil
 }
 
-func (r *Repo) UpdateDeviceByIP(ip string, patch *domain.Device) (*domain.Device, error) {
+func (r *Repo) UpdateDeviceByIP(ctx context.Context, ip string, patch *domain.Device) (*domain.Device, error) {
 	if strings.TrimSpace(ip) == "" {
 		return nil, fmt.Errorf("ip is required")
 	}
@@ -385,7 +385,7 @@ func (r *Repo) UpdateDeviceByIP(ip string, patch *domain.Device) (*domain.Device
 	}
 
 	// Нормализуем snmp_version как в CreateDevice.
-	snmpVer, err := normalizeSNMPVersion(patch.SNMPVersion)
+	snmpVer, err := domain.NormalizeSNMPVersion(patch.SNMPVersion)
 	if err != nil {
 		return nil, err
 	}
@@ -411,7 +411,7 @@ func (r *Repo) UpdateDeviceByIP(ip string, patch *domain.Device) (*domain.Device
 		return nil, err
 	}
 
-	_, err = r.db.ExecContext(context.Background(), `
+	_, err = r.db.ExecContext(ctx, `
 		UPDATE devices
 		SET name = $1,
 		    community = $2,
@@ -439,17 +439,17 @@ func (r *Repo) UpdateDeviceByIP(ip string, patch *domain.Device) (*domain.Device
 	if err != nil {
 		return nil, err
 	}
-	return r.GetDeviceByIP(ip)
+	return r.GetDeviceByIP(ctx, ip)
 }
 
-func (r *Repo) UpdateDeviceByID(id int, patch *domain.Device) (*domain.Device, error) {
+func (r *Repo) UpdateDeviceByID(ctx context.Context, id int, patch *domain.Device) (*domain.Device, error) {
 	if id <= 0 {
 		return nil, fmt.Errorf("id is required")
 	}
 	if patch == nil {
 		return nil, fmt.Errorf("patch is required")
 	}
-	snmpVer, err := normalizeSNMPVersion(patch.SNMPVersion)
+	snmpVer, err := domain.NormalizeSNMPVersion(patch.SNMPVersion)
 	if err != nil {
 		return nil, err
 	}
@@ -473,7 +473,7 @@ func (r *Repo) UpdateDeviceByID(id int, patch *domain.Device) (*domain.Device, e
 	if err != nil {
 		return nil, err
 	}
-	_, err = r.db.ExecContext(context.Background(), `
+	_, err = r.db.ExecContext(ctx, `
 		UPDATE devices
 		SET name = $1,
 		    community = $2,
@@ -501,18 +501,32 @@ func (r *Repo) UpdateDeviceByID(id int, patch *domain.Device) (*domain.Device, e
 	if err != nil {
 		return nil, err
 	}
-	return r.GetDeviceByID(id)
+	return r.GetDeviceByID(ctx, id)
 }
 
-func (r *Repo) SaveMetric(deviceID int, oid, value string) error {
-	_, err := r.db.ExecContext(context.Background(),
+func (r *Repo) SaveMetric(ctx context.Context, deviceID int, oid, value string) error {
+	if _, err := r.db.ExecContext(ctx, `SELECT ensure_metrics_partition_for(NOW())`); err != nil {
+		return err
+	}
+	_, err := r.db.ExecContext(ctx,
 		`INSERT INTO metrics (device_id, oid, value) VALUES ($1, $2, $3)`,
 		deviceID, oid, value)
 	return err
 }
 
-func (r *Repo) CreateDevice(device *domain.Device) error {
-	snmpVer, err := normalizeSNMPVersion(device.SNMPVersion)
+func (r *Repo) PruneOldMetricPartitions(ctx context.Context, retainMonths int) (int, error) {
+	if retainMonths < 1 {
+		return 0, fmt.Errorf("retainMonths must be >= 1")
+	}
+	var dropped int
+	if err := r.db.QueryRowContext(ctx, `SELECT prune_old_metrics_partitions($1)`, retainMonths).Scan(&dropped); err != nil {
+		return 0, err
+	}
+	return dropped, nil
+}
+
+func (r *Repo) CreateDevice(ctx context.Context, device *domain.Device) error {
+	snmpVer, err := domain.NormalizeSNMPVersion(device.SNMPVersion)
 	if err != nil {
 		return err
 	}
@@ -545,23 +559,9 @@ func (r *Repo) CreateDevice(device *domain.Device) error {
         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 'active')
         RETURNING id, created_at`
 
-	return r.db.QueryRowContext(context.Background(), query,
+	return r.db.QueryRowContext(ctx, query,
 		device.IP, device.Name, communityPlain, communityEnc, snmpVer, authProto, authPassPlain, authPassEnc, privProto, privPassPlain, privPassEnc).
 		Scan(&device.ID, &device.CreatedAt)
-}
-
-// normalizeSNMPVersion приводит значение к допустимым для chk_snmp_version: v1, v2c, v3.
-func normalizeSNMPVersion(v string) (string, error) {
-	switch strings.ToLower(strings.TrimSpace(v)) {
-	case "v1":
-		return "v1", nil
-	case "v3":
-		return "v3", nil
-	case "2c", "v2c", "":
-		return "v2c", nil
-	default:
-		return "", fmt.Errorf("invalid snmp_version %q (allowed: v1, v2c, v3)", v)
-	}
 }
 
 func (r *Repo) UpdateDeviceLastSeen(deviceID int) error {
@@ -604,7 +604,7 @@ func (r *Repo) UpdateDeviceError(deviceID int, status, errText string) error {
 	return err
 }
 
-func (r *Repo) InsertSNMPSetAudit(a SNMPSetAuditRecord) error {
+func (r *Repo) InsertSNMPSetAudit(ctx context.Context, a SNMPSetAuditRecord) error {
 	if strings.TrimSpace(a.OID) == "" {
 		return fmt.Errorf("snmp set audit: oid is required")
 	}
@@ -612,7 +612,7 @@ func (r *Repo) InsertSNMPSetAudit(a SNMPSetAuditRecord) error {
 		a.Result = "unknown"
 	}
 	_, err := r.db.ExecContext(
-		context.Background(),
+		ctx,
 		`INSERT INTO snmp_set_audit (user_name, device_id, oid, old_value, new_value, result, error)
          VALUES ($1, $2, $3, $4, $5, $6, $7)`,
 		strings.TrimSpace(a.UserName),

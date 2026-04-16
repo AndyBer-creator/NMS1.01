@@ -98,7 +98,12 @@
     const refreshBtn = document.getElementById('inc-refresh');
 
     function esc(v) {
-        return String(v || '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
+        return String(v || '')
+            .replaceAll('&', '&amp;')
+            .replaceAll('<', '&lt;')
+            .replaceAll('>', '&gt;')
+            .replaceAll('"', '&quot;')
+            .replaceAll("'", '&#39;');
     }
 
     function statusOptions(current) {
@@ -277,7 +282,15 @@
     });
 
     refreshBtn.addEventListener('click', loadIncidents);
-    setInterval(loadIncidents, 30000);
+    const refreshTimer = setInterval(loadIncidents, 30000);
+    let cleanedUp = false;
+    function cleanup() {
+        if (cleanedUp) return;
+        cleanedUp = true;
+        clearInterval(refreshTimer);
+    }
+    window.addEventListener('pagehide', cleanup, { once: true });
+    window.addEventListener('beforeunload', cleanup, { once: true });
     loadIncidents();
 })();
 </script>

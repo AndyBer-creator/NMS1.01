@@ -4,8 +4,8 @@ import (
 	"NMS1/internal/config"
 	"NMS1/internal/domain"
 	"NMS1/internal/services"
-	"encoding/base64"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -103,7 +103,7 @@ func (h *Handlers) ListIncidents(w http.ResponseWriter, r *http.Request) {
 		cursorAt = &at
 		cursorID = &id
 	}
-	page, err := h.repo.ListIncidentsPage(limit, deviceID, status, severity, cursorAt, cursorID)
+	page, err := h.repo.ListIncidentsPage(r.Context(), limit, deviceID, status, severity, cursorAt, cursorID)
 	if err != nil {
 		h.logger.Error("ListIncidents failed", zap.Error(err))
 		http.Error(w, err.Error(), http.StatusBadRequest)
@@ -136,7 +136,7 @@ func (h *Handlers) GetIncident(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "bad incident id", http.StatusBadRequest)
 		return
 	}
-	item, err := h.repo.GetIncidentByID(id)
+	item, err := h.repo.GetIncidentByID(r.Context(), id)
 	if err != nil {
 		h.logger.Error("GetIncidentByID failed", zap.Error(err))
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -146,7 +146,7 @@ func (h *Handlers) GetIncident(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "incident not found", http.StatusNotFound)
 		return
 	}
-	transitions, err := h.repo.ListIncidentTransitions(id, 100)
+	transitions, err := h.repo.ListIncidentTransitions(r.Context(), id, 100)
 	if err != nil {
 		h.logger.Error("ListIncidentTransitions failed", zap.Error(err))
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -168,7 +168,7 @@ func (h *Handlers) CreateIncident(w http.ResponseWriter, r *http.Request) {
 		Source   string           `json:"source"`
 		Details  *json.RawMessage `json:"details"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+	if err := decodeJSONBody(w, r, &input); err != nil {
 		http.Error(w, "invalid json body", http.StatusBadRequest)
 		return
 	}
@@ -182,7 +182,7 @@ func (h *Handlers) CreateIncident(w http.ResponseWriter, r *http.Request) {
 	if input.Details != nil {
 		item.Details = *input.Details
 	}
-	out, err := h.repo.CreateIncident(item)
+	out, err := h.repo.CreateIncident(r.Context(), item)
 	if err != nil {
 		h.logger.Error("CreateIncident failed", zap.Error(err))
 		http.Error(w, err.Error(), http.StatusBadRequest)
@@ -204,7 +204,7 @@ func (h *Handlers) TransitionIncident(w http.ResponseWriter, r *http.Request) {
 		Status  string `json:"status"`
 		Comment string `json:"comment"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+	if err := decodeJSONBody(w, r, &input); err != nil {
 		http.Error(w, "invalid json body", http.StatusBadRequest)
 		return
 	}
@@ -212,7 +212,7 @@ func (h *Handlers) TransitionIncident(w http.ResponseWriter, r *http.Request) {
 	if u := userFromContext(r.Context()); u != nil && strings.TrimSpace(u.username) != "" {
 		changedBy = strings.TrimSpace(u.username)
 	}
-	before, err := h.repo.GetIncidentByID(id)
+	before, err := h.repo.GetIncidentByID(r.Context(), id)
 	if err != nil {
 		h.logger.Error("GetIncidentByID before transition failed", zap.Error(err))
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -222,7 +222,7 @@ func (h *Handlers) TransitionIncident(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "incident not found", http.StatusNotFound)
 		return
 	}
-	item, err := h.repo.TransitionIncidentStatus(id, input.Status, changedBy, input.Comment)
+	item, err := h.repo.TransitionIncidentStatus(r.Context(), id, input.Status, changedBy, input.Comment)
 	if err != nil {
 		h.logger.Error("TransitionIncidentStatus failed", zap.Error(err))
 		http.Error(w, err.Error(), http.StatusBadRequest)
@@ -258,7 +258,7 @@ func (h *Handlers) AssignIncident(w http.ResponseWriter, r *http.Request) {
 		Assignee string `json:"assignee"`
 		Comment  string `json:"comment"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+	if err := decodeJSONBody(w, r, &input); err != nil {
 		http.Error(w, "invalid json body", http.StatusBadRequest)
 		return
 	}
@@ -266,7 +266,7 @@ func (h *Handlers) AssignIncident(w http.ResponseWriter, r *http.Request) {
 	if u := userFromContext(r.Context()); u != nil && strings.TrimSpace(u.username) != "" {
 		changedBy = strings.TrimSpace(u.username)
 	}
-	item, err := h.repo.AssignIncident(id, input.Assignee, changedBy, input.Comment)
+	item, err := h.repo.AssignIncident(r.Context(), id, input.Assignee, changedBy, input.Comment)
 	if err != nil {
 		h.logger.Error("AssignIncident failed", zap.Error(err))
 		http.Error(w, err.Error(), http.StatusBadRequest)
@@ -293,7 +293,7 @@ func (h *Handlers) BulkTransitionIncidents(w http.ResponseWriter, r *http.Reques
 		Status      string  `json:"status"`
 		Comment     string  `json:"comment"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+	if err := decodeJSONBody(w, r, &input); err != nil {
 		http.Error(w, "invalid json body", http.StatusBadRequest)
 		return
 	}
@@ -325,7 +325,7 @@ func (h *Handlers) BulkTransitionIncidents(w http.ResponseWriter, r *http.Reques
 		}
 		seen[id] = struct{}{}
 
-		item, err := h.repo.TransitionIncidentStatus(id, input.Status, changedBy, input.Comment)
+		item, err := h.repo.TransitionIncidentStatus(r.Context(), id, input.Status, changedBy, input.Comment)
 		if err != nil {
 			failedCount++
 			results = append(results, bulkResult{

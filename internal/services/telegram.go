@@ -2,6 +2,7 @@ package services
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -23,6 +24,10 @@ func NewTelegramAlert(botToken, chatID string) *TelegramAlert {
 }
 
 func (t *TelegramAlert) SendCriticalTrap(deviceIP, oid, trapVars string) error {
+	return t.SendCriticalTrapContext(context.Background(), deviceIP, oid, trapVars)
+}
+
+func (t *TelegramAlert) SendCriticalTrapContext(ctx context.Context, deviceIP, oid, trapVars string) error {
 	// ✅ Простой текст БЕЗ Markdown
 	msg := fmt.Sprintf(
 		"🔴 CRITICAL TRAP DETECTED\n\n"+
@@ -51,11 +56,17 @@ func (t *TelegramAlert) SendCriticalTrap(deviceIP, oid, trapVars string) error {
 	if client == nil {
 		client = http.DefaultClient
 	}
-	resp, err := client.Post(
+	req, err := http.NewRequestWithContext(
+		ctx,
+		http.MethodPost,
 		"https://api.telegram.org/bot"+t.BotToken+"/sendMessage",
-		"application/json",
 		bytes.NewBuffer(jsonData),
 	)
+	if err != nil {
+		return fmt.Errorf("telegram request build failed: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := client.Do(req)
 	if err != nil {
 		return fmt.Errorf("telegram http post failed: %w", err)
 	}

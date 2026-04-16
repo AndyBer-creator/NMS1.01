@@ -1,0 +1,47 @@
+{{define "snmpRuntimePanel"}}
+<div class="space-y-3">
+    {{if .ErrMsg}}
+    <p class="text-sm text-red-400">{{.ErrMsg}}</p>
+    {{end}}
+    {{if .Saved}}
+    <p class="text-sm text-emerald-400">SNMP runtime-настройки сохранены. Новые значения применяются сразу для новых запросов и циклов опроса.</p>
+    {{end}}
+    <p class="text-sm text-gray-300">
+        Эффективные параметры SNMP-клиента для `GET`/`SET`, discovery, worker poll и LLDP.
+        Диапазон timeout: <span class="text-gray-200 font-mono">{{.MinTimeoutSec}}</span>–<span class="text-gray-200 font-mono">{{.MaxTimeoutSec}}</span> с,
+        retries: <span class="text-gray-200 font-mono">{{.MinRetries}}</span>–<span class="text-gray-200 font-mono">{{.MaxRetries}}</span>.
+    </p>
+    <p class="text-sm text-amber-300/90">
+        Оценка для недоступного хоста: до <span class="font-mono text-amber-200">{{.WorstCaseSec}}</span> с на устройство
+        по формуле <code class="text-amber-200">timeout * (retries + 1)</code>.
+    </p>
+    {{if .Admin}}
+    <form class="flex flex-col lg:flex-row lg:flex-wrap lg:items-end gap-3"
+          hx-post="/settings/snmp-runtime"
+          hx-target="#snmp-runtime-panel-wrap"
+          hx-swap="innerHTML">
+        <div>
+            <label class="block text-xs text-gray-400 mb-1">Timeout, сек</label>
+            <input type="number" name="timeout_sec" value="{{.TimeoutSec}}" min="{{.MinTimeoutSec}}" max="{{.MaxTimeoutSec}}" required
+                   class="w-full sm:w-40 p-3 bg-gray-900/60 border border-gray-600 rounded-lg focus:border-cyan-400 focus:outline-none font-mono">
+        </div>
+        <div>
+            <label class="block text-xs text-gray-400 mb-1">Retries</label>
+            <input type="number" name="retries" value="{{.Retries}}" min="{{.MinRetries}}" max="{{.MaxRetries}}" required
+                   class="w-full sm:w-32 p-3 bg-gray-900/60 border border-gray-600 rounded-lg focus:border-cyan-400 focus:outline-none font-mono">
+        </div>
+        <button type="submit"
+                class="px-6 py-3 rounded-lg bg-gradient-to-r from-sky-600 to-cyan-600 hover:from-sky-500 hover:to-cyan-500 font-semibold shadow-lg">
+            Сохранить
+        </button>
+    </form>
+    {{else}}
+    <p class="text-sm text-gray-400">
+        Текущие значения:
+        timeout <span class="text-white font-mono text-base">{{.TimeoutSec}}</span> с,
+        retries <span class="text-white font-mono text-base">{{.Retries}}</span>.
+        <span class="text-gray-500">Изменять может только администратор.</span>
+    </p>
+    {{end}}
+</div>
+{{end}}

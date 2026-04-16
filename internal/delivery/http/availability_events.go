@@ -22,7 +22,7 @@ func (h *Handlers) ListAvailabilityEvents(w http.ResponseWriter, r *http.Request
 		}
 	}
 
-	events, err := h.repo.ListAvailabilityEvents(limit, deviceID)
+	events, err := h.repo.ListAvailabilityEvents(r.Context(), limit, deviceID)
 	if err != nil {
 		h.logger.Error("ListAvailabilityEvents failed", zap.Error(err))
 		http.Error(w, err.Error(), http.StatusInternalServerError)

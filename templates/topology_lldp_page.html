@@ -118,7 +118,15 @@
             }
 
             load();
-            setInterval(load, 300000); // 5 minutes
+            const refreshTimer = setInterval(load, 300000); // 5 minutes
+            let cleanedUp = false;
+            function cleanup() {
+                if (cleanedUp) return;
+                cleanedUp = true;
+                clearInterval(refreshTimer);
+            }
+            window.addEventListener('pagehide', cleanup, { once: true });
+            window.addEventListener('beforeunload', cleanup, { once: true });
         })();
     </script>
 </div>

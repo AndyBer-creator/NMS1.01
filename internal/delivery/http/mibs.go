@@ -23,10 +23,11 @@ type mibFileRow struct {
 }
 
 type mibPanelView struct {
-	Dir   string
-	Files []mibFileRow
-	Error string
-	OK    string
+	Dir       string
+	Files     []mibFileRow
+	Error     string
+	OK        string
+	CSRFToken string
 }
 
 func safeMibFilename(name string) (string, bool) {
@@ -120,7 +121,11 @@ func (h *Handlers) MibPanel(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Не удалось прочитать каталог MIB", http.StatusInternalServerError)
 		return
 	}
-	h.renderMibPanel(w, mibPanelView{Dir: h.mibUploadDir, Files: files})
+	h.renderMibPanel(w, mibPanelView{
+		Dir:       h.mibUploadDir,
+		Files:     files,
+		CSRFToken: csrfTokenFromContext(r),
+	})
 }
 
 // MibUpload — загрузка одного файла (multipart, поле file).
@@ -181,7 +186,12 @@ func (h *Handlers) MibUpload(w http.ResponseWriter, r *http.Request) {
 			h.mibUploadError(w, r, "Файл сохранён, но список не обновлён")
 			return
 		}
-		h.renderMibPanel(w, mibPanelView{Dir: h.mibUploadDir, Files: files, OK: "Файл загружен: " + safe})
+		h.renderMibPanel(w, mibPanelView{
+			Dir:       h.mibUploadDir,
+			Files:     files,
+			OK:        "Файл загружен: " + safe,
+			CSRFToken: csrfTokenFromContext(r),
+		})
 		return
 	}
 	http.Redirect(w, r, "/?mib=ok", http.StatusSeeOther)
@@ -190,7 +200,12 @@ func (h *Handlers) MibUpload(w http.ResponseWriter, r *http.Request) {
 func (h *Handlers) mibUploadError(w http.ResponseWriter, r *http.Request, msg string) {
 	if r.Header.Get("HX-Request") == "true" {
 		files, _ := h.listMibFiles()
-		h.renderMibPanel(w, mibPanelView{Dir: h.mibUploadDir, Files: files, Error: msg})
+		h.renderMibPanel(w, mibPanelView{
+			Dir:       h.mibUploadDir,
+			Files:     files,
+			Error:     msg,
+			CSRFToken: csrfTokenFromContext(r),
+		})
 		return
 	}
 	http.Redirect(w, r, "/?mib_err="+url.QueryEscape(truncateQuery(msg, 200)), http.StatusSeeOther)
@@ -233,7 +248,12 @@ func (h *Handlers) MibDelete(w http.ResponseWriter, r *http.Request) {
 			h.mibUploadError(w, r, "Удалено, но список не обновлён")
 			return
 		}
-		h.renderMibPanel(w, mibPanelView{Dir: h.mibUploadDir, Files: files, OK: "Удалено: " + safe})
+		h.renderMibPanel(w, mibPanelView{
+			Dir:       h.mibUploadDir,
+			Files:     files,
+			OK:        "Удалено: " + safe,
+			CSRFToken: csrfTokenFromContext(r),
+		})
 		return
 	}
 	http.Redirect(w, r, "/?mib=del", http.StatusSeeOther)
@@ -248,7 +268,7 @@ func (h *Handlers) MibResolve(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		Symbol string `json:"symbol"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+	if err := decodeJSONBody(w, r, &body); err != nil {
 		http.Error(w, "Invalid JSON", http.StatusBadRequest)
 		return
 	}

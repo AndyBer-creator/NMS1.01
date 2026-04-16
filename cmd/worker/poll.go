@@ -252,7 +252,7 @@ func pollAllDevices(ctx context.Context, repo *postgres.Repo, snmpClient *snmp.C
 	default:
 	}
 
-	devices, err := repo.ListDevices()
+	devices, err := repo.ListDevices(ctx)
 	if err != nil {
 		logger.Error("Failed to list devices", zap.Error(err))
 		return 0, 0, err
@@ -290,7 +290,7 @@ func pollAllDevices(ctx context.Context, repo *postgres.Repo, snmpClient *snmp.C
 						}
 					}
 				}
-				switch pollOneDevice(repo, snmpClient, logger, device, baseOids) {
+				switch pollOneDevice(ctx, repo, snmpClient, logger, device, baseOids) {
 				case pollResultSuccess:
 					successN.Add(1)
 				case pollResultSkipped:
@@ -339,6 +339,7 @@ func pollAllDevices(ctx context.Context, repo *postgres.Repo, snmpClient *snmp.C
 }
 
 func pollOneDevice(
+	ctx context.Context,
 	repo *postgres.Repo,
 	snmpClient *snmp.Client,
 	logger *zap.Logger,
@@ -374,7 +375,7 @@ func pollOneDevice(
 		}
 		if snmpPollWasOK(device.Status) {
 			detail := status + ": " + err.Error()
-			if errEv := repo.InsertAvailabilityEvent(device.ID, "unavailable", detail); errEv != nil {
+			if errEv := repo.InsertAvailabilityEvent(ctx, device.ID, "unavailable", detail); errEv != nil {
 				logger.Warn("availability event insert failed", zap.Int("device_id", device.ID), zap.Error(errEv))
 			}
 			details, _ := json.Marshal(map[string]any{
@@ -384,6 +385,7 @@ func pollOneDevice(
 				"name":   device.Name,
 			})
 			_, _, ierr := repo.CreateOrTouchOpenIncident(
+				ctx,
 				&device.ID,
 				"SNMP device unavailable",
 				"critical",
@@ -411,17 +413,17 @@ func pollOneDevice(
 	}
 
 	if snmpPollWasFailure(device.Status) {
-		if errEv := repo.InsertAvailabilityEvent(device.ID, "available", "SNMP опрос восстановлен"); errEv != nil {
+		if errEv := repo.InsertAvailabilityEvent(ctx, device.ID, "available", "SNMP опрос восстановлен"); errEv != nil {
 			logger.Warn("availability event insert failed", zap.Int("device_id", device.ID), zap.Error(errEv))
 		}
-		if _, errRes := repo.ResolveOpenIncidentsBySource(device.ID, "polling", "system", "auto-resolved: SNMP poll restored"); errRes != nil {
+		if _, errRes := repo.ResolveOpenIncidentsBySource(ctx, device.ID, "polling", "system", "auto-resolved: SNMP poll restored"); errRes != nil {
 			logger.Warn("incident auto-resolve failed", zap.Int("device_id", device.ID), zap.Error(errRes))
 		}
 	}
 
 	metricsSaved := 0
 	for oid, value := range result {
-		if err := repo.SaveMetric(device.ID, oid, value); err != nil {
+		if err := repo.SaveMetric(ctx, device.ID, oid, value); err != nil {
 			logger.Warn("Save metric failed",
 				zap.String("ip", device.IP),
 				zap.String("oid", oid),
