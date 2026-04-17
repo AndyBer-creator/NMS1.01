@@ -17,7 +17,6 @@
         <span class="text-xs px-2 py-0.5 rounded bg-gray-700 text-gray-300 uppercase">{{.Kind}}</span>
     </header>
     <div id="terminal-toolbar" class="flex flex-wrap items-end gap-3 px-4 py-3 bg-gray-800/50 border-b border-gray-700 shrink-0">
-        {{if eq .Kind "ssh"}}
         <label class="flex flex-col text-xs text-gray-400 gap-1">
             SSH user
             <input id="ssh-user" type="text" autocomplete="username" placeholder="admin"
@@ -33,44 +32,6 @@
             <input id="ssh-port" type="number" value="22" min="1" max="65535"
                    class="w-24 px-2 py-1.5 rounded bg-gray-800 border border-gray-600 text-white text-sm focus:border-blue-400 focus:outline-none">
         </label>
-        {{else}}
-        <label class="flex flex-col text-xs text-gray-400 gap-1">
-            Порт Telnet
-            <input id="telnet-port" type="number" value="23" min="1" max="65535"
-                   class="w-24 px-2 py-1.5 rounded bg-gray-800 border border-gray-600 text-white text-sm focus:border-blue-400 focus:outline-none">
-        </label>
-        <label class="flex flex-col text-xs text-gray-400 gap-1">
-            Логин (telnet)
-            <input id="telnet-login" type="text" autocomplete="username" placeholder="admin"
-                   class="w-40 px-2 py-1.5 rounded bg-gray-800 border border-gray-600 text-white text-sm focus:border-blue-400 focus:outline-none">
-        </label>
-        <label class="flex flex-col text-xs text-gray-400 gap-1">
-            Пароль (telnet)
-            <input id="telnet-password" type="password" autocomplete="current-password" placeholder="••••••"
-                   class="w-40 px-2 py-1.5 rounded bg-gray-800 border border-gray-600 text-white text-sm focus:border-blue-400 focus:outline-none">
-        </label>
-        <button type="button" id="btn-send-telnet-login"
-                class="mt-5 px-3 py-1.5 rounded-lg bg-slate-600 hover:bg-slate-500 text-white text-xs font-medium">
-            Отправить логин
-        </button>
-        <button type="button" id="btn-send-telnet-password"
-                class="mt-5 px-3 py-1.5 rounded-lg bg-slate-600 hover:bg-slate-500 text-white text-xs font-medium">
-            Отправить пароль
-        </button>
-        <button type="button" id="btn-send-cr"
-                class="mt-5 px-3 py-1.5 rounded-lg bg-gray-700 hover:bg-gray-600 text-white text-xs font-medium">
-            Send CR
-        </button>
-        <button type="button" id="btn-send-crlf"
-                class="mt-5 px-3 py-1.5 rounded-lg bg-gray-700 hover:bg-gray-600 text-white text-xs font-medium">
-            Send CRLF
-        </button>
-        <button type="button" id="btn-send-lf"
-                class="mt-5 px-3 py-1.5 rounded-lg bg-gray-700 hover:bg-gray-600 text-white text-xs font-medium">
-            Send LF
-        </button>
-        <p class="text-xs text-amber-400/90 max-w-xl">Telnet без шифрования. Используйте только в доверенной сети.</p>
-        {{end}}
         <button type="button" id="btn-connect"
                 class="mt-5 px-4 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-medium">
             Подключиться
@@ -133,9 +94,10 @@
     term.open(document.getElementById('terminal-wrap'));
     fitAddon.fit();
     term.onData(function (data) {
-        if (sessionReady && ws && ws.readyState === WebSocket.OPEN) {
-            ws.send(textEnc.encode(data));
+        if (!sessionReady || !ws || ws.readyState !== WebSocket.OPEN) {
+            return;
         }
+        ws.send(textEnc.encode(data));
     });
 
     const statusEl = document.getElementById('term-status');
@@ -144,13 +106,6 @@
     const errPanel = document.getElementById('term-error-panel');
     const errPre = document.getElementById('term-last-error');
     const btnCopyErr = document.getElementById('btn-copy-err');
-    const telnetLoginEl = document.getElementById('telnet-login');
-    const telnetPasswordEl = document.getElementById('telnet-password');
-    const btnSendTelnetLogin = document.getElementById('btn-send-telnet-login');
-    const btnSendTelnetPassword = document.getElementById('btn-send-telnet-password');
-    const btnSendCR = document.getElementById('btn-send-cr');
-    const btnSendCRLF = document.getElementById('btn-send-crlf');
-    const btnSendLF = document.getElementById('btn-send-lf');
     let lastErrorText = '';
 
     function setStatus(t) { statusEl.textContent = t || ''; }
@@ -210,6 +165,7 @@
         term.focus();
     }
 
+
     window.addEventListener('resize', function () {
         try {
             fitAddon.fit();
@@ -218,35 +174,6 @@
     });
     document.getElementById('terminal-wrap').addEventListener('click', function () { term.focus(); });
 
-    if (btnSendTelnetLogin) {
-        btnSendTelnetLogin.addEventListener('click', function () {
-            sendRaw((telnetLoginEl && telnetLoginEl.value ? telnetLoginEl.value : '') + '\r\n');
-        });
-    }
-    if (btnSendTelnetPassword) {
-        btnSendTelnetPassword.addEventListener('click', function () {
-            sendRaw((telnetPasswordEl && telnetPasswordEl.value ? telnetPasswordEl.value : '') + '\r\n');
-        });
-    }
-    if (telnetLoginEl) {
-        telnetLoginEl.addEventListener('keydown', function (e) {
-            if (e.key === 'Enter') {
-                e.preventDefault();
-                sendRaw((telnetLoginEl.value || '') + '\r\n');
-            }
-        });
-    }
-    if (telnetPasswordEl) {
-        telnetPasswordEl.addEventListener('keydown', function (e) {
-            if (e.key === 'Enter') {
-                e.preventDefault();
-                sendRaw((telnetPasswordEl.value || '') + '\r\n');
-            }
-        });
-    }
-    if (btnSendCR) btnSendCR.addEventListener('click', function () { sendRaw('\r'); });
-    if (btnSendCRLF) btnSendCRLF.addEventListener('click', function () { sendRaw('\r\n'); });
-    if (btnSendLF) btnSendLF.addEventListener('click', function () { sendRaw('\n'); });
 
     function strFromBuf(ab) {
         const u8 = new Uint8Array(ab);
@@ -307,19 +234,13 @@
             clearWsOpenTimer();
             try {
                 let init;
-                if (kind === 'telnet') {
-                    const telnetPortEl = document.getElementById('telnet-port');
-                    const port = parseInt(telnetPortEl ? telnetPortEl.value : '23', 10) || 23;
-                    init = { type: 'init', port: port };
-                } else {
-                    const sshUserEl = document.getElementById('ssh-user');
-                    const sshPassEl = document.getElementById('ssh-pass');
-                    const sshPortEl = document.getElementById('ssh-port');
-                    const user = (sshUserEl && sshUserEl.value ? sshUserEl.value : '').trim();
-                    const pass = sshPassEl && sshPassEl.value ? sshPassEl.value : '';
-                    const port = parseInt(sshPortEl ? sshPortEl.value : '22', 10) || 22;
-                    init = { type: 'init', username: user, password: pass, port: port };
-                }
+                const sshUserEl = document.getElementById('ssh-user');
+                const sshPassEl = document.getElementById('ssh-pass');
+                const sshPortEl = document.getElementById('ssh-port');
+                const user = (sshUserEl && sshUserEl.value ? sshUserEl.value : '').trim();
+                const pass = sshPassEl && sshPassEl.value ? sshPassEl.value : '';
+                const port = parseInt(sshPortEl ? sshPortEl.value : '22', 10) || 22;
+                init = { type: 'init', username: user, password: pass, port: port };
                 ws.send(JSON.stringify(init));
                 setStatus('Ожидание ответа сервера…');
                 clearHangTimer();
@@ -362,10 +283,6 @@
                     setStatus('Сессия');
                     term.focus();
                     sendResize();
-                    if (kind === 'telnet') {
-                        // Многие telnet-устройства показывают login prompt только после первого Enter.
-                        setTimeout(function () { sendRaw('\r'); }, 350);
-                    }
                     return true;
                 }
             } catch (e) {}

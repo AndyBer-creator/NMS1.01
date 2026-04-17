@@ -29,15 +29,6 @@ import (
 )
 
 const (
-	telnetIAC                  = byte(255)
-	telnetDONT                 = byte(254)
-	telnetDO                   = byte(253)
-	telnetWONT                 = byte(252)
-	telnetWILL                 = byte(251)
-	telnetSB                   = byte(250)
-	telnetSE                   = byte(240)
-	telnetOptSGA               = byte(3) // Suppress Go Ahead
-	telnetOptECHO              = byte(1) // Echo
 	defaultTerminalWSReadLimit = int64(64 * 1024)
 	maxTerminalWSReadLimit     = int64(1024 * 1024)
 	maxTerminalAuthFieldBytes  = 256
@@ -136,15 +127,9 @@ type terminalWSClaims struct {
 	Exp  int64  `json:"exp"`
 }
 
-func terminalKindFromQuery(r *http.Request) string {
-	k := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("kind")))
-	k = strings.Trim(k, "\"'")
-	switch k {
-	case "telnet":
-		return "telnet"
-	default:
-		return "ssh"
-	}
+func terminalKindFromQuery(_ *http.Request) string {
+	// Web-terminal supports only SSH.
+	return "ssh"
 }
 
 func deviceDialAddr(host string, port int) string {
@@ -261,7 +246,7 @@ func terminalTokenFromSubprotocol(r *http.Request) string {
 	return ""
 }
 
-// TerminalWS: WebSocket к SSH или Telnet устройства (только admin: subprotocol token или cookie/Basic).
+// TerminalWS: WebSocket к SSH устройства (только admin: subprotocol token или cookie/Basic).
 // Первое сообщение — текст JSON: {"type":"init","username":"...","password":"...","port":22}.
 // Далее: бинарные кадры — ввод в PTY/TCP; текст JSON {"type":"resize","cols":n,"rows":m} для SSH.
 // С сервера: бинарные кадры — вывод терминала; при ошибке — текст JSON {"type":"error",...}.
@@ -379,17 +364,13 @@ func (h *Handlers) TerminalWS(w http.ResponseWriter, r *http.Request) {
 
 	port := init.Port
 	if port <= 0 {
-		if kind == "telnet" {
-			port = 23
-		} else {
-			port = 22
-		}
+		port = 22
 	}
 	addr := deviceDialAddr(dev.IP, port)
 	dialTimeout := terminalDialTimeout()
 	deadline := terminalSessionDeadline()
 
-	// Сразу после init — чтобы UI не «висел» молча на долгом Dial (особенно Telnet/SSH).
+	// Сразу после init — чтобы UI не «висел» молча на долгом Dial.
 	_ = wsWriteText(conn, &connWriteMu, terminalJSON("connecting", "параметры приняты, подключаюсь к "+addr+" ("+kind+")…"))
 
 	nmsUser := u.username
@@ -400,20 +381,6 @@ func (h *Handlers) TerminalWS(w http.ResponseWriter, r *http.Request) {
 		zap.String("kind", kind),
 		zap.String("dial_addr", addr),
 	)
-
-	if kind == "telnet" {
-		if err := h.runTerminalTelnet(r.Context(), conn, &connWriteMu, addr, dialTimeout, deadline, pingStop); err != nil {
-			h.logger.Warn("terminal telnet ended", zap.Error(err))
-			_ = wsWriteText(conn, &connWriteMu, terminalJSON("error", err.Error()))
-			wsSendCloseFrame(conn, &connWriteMu, websocket.CloseNormalClosure, "telnet ended")
-		}
-		h.logger.Info("terminal session end",
-			zap.String("nms_user", nmsUser),
-			zap.Int("device_id", id),
-			zap.String("kind", kind),
-		)
-		return
-	}
 
 	if err := h.runTerminalSSH(r.Context(), conn, &connWriteMu, addr, init.Username, init.Password, dialTimeout, deadline, pingStop); err != nil {
 		h.logger.Warn("terminal ssh ended", zap.Error(err))
@@ -569,60 +536,6 @@ func (h *Handlers) runTerminalSSH(ctx context.Context, conn *websocket.Conn, wri
 	return first
 }
 
-func (h *Handlers) runTerminalTelnet(ctx context.Context, conn *websocket.Conn, writeMu *sync.Mutex, addr string, dialTimeout time.Duration, deadline time.Time, pingStop <-chan struct{}) error {
-	_ = wsWriteText(conn, writeMu, terminalJSON("connecting", "dialing "+addr))
-	if dialTimeout <= 0 {
-		dialTimeout = 20 * time.Second
-	}
-	if dialTimeout > 2*time.Minute {
-		dialTimeout = 2 * time.Minute
-	}
-	dctx, cancel := context.WithTimeout(ctx, dialTimeout)
-	defer cancel()
-	d := net.Dialer{Timeout: dialTimeout}
-	tcp, err := d.DialContext(dctx, "tcp", addr)
-	if err != nil {
-		return fmt.Errorf("tcp dial: %w", err)
-	}
-	defer func() { _ = tcp.Close() }()
-	h.logger.Info("terminal telnet dial connected", zap.String("dial_addr", addr))
-	if c, ok := tcp.(*net.TCPConn); ok {
-		_ = c.SetNoDelay(true)
-	}
-	// Попытка «разбудить» line-mode telnet устройства: просим ECHO и suppress-go-ahead.
-	_, _ = tcp.Write([]byte{telnetIAC, telnetWILL, telnetOptECHO, telnetIAC, telnetWILL, telnetOptSGA})
-
-	_ = wsWriteText(conn, writeMu, terminalJSON("ok", ""))
-	// Явный маркер в терминале: помогает отличить «WS сломан» от «устройство молчит после коннекта».
-	_ = wsWriteBinary(conn, writeMu, []byte("\r\n[connected to "+addr+"]\r\n"))
-	go terminalWSKeepalive(conn, writeMu, pingStop)
-
-	var wg sync.WaitGroup
-	wg.Add(2)
-	errCh := make(chan error, 2)
-
-	go func() {
-		defer wg.Done()
-		errCh <- copyWSBinaryToWriter(ctx, conn, tcp, deadline)
-	}()
-	go func() {
-		defer wg.Done()
-		errCh <- copyTelnetServerToWS(ctx, conn, writeMu, tcp, deadline)
-	}()
-
-	wg.Wait()
-	close(errCh)
-	var first error
-	for e := range errCh {
-		if e != nil && !errors.Is(e, io.EOF) && !websocket.IsCloseError(e, websocket.CloseNormalClosure, websocket.CloseGoingAway) {
-			if first == nil {
-				first = e
-			}
-		}
-	}
-	return first
-}
-
 func copyWSBinaryToWriter(ctx context.Context, conn *websocket.Conn, w io.Writer, deadline time.Time) error {
 	idle := terminalWSReadIdle()
 	for {
@@ -676,90 +589,6 @@ func copyReaderToWSBinary(ctx context.Context, conn *websocket.Conn, writeMu *sy
 				return nil
 			}
 			return err
-		}
-	}
-}
-
-// copyTelnetServerToWS: поток с устройства, отвечаем отказом на опции Telnet (минимум для стабильности).
-func copyTelnetServerToWS(ctx context.Context, conn *websocket.Conn, writeMu *sync.Mutex, tcpConn net.Conn, deadline time.Time) error {
-	br := newByteReader(tcpConn)
-	buf := make([]byte, 0, 4096)
-	flush := func() error {
-		if len(buf) == 0 {
-			return nil
-		}
-		err := wsWriteBinary(conn, writeMu, buf)
-		buf = buf[:0]
-		return err
-	}
-	for {
-		if time.Now().After(deadline) {
-			return context.DeadlineExceeded
-		}
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		default:
-		}
-		b, err := br.ReadByte()
-		if err != nil {
-			_ = flush()
-			if errors.Is(err, io.EOF) {
-				return nil
-			}
-			return err
-		}
-		if b != telnetIAC {
-			buf = append(buf, b)
-			if len(buf) >= 4096 {
-				if err := flush(); err != nil {
-					return err
-				}
-			}
-			continue
-		}
-		if err := flush(); err != nil {
-			return err
-		}
-		cmd, err := br.ReadByte()
-		if err != nil {
-			return err
-		}
-		if cmd == telnetIAC {
-			buf = append(buf, telnetIAC)
-			continue
-		}
-		switch cmd {
-		case telnetDO, telnetDONT:
-			opt, err := br.ReadByte()
-			if err != nil {
-				return err
-			}
-			_, _ = tcpConn.Write([]byte{telnetIAC, telnetWONT, opt})
-		case telnetWILL, telnetWONT:
-			opt, err := br.ReadByte()
-			if err != nil {
-				return err
-			}
-			_, _ = tcpConn.Write([]byte{telnetIAC, telnetDONT, opt})
-		case telnetSB:
-			for {
-				x, err := br.ReadByte()
-				if err != nil {
-					return err
-				}
-				if x == telnetIAC {
-					y, err := br.ReadByte()
-					if err != nil {
-						return err
-					}
-					if y == telnetSE {
-						break
-					}
-				}
-			}
-		default:
-			// GA, NOP, etc. — игнор.
 		}
 	}
 }

@@ -16,9 +16,9 @@ import (
 )
 
 func TestTerminalKindFromQuery(t *testing.T) {
-	r, _ := http.NewRequest(http.MethodGet, "/x?kind=telnet", nil)
-	if got := terminalKindFromQuery(r); got != "telnet" {
-		t.Fatalf("telnet: got %q", got)
+	r, _ := http.NewRequest(http.MethodGet, "/x?kind=anything", nil)
+	if got := terminalKindFromQuery(r); got != "ssh" {
+		t.Fatalf("kind query must resolve to ssh, got %q", got)
 	}
 	r2, _ := http.NewRequest(http.MethodGet, "/x", nil)
 	if got := terminalKindFromQuery(r2); got != "ssh" {
@@ -215,12 +215,6 @@ func TestValidateTerminalInitMsg(t *testing.T) {
 			t.Fatal("expected error for empty ssh username")
 		}
 	})
-	t.Run("telnet username optional", func(t *testing.T) {
-		err := validateTerminalInitMsg(terminalInitMsg{Type: "init", Username: "   "}, "telnet")
-		if err != nil {
-			t.Fatalf("expected telnet init to allow empty username, got %v", err)
-		}
-	})
 	t.Run("invalid port", func(t *testing.T) {
 		err := validateTerminalInitMsg(terminalInitMsg{Type: "init", Username: "u", Port: 70000}, "ssh")
 		if err == nil {
@@ -229,7 +223,7 @@ func TestValidateTerminalInitMsg(t *testing.T) {
 	})
 	t.Run("too long credentials", func(t *testing.T) {
 		long := strings.Repeat("a", maxTerminalAuthFieldBytes+1)
-		err := validateTerminalInitMsg(terminalInitMsg{Type: "init", Username: long}, "telnet")
+		err := validateTerminalInitMsg(terminalInitMsg{Type: "init", Username: long}, "ssh")
 		if err == nil {
 			t.Fatal("expected error for long username")
 		}

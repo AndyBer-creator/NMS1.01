@@ -233,7 +233,7 @@ func isAllowedSetOID(numericOID string) bool {
 }
 
 // normalizeSNMPVersionInput использует общий строгий normalizer SNMP версии.
-// ipHostForURL возвращает host для authority в http/https/ssh/telnet URL.
+// ipHostForURL возвращает host для authority в URL схем http/https/ssh.
 // IPv4 и имена хостов без изменений; IPv6 — [addr]; с зоной — [addr%25zone].
 func ipHostForURL(s string) string {
 	s = strings.TrimSpace(s)
