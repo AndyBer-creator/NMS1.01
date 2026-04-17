@@ -36,7 +36,5 @@ services:
       DB_SSLMODE: require
 
   trap-receiver:
-    security_opt:
-      - no-new-privileges:true
     environment:
       NMS_ENV: production

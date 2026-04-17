@@ -184,7 +184,7 @@ services:
       - ../../scripts/render_alertmanager_config.sh:/usr/local/bin/render_alertmanager_config.sh:ro
     entrypoint: ["/bin/sh", "-c"]
     command:
-      - 'bin="$$(command -v alertmanager || true)"; [ -n "$$bin" ] || bin=/bin/alertmanager; /usr/local/bin/render_alertmanager_config.sh /etc/alertmanager/alertmanager.yml /tmp/alertmanager.yml && exec "$$bin" --config.file=/tmp/alertmanager.yml --storage.path=/alertmanager'
+      - 'bin="$$(command -v alertmanager || true)"; [ -n "$$bin" ] || bin=/bin/alertmanager; sh /usr/local/bin/render_alertmanager_config.sh /etc/alertmanager/alertmanager.yml /tmp/alertmanager.yml && exec "$$bin" --config.file=/tmp/alertmanager.yml --storage.path=/alertmanager'
     networks:
       - nms-network
     restart: unless-stopped
@@ -253,8 +253,6 @@ services:
       - "162:162/udp"
     cap_add:
       - NET_BIND_SERVICE
-    security_opt:
-      - no-new-privileges:true
     environment:
       TZ: ${TZ:-UTC}
       NMS_ENV: docker

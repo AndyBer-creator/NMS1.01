@@ -1,12 +1,22 @@
 SHELL := /bin/bash
 
-.PHONY: migrate rotate-db-secrets sbom server worker traps dev docker-up clean backup-db restore-db smoke-test rbac-smoke init-secrets log-secrets-check slo-gates alert-rules-check shell-syntax-check tool-version-check https-policy-check compose-security-check openapi-breaking-check chaos-worker-check test test-race test-cover test-integration lint vuln gosec check-coverage e2e-http-smoke e2e-auth-smoke contract-http-spec load-http-readonly k6-readonly k6-session-csrf k6-logout-csrf k6-admin-csrf ci-local static-css check-static-css vendor-js
+.PHONY: migrate rotate-db-secrets sbom server worker traps dev docker-up docker-up-bridge docker-logs compose-up compose-down compose-down-secrets compose-up-secrets compose-logs compose-logs-secrets compose-bridge-up compose-bridge-down compose-bridge-down-secrets compose-bridge-up-secrets compose-bridge-logs compose-bridge-logs-secrets clean backup-db restore-db smoke-test rbac-smoke init-secrets log-secrets-check slo-gates alert-rules-check shell-syntax-check tool-version-check https-policy-check compose-security-check openapi-breaking-check chaos-worker-check test test-race test-cover test-integration lint vuln gosec check-coverage e2e-http-smoke e2e-auth-smoke contract-http-spec load-http-readonly k6-readonly k6-session-csrf k6-logout-csrf k6-admin-csrf ci-local static-css check-static-css vendor-js
 
 # Если .env есть — подхватываем (docker, migrate, smoke). Без файла цели вроде `make test` всё равно работают.
 ifneq (,$(wildcard .env))
 include .env
 export
 endif
+
+# Интерполяция ${VAR} в compose YAML: передаём .env явно (include выше не гарантирует это для docker compose).
+COMPOSE_FILE := deploy/compose/docker-compose.yml
+COMPOSE := docker compose --env-file .env -f $(COMPOSE_FILE)
+COMPOSE_WITH_SECRETS := docker compose --env-file .env -f $(COMPOSE_FILE) -f deploy/compose/docker-compose.secrets.yml
+
+# Bridge-сеть (api/worker в Docker-сети, DB_DSN с host=postgres); см. README.
+COMPOSE_BRIDGE_FILE := deploy/compose/docker-compose.bridge.yml
+COMPOSE_BRIDGE := docker compose --env-file .env -f $(COMPOSE_BRIDGE_FILE)
+COMPOSE_BRIDGE_WITH_SECRETS := docker compose --env-file .env -f $(COMPOSE_BRIDGE_FILE) -f deploy/compose/docker-compose.secrets.yml
 
 # Пересобрать Tailwind в static/css/app.css (нужны Node.js и npm).
 static-css:
@@ -43,10 +53,64 @@ dev:
 	$(MAKE) migrate && $(MAKE) server & sleep 3 && $(MAKE) worker &
 
 docker-up:
-	sudo docker compose -f deploy/compose/docker-compose.yml up -d postgres grafana
+	@test -f .env || (echo "Missing .env in repo root"; exit 1)
+	$(COMPOSE) up -d postgres grafana
 
-docker-logs:
-	sudo docker compose -f deploy/compose/docker-compose.yml logs -f
+docker-up-bridge:
+	@test -f .env || (echo "Missing .env in repo root"; exit 1)
+	$(COMPOSE_BRIDGE) up -d postgres grafana
+
+# Полный стек из корня репозитория.
+compose-up:
+	@test -f .env || (echo "Missing .env in repo root"; exit 1)
+	$(COMPOSE) up -d --build
+
+compose-down:
+	@test -f .env || (echo "Missing .env in repo root"; exit 1)
+	$(COMPOSE) down
+
+compose-down-secrets:
+	@test -f .env || (echo "Missing .env in repo root"; exit 1)
+	$(COMPOSE_WITH_SECRETS) down
+
+# То же + docker-compose.secrets.yml (файлы в .secrets/; см. scripts/init_docker_secrets.sh).
+compose-up-secrets:
+	@test -f .env || (echo "Missing .env in repo root"; exit 1)
+	$(COMPOSE_WITH_SECRETS) up -d --build
+
+compose-logs:
+	@test -f .env || (echo "Missing .env in repo root"; exit 1)
+	$(COMPOSE) logs -f
+
+compose-logs-secrets:
+	@test -f .env || (echo "Missing .env in repo root"; exit 1)
+	$(COMPOSE_WITH_SECRETS) logs -f
+
+compose-bridge-up:
+	@test -f .env || (echo "Missing .env in repo root"; exit 1)
+	$(COMPOSE_BRIDGE) up -d --build
+
+compose-bridge-down:
+	@test -f .env || (echo "Missing .env in repo root"; exit 1)
+	$(COMPOSE_BRIDGE) down
+
+compose-bridge-down-secrets:
+	@test -f .env || (echo "Missing .env in repo root"; exit 1)
+	$(COMPOSE_BRIDGE_WITH_SECRETS) down
+
+compose-bridge-up-secrets:
+	@test -f .env || (echo "Missing .env in repo root"; exit 1)
+	$(COMPOSE_BRIDGE_WITH_SECRETS) up -d --build
+
+compose-bridge-logs:
+	@test -f .env || (echo "Missing .env in repo root"; exit 1)
+	$(COMPOSE_BRIDGE) logs -f
+
+compose-bridge-logs-secrets:
+	@test -f .env || (echo "Missing .env in repo root"; exit 1)
+	$(COMPOSE_BRIDGE_WITH_SECRETS) logs -f
+
+docker-logs: compose-logs
 
 clean:
 	rm -rf bin/ *.log ./trap-receiver
