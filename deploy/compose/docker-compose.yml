@@ -129,6 +129,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      migration:
+        condition: service_completed_successfully
     healthcheck:
       test: ["CMD-SHELL", "wget -q -O- http://127.0.0.1:8080/health | grep -q '^OK$'"]
       interval: 15s
@@ -235,6 +237,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      migration:
+        condition: service_completed_successfully
     healthcheck:
       test: ["CMD-SHELL", "wget -q -O- http://127.0.0.1:8081/metrics >/dev/null"]
       interval: 20s

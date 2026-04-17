@@ -106,7 +106,11 @@ func (h *Handlers) ListIncidents(w http.ResponseWriter, r *http.Request) {
 	page, err := h.repo.ListIncidentsPage(r.Context(), limit, deviceID, status, severity, cursorAt, cursorID)
 	if err != nil {
 		h.logger.Error("ListIncidents failed", zap.Error(err))
-		http.Error(w, "invalid incident query", http.StatusBadRequest)
+		if isIncidentListClientError(err) {
+			http.Error(w, "invalid incident query", http.StatusBadRequest)
+			return
+		}
+		http.Error(w, "internal server error", http.StatusInternalServerError)
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
@@ -123,6 +127,14 @@ func (h *Handlers) ListIncidents(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	_ = json.NewEncoder(w).Encode(page.Items)
+}
+
+func isIncidentListClientError(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := strings.ToLower(strings.TrimSpace(err.Error()))
+	return strings.HasPrefix(msg, "invalid status") || strings.HasPrefix(msg, "invalid severity")
 }
 
 func (h *Handlers) IncidentsPage(w http.ResponseWriter, r *http.Request) {

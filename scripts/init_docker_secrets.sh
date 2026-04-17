@@ -29,7 +29,15 @@ write_secret "nms_session_secret" "${NMS_SESSION_SECRET:-}"
 write_secret "nms_db_encryption_key" "${NMS_DB_ENCRYPTION_KEY:-}"
 write_secret "nms_alert_webhook_token" "${NMS_ALERT_WEBHOOK_TOKEN:-}"
 write_secret "nms_itsm_inbound_token" "${NMS_ITSM_INBOUND_TOKEN:-}"
-write_secret "nms_terminal_known_hosts" "${NMS_TERMINAL_SSH_KNOWN_HOSTS:-}"
+if [[ -n "${NMS_TERMINAL_SSH_KNOWN_HOSTS:-}" ]]; then
+  if [[ -f "${NMS_TERMINAL_SSH_KNOWN_HOSTS}" ]]; then
+    chmod 600 "${NMS_TERMINAL_SSH_KNOWN_HOSTS}" 2>/dev/null || true
+    cp "${NMS_TERMINAL_SSH_KNOWN_HOSTS}" "${secrets_dir}/nms_terminal_known_hosts"
+    chmod 600 "${secrets_dir}/nms_terminal_known_hosts"
+  else
+    write_secret "nms_terminal_known_hosts" "${NMS_TERMINAL_SSH_KNOWN_HOSTS:-}"
+  fi
+fi
 write_secret "telegram_token" "${TELEGRAM_TOKEN:-}"
 write_secret "telegram_chat_id" "${TELEGRAM_CHAT_ID:-}"
 write_secret "smtp_user" "${SMTP_USER:-}"
