@@ -15,7 +15,6 @@ services:
       - "--entrypoints.web.http.redirections.entrypoint.to=websecure"
       - "--entrypoints.web.http.redirections.entrypoint.scheme=https"
       - "--certificatesresolvers.le.acme.tlschallenge=true"
-      - "--certificatesresolvers.le.acme.caServer=https://acme-staging-v02.api.letsencrypt.org/directory"
       - "--certificatesresolvers.le.acme.email=constrictor74@symanitron.ru"
       - "--certificatesresolvers.le.acme.storage=/letsencrypt/acme.json"
     ports:
@@ -151,6 +150,8 @@ services:
       - "host.docker.internal:host-gateway"
     expose:
       - "9090"
+    ports:
+      - "127.0.0.1:9090:9090"
     volumes:
       - ../monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
       - ../../alerts:/etc/prometheus/alerts:ro
@@ -196,6 +197,8 @@ services:
     container_name: nms-grafana
     expose:
       - "3000"
+    ports:
+      - "127.0.0.1:3000:3000"
     environment:
       - GF_SECURITY_ADMIN_USER=${GRAFANA_ADMIN_USER:-admin}
       - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD}
