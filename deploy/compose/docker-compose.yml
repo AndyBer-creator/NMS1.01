@@ -183,7 +183,7 @@ services:
       NMS_ALERT_WEBHOOK_TOKEN: ${NMS_ALERT_WEBHOOK_TOKEN:-}
       NMS_ALERT_WEBHOOK_TOKEN_FILE: ${NMS_ALERT_WEBHOOK_TOKEN_FILE:-}
     ports:
-      - "9093:9093"
+      - "127.0.0.1:9093:9093"
     volumes:
       - ../monitoring/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
       - ../../scripts/render_alertmanager_config.sh:/usr/local/bin/render_alertmanager_config.sh:ro
