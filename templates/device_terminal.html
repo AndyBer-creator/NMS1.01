@@ -6,10 +6,31 @@
     <title>Терминал — {{.Name}} ({{.IP}})</title>
     <link rel="stylesheet" href="/static/css/app.css">
     <link rel="stylesheet" href="/static/css/xterm.css">
+    <style nonce="{{.CSPNonce}}">
+        body {
+            margin: 0;
+        }
+        #terminal-header,
+        #terminal-toolbar,
+        #term-error-panel {
+            position: relative;
+            z-index: 2;
+        }
+        #terminal-wrap {
+            position: fixed;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            z-index: 1;
+        }
+        #terminal-wrap .xterm {
+            height: 100% !important;
+        }
+    </style>
 </head>
 <body class="min-h-screen bg-gray-900 text-gray-100">
-<div class="flex flex-col h-screen">
-    <header class="flex flex-wrap items-center gap-3 px-4 py-3 border-b border-gray-700 bg-gray-800/90 shrink-0">
+<div class="flex flex-col">
+    <header id="terminal-header" class="flex flex-wrap items-center gap-3 px-4 py-3 border-b border-gray-700 bg-gray-800/90 shrink-0">
         <a href="/devices/list" class="text-blue-400 hover:underline text-sm">← Устройства</a>
         <span class="text-gray-500">|</span>
         <h1 class="text-lg font-semibold text-white">Терминал: {{.Name}}</h1>
@@ -51,7 +72,7 @@
             </button>
         </div>
     </div>
-    <div id="terminal-wrap" class="flex-1 min-h-0 p-2 bg-black"></div>
+    <div id="terminal-wrap" class="p-0 bg-black"></div>
 </div>
 <script src="/static/js/xterm.js"></script>
 <script src="/static/js/xterm-addon-fit.js"></script>
@@ -91,7 +112,8 @@
     });
     const fitAddon = new FitAddon.FitAddon();
     term.loadAddon(fitAddon);
-    term.open(document.getElementById('terminal-wrap'));
+    const terminalWrap = document.getElementById('terminal-wrap');
+    term.open(terminalWrap);
     fitAddon.fit();
     term.onData(function (data) {
         if (!sessionReady || !ws || ws.readyState !== WebSocket.OPEN) {
@@ -114,6 +136,7 @@
         lastErrorText = '';
         errPre.textContent = '';
         errPanel.classList.add('hidden');
+        fitTerminalBurst();
     }
 
     function setLastError(msg) {
@@ -122,6 +145,7 @@
         lastErrorText = s;
         errPre.textContent = s;
         errPanel.classList.remove('hidden');
+        fitTerminalBurst();
     }
 
     btnCopyErr.addEventListener('click', function () {
@@ -156,23 +180,39 @@
         }));
     }
 
-    function sendRaw(text) {
-        if (!sessionReady || !ws || ws.readyState !== WebSocket.OPEN) {
-            setStatus('Сессия еще не готова');
-            return;
-        }
-        ws.send(textEnc.encode(text));
-        term.focus();
-    }
-
-
-    window.addEventListener('resize', function () {
+    function fitTerminal() {
         try {
+            const headerEl = document.getElementById('terminal-header');
+            const toolbarEl = document.getElementById('terminal-toolbar');
+            const errPanelEl = document.getElementById('term-error-panel');
+            const viewportH = window.innerHeight || document.documentElement.clientHeight || 800;
+            const usedH =
+                (headerEl ? headerEl.offsetHeight : 0) +
+                (toolbarEl ? toolbarEl.offsetHeight : 0) +
+                ((errPanelEl && !errPanelEl.classList.contains('hidden')) ? errPanelEl.offsetHeight : 0);
+            const targetH = Math.max(220, viewportH - usedH);
+            terminalWrap.style.top = usedH + 'px';
+            terminalWrap.style.height = targetH + 'px';
             fitAddon.fit();
             if (sessionReady) sendResize();
         } catch (e) {}
-    });
-    document.getElementById('terminal-wrap').addEventListener('click', function () { term.focus(); });
+    }
+
+    function fitTerminalBurst() {
+        fitTerminal();
+        setTimeout(fitTerminal, 0);
+        setTimeout(fitTerminal, 120);
+        setTimeout(fitTerminal, 350);
+    }
+
+    window.addEventListener('resize', fitTerminalBurst);
+    if (window.ResizeObserver) {
+        new ResizeObserver(function () {
+            fitTerminalBurst();
+        }).observe(terminalWrap);
+    }
+    terminalWrap.addEventListener('click', function () { term.focus(); });
+    fitTerminalBurst();
 
 
     function strFromBuf(ab) {
@@ -206,7 +246,7 @@
         clearWsOpenTimer();
         clearErrorPanel();
         term.reset();
-        fitAddon.fit();
+        fitTerminalBurst();
         setStatus('Подключение…');
         btnConnect.disabled = true;
         btnDisconnect.disabled = false;
@@ -281,6 +321,7 @@
                     clearHangTimer();
                     sessionReady = true;
                     setStatus('Сессия');
+                    fitTerminalBurst();
                     term.focus();
                     sendResize();
                     return true;
