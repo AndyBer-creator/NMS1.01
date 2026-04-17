@@ -9,6 +9,8 @@
 
 Подробности запуска и профилей — в корневом `README.md`.
 
+Для web-terminal (SSH/Telnet) см. быструю памятку: `doc/TERMINAL_SSH_QUICKSTART.md`.
+
 ## 0) Базовые проверки
 
 ```bash

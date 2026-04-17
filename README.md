@@ -525,6 +525,8 @@ make load-http-readonly
 
 Логи **worker** и **trap-receiver** (и пакет **`pkg/logger`**, если используете): каталог **`NMS_LOG_DIR`** переопределяет путь; иначе в Docker (`NMS_ENV=docker`) — `/app/logs`, локально — `./logs`.
 
+**API** пишет JSON в **`nms-api.log`** через **`internal/applog`**. При bind-mount `./logs:/app/logs` каталог на хосте часто **root:root**; образ **api/worker** (см. `Dockerfile`, `scripts/docker-entrypoint-nms.sh`) при старте делает **`chown` на `nms`** для `/app/logs`, затем запускает процесс от **`nms`**.
+
 Дополнительно без БД покрыты: **`internal/applog`** (каталог логов и zap-файл), **`pkg/logger`** (logrus + `NMS_LOG_DIR`), **`internal/services`** (SMTP `Enabled` и проверки до сети; Telegram — `httptest`, в проде по-прежнему `http.DefaultClient`), **`internal/usecases/discovery`** и **`internal/usecases/lldp`** (разбор OID/параметров), **`cmd/migration`** — наличие каталога **`migrations/`**; **`cmd/server`** — сборка router, `run()` (слушатель, shutdown), **`TestMain`** переключает cwd на корень модуля (шаблоны); **`cmd/worker`** — `run()` (SIGINT/SIGTERM, опциональный HTTP `/metrics`, SNMP/LLDP-циклы), тесты на metrics и отмену контекста; **`cmd/trap-receiver`** — `run()` (ping БД, UDP listener, `Close` по контексту), юнит-тесты DSN/ping/`TRAP_PORT`, интеграция graceful shutdown при доступном **`DB_DSN`** (как у HTTP: при `host=postgres` на хосте — **Skip** после неудачного ping). В **pull request** ориентируйтесь на зелёный workflow **test**.
 
 ### Интеграционные тесты (PostgreSQL)

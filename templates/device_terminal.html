@@ -100,7 +100,6 @@
     const rawKind = {{printf "%q" .Kind}};
     const kind = String(rawKind || "").replace(/^[\"']+|[\"']+$/g, "");
     const wsProto = location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const wsToken = {{printf "%q" .WSToken}};
     const wsPathWithQuery = '/ws/terminal/' + deviceId +
         '?kind=' + encodeURIComponent(kind);
     const wsURL = wsProto + '//' + location.host + wsPathWithQuery;
@@ -108,11 +107,18 @@
     let ws = null;
     let sessionReady = false;
     let hangTimer = null;
+    let wsOpenTimer = null;
 
     function clearHangTimer() {
         if (hangTimer) {
             clearTimeout(hangTimer);
             hangTimer = null;
+        }
+    }
+    function clearWsOpenTimer() {
+        if (wsOpenTimer) {
+            clearTimeout(wsOpenTimer);
+            wsOpenTimer = null;
         }
     }
 
@@ -255,6 +261,7 @@
     btnDisconnect.addEventListener('click', function () {
         sessionReady = false;
         clearHangTimer();
+        clearWsOpenTimer();
         if (ws) {
             ws.close();
             ws = null;
@@ -269,6 +276,7 @@
         if (ws && ws.readyState === WebSocket.OPEN) return;
         sessionReady = false;
         clearHangTimer();
+        clearWsOpenTimer();
         clearErrorPanel();
         term.reset();
         fitAddon.fit();
@@ -276,31 +284,59 @@
         btnConnect.disabled = true;
         btnDisconnect.disabled = false;
 
-        ws = new WebSocket(wsURL, ['nms-term-auth.' + wsToken]);
+        // Use same-origin admin session cookie for WS auth.
+        // Subprotocol auth is optional fallback on server side and can fail
+        // in browsers/proxies when protocol negotiation is strict.
+        ws = new WebSocket(wsURL);
         ws.binaryType = 'arraybuffer';
 
-        ws.onopen = function () {
-            let init;
-            if (kind === 'telnet') {
-                const port = parseInt(document.getElementById('telnet-port').value, 10) || 23;
-                init = { type: 'init', port: port };
-            } else {
-                const user = document.getElementById('ssh-user').value.trim();
-                const pass = document.getElementById('ssh-pass').value;
-                const port = parseInt(document.getElementById('ssh-port').value, 10) || 22;
-                init = { type: 'init', username: user, password: pass, port: port };
+        wsOpenTimer = setTimeout(function () {
+            if (ws && ws.readyState !== WebSocket.OPEN) {
+                var hint = 'Таймаут WebSocket (20 с): сервер не ответил на upgrade. Откройте F12 → Network → WS — есть ли запрос к ' + wsPathWithQuery + '? Проверьте тот же хост/схему (http/https), что в адресной строке, и docker logs nms1-api-1 (строки nms-api: terminal-ws).';
+                setLastError(hint);
+                setStatus('Таймаут WebSocket');
+                try { if (ws) ws.close(); } catch (e) {}
+                btnConnect.disabled = false;
+                btnDisconnect.disabled = true;
+                ws = null;
             }
-            ws.send(JSON.stringify(init));
-            setStatus('Ожидание ответа сервера…');
-            clearHangTimer();
-            hangTimer = setTimeout(function () {
-                if (!sessionReady && ws && ws.readyState === WebSocket.OPEN) {
-                    var msg = 'Таймаут: за 150 с нет ответа от сервера. Пересоберите API, проверьте сеть до устройства с хоста, где крутится nms-api.';
-                    setLastError(msg);
-                    setStatus('Таймаут');
-                    try { ws.close(); } catch (e) {}
+            wsOpenTimer = null;
+        }, 20000);
+
+        ws.onopen = function () {
+            clearWsOpenTimer();
+            try {
+                let init;
+                if (kind === 'telnet') {
+                    const telnetPortEl = document.getElementById('telnet-port');
+                    const port = parseInt(telnetPortEl ? telnetPortEl.value : '23', 10) || 23;
+                    init = { type: 'init', port: port };
+                } else {
+                    const sshUserEl = document.getElementById('ssh-user');
+                    const sshPassEl = document.getElementById('ssh-pass');
+                    const sshPortEl = document.getElementById('ssh-port');
+                    const user = (sshUserEl && sshUserEl.value ? sshUserEl.value : '').trim();
+                    const pass = sshPassEl && sshPassEl.value ? sshPassEl.value : '';
+                    const port = parseInt(sshPortEl ? sshPortEl.value : '22', 10) || 22;
+                    init = { type: 'init', username: user, password: pass, port: port };
                 }
-            }, 150000);
+                ws.send(JSON.stringify(init));
+                setStatus('Ожидание ответа сервера…');
+                clearHangTimer();
+                hangTimer = setTimeout(function () {
+                    if (!sessionReady && ws && ws.readyState === WebSocket.OPEN) {
+                        var msg = 'Таймаут: за 150 с нет ответа от сервера. Пересоберите API, проверьте сеть до устройства с хоста, где крутится nms-api.';
+                        setLastError(msg);
+                        setStatus('Таймаут');
+                        try { ws.close(); } catch (e) {}
+                    }
+                }, 150000);
+            } catch (e) {
+                var em = 'Ошибка инициализации WebSocket: ' + (e && e.message ? e.message : String(e));
+                setLastError(em);
+                setStatus('Ошибка инициализации');
+                try { if (ws) ws.close(); } catch (closeErr) {}
+            }
         };
 
         function tryHandleJsonText(s) {
@@ -356,11 +392,15 @@
         };
 
         ws.onerror = function () {
-            setStatus('Ошибка WebSocket (network/upgrade)');
+            clearWsOpenTimer();
+            var em = 'Ошибка WebSocket (сеть или отказ в upgrade). Проверьте F12 → Console/Network, совпадение Origin и URL страницы, при прокси — NMS_TRUSTED_PROXIES и заголовки X-Forwarded-* .';
+            setLastError(em);
+            setStatus('Ошибка WebSocket');
         };
         ws.onclose = function (ev) {
             sessionReady = false;
             clearHangTimer();
+            clearWsOpenTimer();
             ws = null;
             btnConnect.disabled = false;
             btnDisconnect.disabled = true;

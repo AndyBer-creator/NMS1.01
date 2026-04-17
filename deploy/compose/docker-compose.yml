@@ -120,10 +120,12 @@ services:
       NMS_VIEWER_USER: "${NMS_VIEWER_USER}"
       NMS_VIEWER_PASS: "${NMS_VIEWER_PASS}"
       NMS_SESSION_SECRET: "${NMS_SESSION_SECRET}"
+      NMS_TERMINAL_SSH_KNOWN_HOSTS: "${NMS_TERMINAL_SSH_KNOWN_HOSTS}"
     volumes:
       - ../../logs:/app/logs:delegated
       - ../../config.yaml:/app/config.yaml
       - ../../mibs:/app/mibs
+      - ../../.secrets:/app/secrets:ro
     command: ["./nms-api"]
     depends_on:
       postgres:

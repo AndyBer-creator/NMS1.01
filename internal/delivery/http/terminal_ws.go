@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net"
 	"net/http"
 	"net/url"
@@ -265,6 +266,9 @@ func terminalTokenFromSubprotocol(r *http.Request) string {
 // Далее: бинарные кадры — ввод в PTY/TCP; текст JSON {"type":"resize","cols":n,"rows":m} для SSH.
 // С сервера: бинарные кадры — вывод терминала; при ошибке — текст JSON {"type":"error",...}.
 func (h *Handlers) TerminalWS(w http.ResponseWriter, r *http.Request) {
+	// Дублируем в stderr: zap пишет в logs/nms-api.log, а docker logs показывает только stdout/stderr chi.
+	log.Printf("nms-api: terminal-ws request path=%s kind=%s remote=%s origin=%q host=%q",
+		r.URL.Path, r.URL.Query().Get("kind"), r.RemoteAddr, r.Header.Get("Origin"), r.Host)
 	h.logger.Info("terminal ws request",
 		zap.String("path", r.URL.Path),
 		zap.String("query_kind", r.URL.Query().Get("kind")),
@@ -272,6 +276,7 @@ func (h *Handlers) TerminalWS(w http.ResponseWriter, r *http.Request) {
 	)
 	id, err := deviceIDFromChi(r)
 	if err != nil {
+		log.Printf("nms-api: terminal-ws 400 bad device id: %v", err)
 		http.Error(w, "bad device id", http.StatusBadRequest)
 		return
 	}
@@ -285,12 +290,15 @@ func (h *Handlers) TerminalWS(w http.ResponseWriter, r *http.Request) {
 				retrySec = 1
 			}
 			w.Header().Set("Retry-After", fmt.Sprintf("%d", retrySec))
+			log.Printf("nms-api: terminal-ws 429 too many auth attempts device_id=%d remote=%s", id, r.RemoteAddr)
 			http.Error(w, "Too many authentication attempts", http.StatusTooManyRequests)
 			return
 		}
 		u = authRes.user
 	}
 	if u == nil {
+		log.Printf("nms-api: terminal-ws 403 forbidden (no admin session/token) device_id=%d remote=%s origin=%q",
+			id, r.RemoteAddr, r.Header.Get("Origin"))
 		http.Error(w, "forbidden", http.StatusForbidden)
 		return
 	}
@@ -299,12 +307,15 @@ func (h *Handlers) TerminalWS(w http.ResponseWriter, r *http.Request) {
 
 	dev, err := h.repo.GetDeviceByID(r.Context(), id)
 	if err != nil || dev == nil {
+		log.Printf("nms-api: terminal-ws 404 device id=%d err=%v", id, err)
 		http.Error(w, "device not found", http.StatusNotFound)
 		return
 	}
 
 	conn, err := terminalUpgrader.Upgrade(w, r, nil)
 	if err != nil {
+		log.Printf("nms-api: terminal-ws upgrade FAILED err=%v host=%q origin=%q xf_proto=%q remote=%s",
+			err, r.Host, r.Header.Get("Origin"), r.Header.Get("X-Forwarded-Proto"), r.RemoteAddr)
 		h.logger.Warn("terminal ws upgrade failed",
 			zap.Error(err),
 			zap.String("host", r.Host),
@@ -314,6 +325,7 @@ func (h *Handlers) TerminalWS(w http.ResponseWriter, r *http.Request) {
 		)
 		return
 	}
+	log.Printf("nms-api: terminal-ws upgraded ok device_id=%d kind=%s remote=%s", id, kind, r.RemoteAddr)
 	conn.SetReadLimit(terminalWSReadLimit())
 
 	pingStop := make(chan struct{})
