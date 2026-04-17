@@ -18,6 +18,7 @@ import (
 const (
 	sessionCookieName = "nms_session"
 	sessionTTL        = 7 * 24 * time.Hour
+	sessionStoreIOTTL = 2 * time.Second
 )
 
 type sessionClaims struct {
@@ -152,7 +153,9 @@ func revokeSessionToken(token string) {
 	}
 	storeLocalSessionRevocation(c.JTI, c.Exp, time.Now().Unix())
 	if sessionRevocationStore != nil {
-		_ = sessionRevocationStore.RevokeSessionJTI(context.Background(), c.JTI, c.Exp)
+		ctx, cancel := context.WithTimeout(context.Background(), sessionStoreIOTTL)
+		defer cancel()
+		_ = sessionRevocationStore.RevokeSessionJTI(ctx, c.JTI, c.Exp)
 	}
 }
 
@@ -161,7 +164,9 @@ func isSessionRevoked(jti string, nowUnix int64) bool {
 		return true
 	}
 	if sessionRevocationStore != nil {
-		revoked, err := sessionRevocationStore.IsSessionJTIRevoked(context.Background(), jti, nowUnix)
+		ctx, cancel := context.WithTimeout(context.Background(), sessionStoreIOTTL)
+		revoked, err := sessionRevocationStore.IsSessionJTIRevoked(ctx, jti, nowUnix)
+		cancel()
 		if err == nil && revoked {
 			return true
 		}

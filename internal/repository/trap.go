@@ -42,6 +42,9 @@ func (r *TrapsRepo) List(ctx context.Context, limit int) ([]domain.Trap, error) 
 		}
 		traps = append(traps, t)
 	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
 	return traps, nil
 }
 
@@ -67,6 +70,9 @@ func (r *TrapsRepo) ByDevice(ctx context.Context, ip string, limit int) ([]domai
 			return nil, err
 		}
 		traps = append(traps, t)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
 	}
 	return traps, nil
 }
@@ -325,7 +331,11 @@ func (r *TrapsRepo) CreateOrTouchOpenTrapIncident(ctx context.Context, deviceIP,
 		suppressionWindow = 10 * time.Minute
 	}
 	classification := defaultTrapClassification(oid)
-	if row, err := r.trapOIDMappingLookup(ctx, oid, trapVars); err == nil && row != nil {
+	row, err := r.trapOIDMappingLookup(ctx, oid, trapVars)
+	if err != nil {
+		return err
+	}
+	if row != nil {
 		classification = classificationFromMapping(oid, *row)
 	}
 	title := classification.Title

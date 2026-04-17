@@ -474,12 +474,22 @@ func (h *Handlers) runTerminalSSH(ctx context.Context, conn *websocket.Conn, wri
 	_ = wsWriteText(conn, writeMu, terminalJSON("ok", ""))
 	go terminalWSKeepalive(conn, writeMu, pingStop)
 
-	var wg sync.WaitGroup
-	wg.Add(3)
+	runCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	var closeOnce sync.Once
+	closeResources := func() {
+		closeOnce.Do(func() {
+			_ = stdin.Close()
+			_ = sess.Close()
+			_ = client.Close()
+			_ = conn.Close()
+		})
+	}
+	defer closeResources()
+
 	errCh := make(chan error, 3)
 
 	go func() {
-		defer wg.Done()
 		idle := terminalWSReadIdle()
 		for {
 			if time.Now().After(deadline) {
@@ -487,8 +497,8 @@ func (h *Handlers) runTerminalSSH(ctx context.Context, conn *websocket.Conn, wri
 				return
 			}
 			select {
-			case <-ctx.Done():
-				errCh <- ctx.Err()
+			case <-runCtx.Done():
+				errCh <- runCtx.Err()
 				return
 			default:
 			}
@@ -515,22 +525,31 @@ func (h *Handlers) runTerminalSSH(ctx context.Context, conn *websocket.Conn, wri
 	}()
 
 	go func() {
-		defer wg.Done()
-		errCh <- copyReaderToWSBinary(ctx, conn, writeMu, stdout, deadline)
+		errCh <- copyReaderToWSBinary(runCtx, conn, writeMu, stdout, deadline)
 	}()
 	go func() {
-		defer wg.Done()
-		errCh <- copyReaderToWSBinary(ctx, conn, writeMu, stderr, deadline)
+		errCh <- copyReaderToWSBinary(runCtx, conn, writeMu, stderr, deadline)
 	}()
 
-	wg.Wait()
-	close(errCh)
 	var first error
-	for e := range errCh {
+	collectErr := func(e error) {
 		if e != nil && !errors.Is(e, io.EOF) && !websocket.IsCloseError(e, websocket.CloseNormalClosure, websocket.CloseGoingAway) {
 			if first == nil {
 				first = e
 			}
+		}
+	}
+
+	// Stop the whole session as soon as any leg exits.
+	collectErr(<-errCh)
+	cancel()
+	closeResources()
+
+	for i := 0; i < 2; i++ {
+		select {
+		case e := <-errCh:
+			collectErr(e)
+		case <-time.After(2 * time.Second):
 		}
 	}
 	return first

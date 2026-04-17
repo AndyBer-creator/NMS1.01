@@ -17,6 +17,7 @@ FROM alpine:3.21
 RUN apk --no-cache add tzdata ca-certificates net-snmp
 WORKDIR /app
 COPY --from=builder /app/trap-receiver .
-COPY config/ /app/config/
+RUN mkdir -p /app/config
+COPY config/critical_oids.json /app/config/critical_oids.json
 EXPOSE 162/udp
 CMD ["./trap-receiver"]

@@ -295,6 +295,9 @@ func (r *Repo) ListDevices(ctx context.Context) ([]*domain.Device, error) {
 		}
 		devices = append(devices, device)
 	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
 	return devices, nil
 }
 
