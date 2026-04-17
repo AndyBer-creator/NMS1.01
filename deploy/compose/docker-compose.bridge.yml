@@ -18,7 +18,7 @@ services:
       - "--entrypoints.web.http.redirections.entrypoint.to=websecure"
       - "--entrypoints.web.http.redirections.entrypoint.scheme=https"
       - "--certificatesresolvers.le.acme.tlschallenge=true"
-      - "--certificatesresolvers.le.acme.caServer=https://acme-staging-v02.api.letsencrypt.org/directory"
+      - "--certificatesresolvers.le.acme.caServer=${TRAEFIK_ACME_CA_SERVER:-https://acme-v02.api.letsencrypt.org/directory}"
       - "--certificatesresolvers.le.acme.email=constrictor74@symanitron.ru"
       - "--certificatesresolvers.le.acme.storage=/letsencrypt/acme.json"
     ports:
