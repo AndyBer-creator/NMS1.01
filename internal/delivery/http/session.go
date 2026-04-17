@@ -10,6 +10,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"net/http"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -167,11 +168,21 @@ func isSessionRevoked(jti string, nowUnix int64) bool {
 		ctx, cancel := context.WithTimeout(context.Background(), sessionStoreIOTTL)
 		revoked, err := sessionRevocationStore.IsSessionJTIRevoked(ctx, jti, nowUnix)
 		cancel()
-		if err == nil && revoked {
-			return true
+		if err != nil {
+			return sessionRevocationFailClosedEnabled()
 		}
+		return revoked
 	}
 	return false
+}
+
+func sessionRevocationFailClosedEnabled() bool {
+	// Safer default for production: if shared revocation lookup is unavailable,
+	// treat token as revoked to avoid accepting logged-out sessions.
+	if env := strings.TrimSpace(strings.ToLower(os.Getenv("NMS_SESSION_REVOCATION_FAIL_CLOSED"))); env != "" {
+		return env == "1" || env == "true" || env == "yes" || env == "on"
+	}
+	return strings.EqualFold(strings.TrimSpace(os.Getenv("NMS_ENV")), "production")
 }
 
 func isSessionRevokedLocally(jti string, nowUnix int64) bool {

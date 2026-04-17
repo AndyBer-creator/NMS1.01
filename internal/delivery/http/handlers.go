@@ -542,7 +542,15 @@ func (h *Handlers) UpdateDevice(w http.ResponseWriter, r *http.Request) {
 
 	updated, err := h.repo.UpdateDeviceByID(r.Context(), id, patch)
 	if err != nil {
+		if err == sql.ErrNoRows {
+			http.Error(w, "Device not found", http.StatusNotFound)
+			return
+		}
 		http.Error(w, "Update failed: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if updated == nil {
+		http.Error(w, "Device not found", http.StatusNotFound)
 		return
 	}
 	devicesVM := devicesTableViewModelFromDevices([]*domain.Device{updated})

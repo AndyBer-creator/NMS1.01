@@ -1,10 +1,12 @@
 package http
 
 import (
+	"context"
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -143,5 +145,47 @@ func TestVerifySessionToken_RejectsRevokedJTI(t *testing.T) {
 	revokeSessionToken(token)
 	if got := verifySessionToken(token); got != nil {
 		t.Fatalf("expected revoked token to fail verification, got %+v", got)
+	}
+}
+
+type errRevocationStore struct{}
+
+func (e errRevocationStore) RevokeSessionJTI(ctx context.Context, jti string, expUnix int64) error {
+	return nil
+}
+
+func (e errRevocationStore) IsSessionJTIRevoked(ctx context.Context, jti string, nowUnix int64) (bool, error) {
+	return false, errors.New("store unavailable")
+}
+
+func TestVerifySessionToken_RevocationStoreError_ProdFailsClosed(t *testing.T) {
+	t.Setenv("NMS_SESSION_SECRET", "itest-session-secret")
+	t.Setenv("NMS_ENV", "production")
+	t.Setenv("NMS_SESSION_REVOCATION_FAIL_CLOSED", "")
+	resetSessionRevocationsForTest(t)
+	setSessionRevocationStore(errRevocationStore{})
+
+	token, err := signSessionToken("admin", roleAdmin)
+	if err != nil {
+		t.Fatalf("signSessionToken: %v", err)
+	}
+	if got := verifySessionToken(token); got != nil {
+		t.Fatalf("expected token rejected when revocation store fails in production, got %+v", got)
+	}
+}
+
+func TestVerifySessionToken_RevocationStoreError_DevCanFailOpen(t *testing.T) {
+	t.Setenv("NMS_SESSION_SECRET", "itest-session-secret")
+	t.Setenv("NMS_ENV", "dev")
+	t.Setenv("NMS_SESSION_REVOCATION_FAIL_CLOSED", "false")
+	resetSessionRevocationsForTest(t)
+	setSessionRevocationStore(errRevocationStore{})
+
+	token, err := signSessionToken("admin", roleAdmin)
+	if err != nil {
+		t.Fatalf("signSessionToken: %v", err)
+	}
+	if got := verifySessionToken(token); got == nil {
+		t.Fatal("expected token accepted when fail-closed disabled and local revocation absent")
 	}
 }

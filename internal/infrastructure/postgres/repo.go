@@ -476,7 +476,7 @@ func (r *Repo) UpdateDeviceByID(ctx context.Context, id int, patch *domain.Devic
 	if err != nil {
 		return nil, err
 	}
-	_, err = r.db.ExecContext(ctx, `
+	res, err := r.db.ExecContext(ctx, `
 		UPDATE devices
 		SET name = $1,
 		    community = $2,
@@ -503,6 +503,13 @@ func (r *Repo) UpdateDeviceByID(ctx context.Context, id int, patch *domain.Devic
 	)
 	if err != nil {
 		return nil, err
+	}
+	affected, err := res.RowsAffected()
+	if err != nil {
+		return nil, err
+	}
+	if affected == 0 {
+		return nil, sql.ErrNoRows
 	}
 	return r.GetDeviceByID(ctx, id)
 }

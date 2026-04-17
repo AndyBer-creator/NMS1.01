@@ -5,6 +5,8 @@ import (
 	"NMS1/internal/config"
 	"NMS1/internal/timezone"
 	"context"
+	"fmt"
+	"os"
 	"os/signal"
 	"syscall"
 
@@ -15,7 +17,8 @@ func main() {
 	timezone.InitFromEnv()
 	cfg := config.Load()
 	if err := config.ValidateRuntimeSecurityFor(config.RuntimeSecurityRoleAPI); err != nil {
-		panic(err.Error())
+		_, _ = fmt.Fprintf(os.Stderr, "runtime security validation failed: %v\n", err)
+		os.Exit(1)
 	}
 	logger := applog.MustNewZapFile("nms-api")
 	defer func() { _ = logger.Sync() }()
