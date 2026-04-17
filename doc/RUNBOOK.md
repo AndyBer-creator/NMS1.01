@@ -2,6 +2,13 @@
 
 Операционный runbook для дежурного инженера.
 
+## Политика сети и compose (production)
+
+- **По умолчанию:** выделенный Linux в **management VLAN** + основной `deploy/compose/docker-compose.yml` — api и worker в **`network_mode: host`** (SNMP/UDP как у нативного демона на хосте). Подъём из корня репозитория: `make compose-up` (явно подхватывает `.env`).
+- **Исключение:** `deploy/compose/docker-compose.bridge.yml` — для сред без host network (например Docker Desktop Windows), стендов или когда весь стек намеренно в bridge; в **prod** bridge не считать дефолтом, пока не подтверждена стабильная доставка SNMP/трапов из Docker до LAN (см. README про mirrored networking и `DB_DSN` с `host=postgres`).
+
+Подробности запуска и профилей — в корневом `README.md`.
+
 ## 0) Базовые проверки
 
 ```bash
