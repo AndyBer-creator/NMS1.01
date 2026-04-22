@@ -15,7 +15,11 @@ import (
 
 func main() {
 	timezone.InitFromEnv()
-	cfg := config.Load()
+	cfg, err := config.Load()
+	if err != nil {
+		_, _ = fmt.Fprintf(os.Stderr, "config load failed: %v\n", err)
+		os.Exit(1)
+	}
 	if err := config.ValidateRuntimeSecurityFor(config.RuntimeSecurityRoleAPI); err != nil {
 		_, _ = fmt.Fprintf(os.Stderr, "runtime security validation failed: %v\n", err)
 		os.Exit(1)

@@ -13,6 +13,7 @@ import (
 
 	"NMS1/internal/config"
 	h "NMS1/internal/delivery/http"
+	"NMS1/internal/grpcapi"
 	"NMS1/internal/infrastructure/postgres"
 	"NMS1/internal/infrastructure/snmp"
 	"NMS1/internal/mibresolver"
@@ -20,6 +21,7 @@ import (
 	"NMS1/internal/usecases/discovery"
 
 	_ "github.com/jackc/pgx/v5/stdlib"
+	"google.golang.org/grpc"
 
 	"go.uber.org/zap"
 )
@@ -102,6 +104,38 @@ func run(ctx context.Context, cfg *config.Config, log *zap.Logger, onListen func
 		errCh <- srv.Serve(ln)
 	}()
 
+	var (
+		grpcErrCh chan error
+		grpcSrv   *grpc.Server
+		grpcDB    *sql.DB
+	)
+	if grpcAddr := strings.TrimSpace(os.Getenv("NMS_GRPC_ADDR")); grpcAddr != "" {
+		grpcLn, gerr := net.Listen("tcp", grpcAddr)
+		if gerr != nil {
+			return fmt.Errorf("grpc listen: %w", gerr)
+		}
+		defer func() { _ = grpcLn.Close() }()
+
+		grpcDB, gerr = sql.Open("pgx", cfg.DB.DSN)
+		if gerr != nil {
+			return fmt.Errorf("grpc db open: %w", gerr)
+		}
+		defer func() { _ = grpcDB.Close() }()
+
+		trapRepo := repository.NewTrapsRepo(grpcDB)
+		grpcSrv = grpc.NewServer(grpc.ForceServerCodec(grpcapi.JSONCodec{}))
+		grpcapi.RegisterTrapService(grpcSrv, &trapIngestService{
+			repo:              trapRepo,
+			log:               log,
+			suppressionWindow: trapIncidentSuppressionWindow(),
+		})
+		grpcErrCh = make(chan error, 1)
+		go func() {
+			grpcErrCh <- grpcSrv.Serve(grpcLn)
+		}()
+		log.Info("gRPC trap ingest enabled", zap.String("addr", grpcAddr))
+	}
+
 	select {
 	case <-ctx.Done():
 		log.Info("Shutting down...")
@@ -113,10 +147,23 @@ func run(ctx context.Context, cfg *config.Config, log *zap.Logger, onListen func
 		if err := <-errCh; err != nil && err != http.ErrServerClosed {
 			return fmt.Errorf("after shutdown: %w", err)
 		}
+		if grpcSrv != nil {
+			grpcSrv.GracefulStop()
+		}
+		if grpcErrCh != nil {
+			if gerr := <-grpcErrCh; gerr != nil {
+				return fmt.Errorf("grpc after shutdown: %w", gerr)
+			}
+		}
 		return nil
 	case err := <-errCh:
 		if err != nil && err != http.ErrServerClosed {
 			return fmt.Errorf("serve: %w", err)
+		}
+		return nil
+	case gerr := <-grpcErrCh:
+		if gerr != nil {
+			return fmt.Errorf("grpc serve: %w", gerr)
 		}
 		return nil
 	}

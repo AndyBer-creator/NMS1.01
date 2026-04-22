@@ -691,7 +691,6 @@ func TestIntegration_HTTP_CreateAndDeleteDeviceWithAuth(t *testing.T) {
 	client, jar, base := adminIntegrationCSRF(t, srv, adminUser, adminPass)
 
 	ip := testDeviceIP(t)
-	t.Cleanup(func() { _ = repo.DeleteByIP(context.Background(), ip) })
 
 	token := csrfFromJar(t, jar, base)
 	payload := fmt.Sprintf(`{"ip":%q,"name":"http-itest","community":"public","snmp_version":"v2c"}`, ip)
@@ -717,6 +716,7 @@ func TestIntegration_HTTP_CreateAndDeleteDeviceWithAuth(t *testing.T) {
 	if err := json.Unmarshal(body1, &created); err != nil || created.ID <= 0 {
 		t.Fatalf("create response JSON: %v body=%s", err, body1)
 	}
+	t.Cleanup(func() { _ = repo.DeleteByID(context.Background(), created.ID) })
 
 	delURL := fmt.Sprintf("%s/devices/%d", srv.URL, created.ID)
 	token2 := csrfFromJar(t, jar, base)

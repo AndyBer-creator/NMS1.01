@@ -555,37 +555,6 @@ func (h *Handlers) runTerminalSSH(ctx context.Context, conn *websocket.Conn, wri
 	return first
 }
 
-func copyWSBinaryToWriter(ctx context.Context, conn *websocket.Conn, w io.Writer, deadline time.Time) error {
-	idle := terminalWSReadIdle()
-	for {
-		if time.Now().After(deadline) {
-			return context.DeadlineExceeded
-		}
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		default:
-		}
-		_ = conn.SetReadDeadline(time.Now().Add(idle))
-		mt, data, err := conn.ReadMessage()
-		if err != nil {
-			return err
-		}
-		if mt == websocket.TextMessage {
-			var rs terminalResizeMsg
-			if json.Unmarshal(data, &rs) == nil && rs.Type == "resize" {
-				continue
-			}
-		}
-		if mt != websocket.BinaryMessage {
-			continue
-		}
-		if _, err := w.Write(data); err != nil {
-			return err
-		}
-	}
-}
-
 func copyReaderToWSBinary(ctx context.Context, conn *websocket.Conn, writeMu *sync.Mutex, r io.Reader, deadline time.Time) error {
 	buf := make([]byte, 8192)
 	for {

@@ -18,7 +18,7 @@ func junkTrapDSN() string {
 
 func TestRun_EmptyDSN(t *testing.T) {
 	ctx := context.Background()
-	err := run(ctx, zap.NewNop(), "  ", 4163)
+	err := run(ctx, zap.NewNop(), "  ", "", 4163)
 	if err == nil || !strings.Contains(err.Error(), "DB_DSN") {
 		t.Fatalf("expected DB_DSN error, got %v", err)
 	}
@@ -28,7 +28,7 @@ func TestRun_PingFails(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	err := run(ctx, zap.NewNop(), junkTrapDSN(), 4163)
+	err := run(ctx, zap.NewNop(), junkTrapDSN(), "", 4163)
 	if err == nil {
 		t.Fatal("expected db ping error")
 	}
@@ -45,7 +45,7 @@ func TestRun_GracefulShutdownWithDB(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	errCh := make(chan error, 1)
 	go func() {
-		errCh <- run(ctx, zap.NewNop(), dsn, udpPort)
+		errCh <- run(ctx, zap.NewNop(), dsn, "", udpPort)
 	}()
 
 	time.Sleep(300 * time.Millisecond)

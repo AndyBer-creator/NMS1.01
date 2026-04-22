@@ -15,7 +15,10 @@ func TestLoad_SetsDefaultsFromEnv(t *testing.T) {
 	t.Setenv("NMS_ENV", "")
 	t.Setenv("MIB_UPLOAD_DIR", "")
 
-	cfg := Load()
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
 	if cfg.DB.DSN != "postgres://localhost/nms_test" {
 		t.Fatalf("DB.DSN: got %q", cfg.DB.DSN)
 	}
@@ -39,7 +42,10 @@ func TestLoad_DockerMibUploadDir(t *testing.T) {
 	t.Setenv("NMS_ENV", "docker")
 	t.Setenv("MIB_UPLOAD_DIR", "")
 
-	cfg := Load()
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
 	if cfg.Paths.MibUploadDir != "/app/mibs/uploads" {
 		t.Fatalf("MibUploadDir: got %q", cfg.Paths.MibUploadDir)
 	}
@@ -52,7 +58,10 @@ func TestLoad_MibUploadDirOverride(t *testing.T) {
 	t.Setenv("DB_DSN", "postgres://localhost/nms_test")
 	t.Setenv("MIB_UPLOAD_DIR", "/custom/mibs/up")
 
-	cfg := Load()
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
 	if cfg.Paths.MibUploadDir != "/custom/mibs/up" {
 		t.Fatalf("MibUploadDir: got %q", cfg.Paths.MibUploadDir)
 	}

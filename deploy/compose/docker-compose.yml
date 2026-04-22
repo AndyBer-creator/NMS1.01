@@ -15,7 +15,7 @@ services:
       - "--entrypoints.web.http.redirections.entrypoint.to=websecure"
       - "--entrypoints.web.http.redirections.entrypoint.scheme=https"
       - "--certificatesresolvers.le.acme.tlschallenge=true"
-      - "--certificatesresolvers.le.acme.email=constrictor74@symanitron.ru"
+      - "--certificatesresolvers.le.acme.email=${TRAEFIK_ACME_EMAIL:-ops@example.com}"
       - "--certificatesresolvers.le.acme.storage=/letsencrypt/acme.json"
     ports:
       - "80:80"
@@ -165,7 +165,7 @@ services:
       - '--web.console.templates=/etc/prometheus/consoles'
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.prom.rule=Host(`prom.nms.test.com`)"
+      - "traefik.http.routers.prom.rule=Host(`${NMS_PROM_HOST:-prom.nms.test.com}`)"
       - "traefik.http.routers.prom.entrypoints=websecure"
       - "traefik.http.routers.prom.tls=true"
       - "traefik.http.routers.prom.tls.certresolver=le"
@@ -212,7 +212,7 @@ services:
       - prometheus
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.grafana.rule=Host(`grafana.nms.test.com`)"
+      - "traefik.http.routers.grafana.rule=Host(`${NMS_GRAFANA_HOST:-grafana.nms.test.com}`)"
       - "traefik.http.routers.grafana.entrypoints=websecure"
       - "traefik.http.routers.grafana.tls=true"
       - "traefik.http.routers.grafana.tls.certresolver=le"

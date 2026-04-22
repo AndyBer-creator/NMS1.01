@@ -25,11 +25,12 @@ func main() {
 	}
 
 	dsn := strings.TrimSpace(config.EnvOrFile("DB_DSN"))
+	grpcTarget := strings.TrimSpace(config.EnvOrFile("NMS_TRAP_GRPC_TARGET"))
 
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer cancel()
 
-	if err := run(ctx, logger, dsn, trapListenPort()); err != nil {
+	if err := run(ctx, logger, dsn, grpcTarget, trapListenPort()); err != nil {
 		logger.Fatal("trap receiver stopped", zap.Error(err))
 	}
 }

@@ -1,6 +1,7 @@
 package config
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -32,7 +33,7 @@ type Config struct {
 	} `mapstructure:"db"`
 }
 
-func Load() *Config {
+func Load() (*Config, error) {
 	viper.SetConfigName("config")
 	viper.SetConfigType("yaml")
 	viper.AddConfigPath(".")
@@ -47,7 +48,7 @@ func Load() *Config {
 		cfg.DB.DSN = dsn
 	}
 	if cfg.DB.DSN == "" {
-		panic("DB_DSN must be set in environment")
+		return nil, fmt.Errorf("DB_DSN must be set in environment")
 	}
 	// Дефолты для несекретных полей, если конфиг не задан
 	if cfg.HTTP.Addr == "" {
@@ -72,7 +73,7 @@ func Load() *Config {
 	if v := os.Getenv("MIB_UPLOAD_DIR"); v != "" {
 		cfg.Paths.MibUploadDir = v
 	}
-	return &cfg
+	return &cfg, nil
 }
 
 func EnvDurationOrDefault(name string, fallback time.Duration) time.Duration {

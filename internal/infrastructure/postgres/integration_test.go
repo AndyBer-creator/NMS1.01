@@ -59,13 +59,12 @@ func openIntegrationRepo(t *testing.T) (*Repo, *sql.DB) {
 func TestIntegration_AvailabilityEvents(t *testing.T) {
 	repo, _ := openIntegrationRepo(t)
 	ip := uniqueInet(t)
-	_ = repo.DeleteByIP(context.Background(), ip)
 
 	d := &domain.Device{IP: ip, Name: "avail", Community: "public", SNMPVersion: "v2c"}
 	if err := repo.CreateDevice(context.Background(), d); err != nil {
 		t.Fatalf("CreateDevice: %v", err)
 	}
-	t.Cleanup(func() { _ = repo.DeleteByIP(context.Background(), ip) })
+	t.Cleanup(func() { _ = repo.DeleteByID(context.Background(), d.ID) })
 
 	if err := repo.InsertAvailabilityEvent(context.Background(), d.ID, "unavailable", "poll failed"); err != nil {
 		t.Fatalf("InsertAvailabilityEvent: %v", err)
@@ -145,12 +144,11 @@ func TestIntegration_SessionRevocationsRoundTrip(t *testing.T) {
 func TestIntegration_PollTransitionsAreAtomic(t *testing.T) {
 	repo, db := openIntegrationRepo(t)
 	ip := uniqueInet(t)
-	_ = repo.DeleteByIP(context.Background(), ip)
 	d := &domain.Device{IP: ip, Name: "poll-atomic", Community: "public", SNMPVersion: "v2c"}
 	if err := repo.CreateDevice(context.Background(), d); err != nil {
 		t.Fatalf("CreateDevice: %v", err)
 	}
-	t.Cleanup(func() { _ = repo.DeleteByIP(context.Background(), ip) })
+	t.Cleanup(func() { _ = repo.DeleteByID(context.Background(), d.ID) })
 
 	details, _ := json.Marshal(map[string]any{"status": "failed_timeout", "error": "timeout"})
 	if err := repo.RecordPollFailureTransition(context.Background(), d.ID, "failed_timeout", "timeout", details, 10*time.Minute); err != nil {
@@ -224,12 +222,11 @@ func TestIntegration_PollTransitionsAreAtomic(t *testing.T) {
 func TestIntegration_ApplyITSMInboundUpdate_IsAtomic(t *testing.T) {
 	repo, _ := openIntegrationRepo(t)
 	ip := uniqueInet(t)
-	_ = repo.DeleteByIP(context.Background(), ip)
 	d := &domain.Device{IP: ip, Name: "itsm-atomic", Community: "public", SNMPVersion: "v2c"}
 	if err := repo.CreateDevice(context.Background(), d); err != nil {
 		t.Fatalf("CreateDevice: %v", err)
 	}
-	t.Cleanup(func() { _ = repo.DeleteByIP(context.Background(), ip) })
+	t.Cleanup(func() { _ = repo.DeleteByID(context.Background(), d.ID) })
 
 	item, err := repo.CreateIncident(context.Background(), &domain.Incident{
 		DeviceID: &d.ID,
@@ -323,12 +320,11 @@ func TestIntegration_LldpScanAndLink(t *testing.T) {
 func TestIntegration_IncidentsLifecycle(t *testing.T) {
 	repo, _ := openIntegrationRepo(t)
 	ip := uniqueInet(t)
-	_ = repo.DeleteByIP(context.Background(), ip)
 	d := &domain.Device{IP: ip, Name: "incident-dev", Community: "public", SNMPVersion: "v2c"}
 	if err := repo.CreateDevice(context.Background(), d); err != nil {
 		t.Fatalf("CreateDevice: %v", err)
 	}
-	t.Cleanup(func() { _ = repo.DeleteByIP(context.Background(), ip) })
+	t.Cleanup(func() { _ = repo.DeleteByID(context.Background(), d.ID) })
 
 	item, err := repo.CreateIncident(context.Background(), &domain.Incident{
 		DeviceID: &d.ID,
@@ -471,12 +467,11 @@ func TestIntegration_IncidentEscalation_OnlyIfUnassigned(t *testing.T) {
 func TestIntegration_IncidentDedupAndAutoResolve(t *testing.T) {
 	repo, _ := openIntegrationRepo(t)
 	ip := uniqueInet(t)
-	_ = repo.DeleteByIP(context.Background(), ip)
 	d := &domain.Device{IP: ip, Name: "incident-dedup", Community: "public", SNMPVersion: "v2c"}
 	if err := repo.CreateDevice(context.Background(), d); err != nil {
 		t.Fatalf("CreateDevice: %v", err)
 	}
-	t.Cleanup(func() { _ = repo.DeleteByIP(context.Background(), ip) })
+	t.Cleanup(func() { _ = repo.DeleteByID(context.Background(), d.ID) })
 
 	details, _ := json.Marshal(map[string]any{"status": "failed_timeout"})
 	first, created, err := repo.CreateOrTouchOpenIncident(context.Background(), &d.ID, "SNMP device unavailable", "critical", "polling", details, 10*time.Minute)
@@ -516,12 +511,11 @@ func TestIntegration_IncidentDedupAndAutoResolve(t *testing.T) {
 func TestIntegration_CreateOrTouchOpenIncident_ConcurrentDedup(t *testing.T) {
 	repo, db := openIntegrationRepo(t)
 	ip := uniqueInet(t)
-	_ = repo.DeleteByIP(context.Background(), ip)
 	d := &domain.Device{IP: ip, Name: "incident-race", Community: "public", SNMPVersion: "v2c"}
 	if err := repo.CreateDevice(context.Background(), d); err != nil {
 		t.Fatalf("CreateDevice: %v", err)
 	}
-	t.Cleanup(func() { _ = repo.DeleteByIP(context.Background(), ip) })
+	t.Cleanup(func() { _ = repo.DeleteByID(context.Background(), d.ID) })
 
 	details, _ := json.Marshal(map[string]any{"status": "failed_timeout"})
 	var wg sync.WaitGroup

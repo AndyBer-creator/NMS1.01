@@ -64,7 +64,6 @@ func mainRouter(handlers *Handlers) *chi.Mux {
 		r.Get("/devices", handlers.ListDevices)
 		r.Get("/devices/list", handlers.DevicesListPage)
 		r.Get("/devices/table", handlers.DevicesTable)
-		r.Get("/devices/page", handlers.DevicesPage)
 		r.Get("/devices/{id}/metric/{oid}", handlers.GetMetric)
 		r.With(RequireAdmin).Post("/devices", handlers.CreateDevice)
 		r.With(RequireAdmin).Get("/devices/{id}/edit", handlers.EditDeviceRow)

@@ -17,7 +17,6 @@ import (
 func TestIntegration_DeviceCreateGetListDelete(t *testing.T) {
 	repo, _ := openIntegrationRepo(t)
 	ip := uniqueInet(t)
-	_ = repo.DeleteByIP(context.Background(), ip)
 
 	d := &domain.Device{
 		IP:          ip,
@@ -31,14 +30,14 @@ func TestIntegration_DeviceCreateGetListDelete(t *testing.T) {
 	if d.ID <= 0 {
 		t.Fatal("expected positive device id")
 	}
-	t.Cleanup(func() { _ = repo.DeleteByIP(context.Background(), ip) })
+	t.Cleanup(func() { _ = repo.DeleteByID(context.Background(), d.ID) })
 
-	got, err := repo.GetDeviceByIP(context.Background(), ip)
+	got, err := repo.GetDeviceByID(context.Background(), d.ID)
 	if err != nil {
-		t.Fatalf("GetDeviceByIP: %v", err)
+		t.Fatalf("GetDeviceByID: %v", err)
 	}
 	if got == nil || got.Name != d.Name || got.Community != "public" {
-		t.Fatalf("GetDeviceByIP: %+v", got)
+		t.Fatalf("GetDeviceByID: %+v", got)
 	}
 
 	list, err := repo.ListDevices(context.Background())
@@ -56,12 +55,12 @@ func TestIntegration_DeviceCreateGetListDelete(t *testing.T) {
 		t.Fatal("created device not in ListDevices")
 	}
 
-	if err := repo.DeleteByIP(context.Background(), ip); err != nil {
-		t.Fatalf("DeleteByIP: %v", err)
+	if err := repo.DeleteByID(context.Background(), d.ID); err != nil {
+		t.Fatalf("DeleteByID: %v", err)
 	}
-	after, err := repo.GetDeviceByIP(context.Background(), ip)
+	after, err := repo.GetDeviceByID(context.Background(), d.ID)
 	if err != nil {
-		t.Fatalf("GetDeviceByIP after delete: %v", err)
+		t.Fatalf("GetDeviceByID after delete: %v", err)
 	}
 	if after != nil {
 		t.Fatal("expected nil device after delete")
@@ -71,7 +70,6 @@ func TestIntegration_DeviceCreateGetListDelete(t *testing.T) {
 func TestIntegration_CreateDevice_InvalidSNMPVersion(t *testing.T) {
 	repo, _ := openIntegrationRepo(t)
 	ip := uniqueInet(t)
-	t.Cleanup(func() { _ = repo.DeleteByIP(context.Background(), ip) })
 
 	d := &domain.Device{IP: ip, Name: "x", Community: "c", SNMPVersion: "v9"}
 	if err := repo.CreateDevice(context.Background(), d); err == nil {
@@ -79,20 +77,19 @@ func TestIntegration_CreateDevice_InvalidSNMPVersion(t *testing.T) {
 	}
 }
 
-func TestIntegration_UpdateDeviceByIPAndMetrics(t *testing.T) {
+func TestIntegration_UpdateDeviceByIDAndMetrics(t *testing.T) {
 	repo, db := openIntegrationRepo(t)
 	ip := uniqueInet(t)
-	_ = repo.DeleteByIP(context.Background(), ip)
 
 	d := &domain.Device{IP: ip, Name: "before", Community: "public", SNMPVersion: "v2c"}
 	if err := repo.CreateDevice(context.Background(), d); err != nil {
 		t.Fatalf("CreateDevice: %v", err)
 	}
-	t.Cleanup(func() { _ = repo.DeleteByIP(context.Background(), ip) })
+	t.Cleanup(func() { _ = repo.DeleteByID(context.Background(), d.ID) })
 
-	updated, err := repo.UpdateDeviceByIP(context.Background(), ip, &domain.Device{Name: "after", Community: "private", SNMPVersion: "v3", AuthProto: "MD5", AuthPass: "a", PrivProto: "DES", PrivPass: "p"})
+	updated, err := repo.UpdateDeviceByID(context.Background(), d.ID, &domain.Device{Name: "after", Community: "private", SNMPVersion: "v3", AuthProto: "MD5", AuthPass: "a", PrivProto: "DES", PrivPass: "p"})
 	if err != nil {
-		t.Fatalf("UpdateDeviceByIP: %v", err)
+		t.Fatalf("UpdateDeviceByID: %v", err)
 	}
 	if updated.Name != "after" || updated.SNMPVersion != "v3" {
 		t.Fatalf("patch: %+v", updated)
@@ -118,18 +115,17 @@ func TestIntegration_UpdateDeviceByIPAndMetrics(t *testing.T) {
 func TestIntegration_DeviceHealthAndAudit(t *testing.T) {
 	repo, _ := openIntegrationRepo(t)
 	ip := uniqueInet(t)
-	_ = repo.DeleteByIP(context.Background(), ip)
 
 	d := &domain.Device{IP: ip, Name: "health", Community: "public", SNMPVersion: "v2c"}
 	if err := repo.CreateDevice(context.Background(), d); err != nil {
 		t.Fatalf("CreateDevice: %v", err)
 	}
-	t.Cleanup(func() { _ = repo.DeleteByIP(context.Background(), ip) })
+	t.Cleanup(func() { _ = repo.DeleteByID(context.Background(), d.ID) })
 
 	if err := repo.UpdateDeviceError(d.ID, "failed", "timeout"); err != nil {
 		t.Fatalf("UpdateDeviceError: %v", err)
 	}
-	afterErr, err := repo.GetDeviceByIP(context.Background(), ip)
+	afterErr, err := repo.GetDeviceByID(context.Background(), d.ID)
 	if err != nil || afterErr == nil || afterErr.Status != "failed" || !strings.Contains(afterErr.LastError, "timeout") {
 		t.Fatalf("after error: %+v err=%v", afterErr, err)
 	}
@@ -137,7 +133,7 @@ func TestIntegration_DeviceHealthAndAudit(t *testing.T) {
 	if err := repo.MarkDevicePollSuccess(d.ID); err != nil {
 		t.Fatalf("MarkDevicePollSuccess: %v", err)
 	}
-	ok, err := repo.GetDeviceByIP(context.Background(), ip)
+	ok, err := repo.GetDeviceByID(context.Background(), d.ID)
 	if err != nil || ok == nil || ok.Status != "active" || ok.LastError != "" {
 		t.Fatalf("after success: %+v", ok)
 	}
@@ -153,19 +149,18 @@ func TestIntegration_DeviceHealthAndAudit(t *testing.T) {
 	}
 }
 
-func TestIntegration_DeleteByIP_NotFound(t *testing.T) {
+func TestIntegration_DeleteByID_NotFound(t *testing.T) {
 	repo, _ := openIntegrationRepo(t)
-	// TEST-NET-1 (RFC 5737): не пересекается с uniqueInet 172.19.0.0/16 в этих тестах.
-	if err := repo.DeleteByIP(context.Background(), "192.0.2.199"); err != sql.ErrNoRows {
+	if err := repo.DeleteByID(context.Background(), 99999999); err != sql.ErrNoRows {
 		t.Fatalf("want sql.ErrNoRows, got %v", err)
 	}
 }
 
-func TestIntegration_DeviceRepo_GetDeviceByIP_NotFoundReturnsNil(t *testing.T) {
+func TestIntegration_DeviceRepo_GetDeviceByID_NotFoundReturnsNil(t *testing.T) {
 	repo, _ := openIntegrationRepo(t)
-	got, err := repo.GetDeviceByIP(context.Background(), "192.0.2.210")
+	got, err := repo.GetDeviceByID(context.Background(), 99999999)
 	if err != nil {
-		t.Fatalf("GetDeviceByIP: %v", err)
+		t.Fatalf("GetDeviceByID: %v", err)
 	}
 	if got != nil {
 		t.Fatalf("expected nil for unknown IP, got %+v", got)
@@ -175,24 +170,23 @@ func TestIntegration_DeviceRepo_GetDeviceByIP_NotFoundReturnsNil(t *testing.T) {
 func TestIntegration_DeviceRepo_UpdateDeviceLastSeen(t *testing.T) {
 	repo, _ := openIntegrationRepo(t)
 	ip := uniqueInet(t)
-	_ = repo.DeleteByIP(context.Background(), ip)
 	d := &domain.Device{IP: ip, Name: "lastseen", Community: "public", SNMPVersion: "v2c"}
 	if err := repo.CreateDevice(context.Background(), d); err != nil {
 		t.Fatalf("CreateDevice: %v", err)
 	}
-	t.Cleanup(func() { _ = repo.DeleteByIP(context.Background(), ip) })
+	t.Cleanup(func() { _ = repo.DeleteByID(context.Background(), d.ID) })
 
-	before, err := repo.GetDeviceByIP(context.Background(), ip)
+	before, err := repo.GetDeviceByID(context.Background(), d.ID)
 	if err != nil || before == nil {
-		t.Fatalf("GetDeviceByIP: %v %+v", err, before)
+		t.Fatalf("GetDeviceByID: %v %+v", err, before)
 	}
 	time.Sleep(50 * time.Millisecond)
 	if err := repo.UpdateDeviceLastSeen(d.ID); err != nil {
 		t.Fatalf("UpdateDeviceLastSeen: %v", err)
 	}
-	after, err := repo.GetDeviceByIP(context.Background(), ip)
+	after, err := repo.GetDeviceByID(context.Background(), d.ID)
 	if err != nil || after == nil {
-		t.Fatalf("GetDeviceByIP: %v", err)
+		t.Fatalf("GetDeviceByID: %v", err)
 	}
 	if !after.LastSeen.After(before.LastSeen) {
 		t.Fatalf("expected last_seen to advance: before=%v after=%v", before.LastSeen, after.LastSeen)
@@ -202,17 +196,16 @@ func TestIntegration_DeviceRepo_UpdateDeviceLastSeen(t *testing.T) {
 func TestIntegration_DeviceRepo_UpdateDeviceStatus(t *testing.T) {
 	repo, _ := openIntegrationRepo(t)
 	ip := uniqueInet(t)
-	_ = repo.DeleteByIP(context.Background(), ip)
 	d := &domain.Device{IP: ip, Name: "status", Community: "public", SNMPVersion: "v2c"}
 	if err := repo.CreateDevice(context.Background(), d); err != nil {
 		t.Fatalf("CreateDevice: %v", err)
 	}
-	t.Cleanup(func() { _ = repo.DeleteByIP(context.Background(), ip) })
+	t.Cleanup(func() { _ = repo.DeleteByID(context.Background(), d.ID) })
 
 	if err := repo.UpdateDeviceStatus(d.ID, "maintenance"); err != nil {
 		t.Fatalf("UpdateDeviceStatus: %v", err)
 	}
-	got, err := repo.GetDeviceByIP(context.Background(), ip)
+	got, err := repo.GetDeviceByID(context.Background(), d.ID)
 	if err != nil || got == nil || got.Status != "maintenance" {
 		t.Fatalf("status: %+v err=%v", got, err)
 	}
@@ -223,7 +216,6 @@ func TestIntegration_DeviceRepo_CreateDevice_SNMPv3RoundTrip(t *testing.T) {
 	t.Setenv("NMS_DB_ENCRYPTION_KEY_FILE", "")
 	repo, db := openIntegrationRepo(t)
 	ip := uniqueInet(t)
-	_ = repo.DeleteByIP(context.Background(), ip)
 	d := &domain.Device{
 		IP:          ip,
 		Name:        "snmpv3",
@@ -237,11 +229,11 @@ func TestIntegration_DeviceRepo_CreateDevice_SNMPv3RoundTrip(t *testing.T) {
 	if err := repo.CreateDevice(context.Background(), d); err != nil {
 		t.Fatalf("CreateDevice: %v", err)
 	}
-	t.Cleanup(func() { _ = repo.DeleteByIP(context.Background(), ip) })
+	t.Cleanup(func() { _ = repo.DeleteByID(context.Background(), d.ID) })
 
-	got, err := repo.GetDeviceByIP(context.Background(), ip)
+	got, err := repo.GetDeviceByID(context.Background(), d.ID)
 	if err != nil || got == nil {
-		t.Fatalf("GetDeviceByIP: %v %+v", err, got)
+		t.Fatalf("GetDeviceByID: %v %+v", err, got)
 	}
 	if got.SNMPVersion != "v3" || got.AuthProto != "SHA" || got.AuthPass != "auth-secret" {
 		t.Fatalf("v3 auth fields: %+v", got)
@@ -272,7 +264,6 @@ func TestIntegration_DeviceRepo_LegacyPlainSecretsAutoMigratedOnRead(t *testing.
 	t.Setenv("NMS_DB_ENCRYPTION_KEY_FILE", "")
 	repo, db := openIntegrationRepo(t)
 	ip := uniqueInet(t)
-	t.Cleanup(func() { _ = repo.DeleteByIP(context.Background(), ip) })
 
 	_, err := db.ExecContext(context.Background(), `
 		INSERT INTO devices (ip, name, community, snmp_version, auth_proto, auth_pass, priv_proto, priv_pass, status)
@@ -283,9 +274,15 @@ func TestIntegration_DeviceRepo_LegacyPlainSecretsAutoMigratedOnRead(t *testing.
 		t.Fatalf("insert legacy row: %v", err)
 	}
 
-	got, err := repo.GetDeviceByIP(context.Background(), ip)
+	var id int
+	if err := db.QueryRowContext(context.Background(), `SELECT id FROM devices WHERE ip = $1::inet`, ip).Scan(&id); err != nil {
+		t.Fatalf("load inserted id: %v", err)
+	}
+	t.Cleanup(func() { _ = repo.DeleteByID(context.Background(), id) })
+
+	got, err := repo.GetDeviceByID(context.Background(), id)
 	if err != nil || got == nil {
-		t.Fatalf("GetDeviceByIP: %v %+v", err, got)
+		t.Fatalf("GetDeviceByID: %v %+v", err, got)
 	}
 	if got.Community != "public" || got.AuthPass != "auth-legacy" || got.PrivPass != "priv-legacy" {
 		t.Fatalf("unexpected decoded values: %+v", got)
