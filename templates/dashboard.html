@@ -108,24 +108,40 @@
                     Сначала TCP (80,443,22,21,161) — быстрее на «тихих» сетях, но можно пропустить чистый SNMP
                 </label>
             </div>
-            <button type="button" id="disc-run"
-                    class="w-full md:w-auto px-6 py-3 bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-500 hover:to-orange-500 rounded-lg font-semibold shadow-lg">
-                ▶ Сканировать
-            </button>
+            <div class="flex flex-wrap gap-2">
+                <button type="button" id="disc-run"
+                        class="w-full md:w-auto px-6 py-3 bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-500 hover:to-orange-500 rounded-lg font-semibold shadow-lg">
+                    ▶ Сканировать
+                </button>
+                <button type="button" id="disc-cancel"
+                        class="w-full md:w-auto px-6 py-3 bg-gradient-to-r from-red-700 to-red-800 hover:from-red-600 hover:to-red-700 rounded-lg font-semibold shadow-lg hidden"
+                        disabled>
+                    ✖ Отменить поиск
+                </button>
+            </div>
             <pre id="disc-out" class="mt-4 text-xs text-gray-300 bg-black/30 border border-gray-700 rounded-lg p-4 max-h-64 overflow-auto whitespace-pre-wrap hidden"></pre>
             <script nonce="{{.CSPNonce}}">
                 (function () {
                     const ver = document.getElementById('disc-version');
                     const v3 = document.getElementById('disc-v3');
                     const btn = document.getElementById('disc-run');
+                    const cancelBtn = document.getElementById('disc-cancel');
                     const out = document.getElementById('disc-out');
+                    let inFlightController = null;
                     function syncV3() {
                         const on = ver && ver.value === 'v3';
                         if (v3) v3.classList.toggle('hidden', !on);
                     }
                     if (ver) ver.addEventListener('change', syncV3);
                     syncV3();
+                    cancelBtn.addEventListener('click', function () {
+                        if (!inFlightController) return;
+                        inFlightController.abort();
+                        cancelBtn.disabled = true;
+                        out.textContent = 'Отмена поиска…';
+                    });
                     btn.addEventListener('click', async function () {
+                        if (inFlightController) return;
                         const cidr = (document.getElementById('disc-cidr').value || '').trim();
                         if (!cidr) { alert('Укажите CIDR'); return; }
                         const body = {
@@ -144,8 +160,12 @@
                         out.classList.remove('hidden');
                         out.textContent = 'Сканирование… (для /24 это может занять минуты)';
                         btn.disabled = true;
+                        cancelBtn.disabled = false;
+                        cancelBtn.classList.remove('hidden');
                         const prev = btn.textContent;
                         btn.textContent = '⏳ …';
+                        const controller = new AbortController();
+                        inFlightController = controller;
                         try {
                             const res = await fetch('/discovery/scan', {
                                 method: 'POST',
@@ -154,6 +174,7 @@
                                     'Accept': 'application/json',
                                     'X-CSRF-Token': (window.nmsCsrfToken ? window.nmsCsrfToken() : '')
                                 },
+                                signal: controller.signal,
                                 body: JSON.stringify(body)
                             });
                             const text = await res.text();
@@ -169,10 +190,17 @@
                                 out.textContent = text;
                             }
                         } catch (e) {
-                            out.textContent = 'Сеть: ' + (e && e.message ? e.message : e);
+                            if (e && e.name === 'AbortError') {
+                                out.textContent = 'Поиск устройств отменен.';
+                            } else {
+                                out.textContent = 'Сеть: ' + (e && e.message ? e.message : e);
+                            }
                         } finally {
+                            inFlightController = null;
                             btn.disabled = false;
                             btn.textContent = prev;
+                            cancelBtn.disabled = true;
+                            cancelBtn.classList.add('hidden');
                         }
                     });
                 })();

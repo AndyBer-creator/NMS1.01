@@ -1,6 +1,7 @@
 package http
 
 import (
+	"context"
 	"NMS1/internal/usecases/discovery"
 	"encoding/json"
 	"errors"
@@ -80,6 +81,10 @@ func (h *Handlers) DiscoverScan(w http.ResponseWriter, r *http.Request) {
 
 	res, err := h.scanner.ScanNetwork(r.Context(), params)
 	if err != nil {
+		if errors.Is(err, context.Canceled) {
+			h.logger.Info("DiscoverScan canceled by client")
+			return
+		}
 		var se *discovery.ScanError
 		if errors.As(err, &se) {
 			h.writeAPIError(w, http.StatusBadRequest, "scan_validation_error", se.Error())
