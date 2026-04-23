@@ -88,6 +88,7 @@ var (
 	)
 )
 
+// Handlers groups HTTP handlers and shared dependencies/templates.
 type Handlers struct {
 	repo                        *postgres.Repo
 	snmp                        *snmp.Client
@@ -110,6 +111,7 @@ type Handlers struct {
 	httpClient                  *http.Client
 }
 
+// NewHandlers wires HTTP handlers with repositories, services and templates.
 func NewHandlers(repo *postgres.Repo, snmpClient *snmp.Client, scanner *discovery.Scanner, trapsRepo *repository.TrapsRepo, logger *zap.Logger, mibUploadDir string, mib *mibresolver.Resolver) *Handlers {
 	setSessionRevocationStore(repo)
 	dashboardTmpl := template.Must(template.ParseFiles("templates/dashboard.html"))

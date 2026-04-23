@@ -159,6 +159,7 @@ func run(ctx context.Context, log *zap.Logger, dsn string, grpcTarget string, ud
 	}
 }
 
+// trapIncidentSuppressionWindow returns dedup window for trap incidents.
 func trapIncidentSuppressionWindow() time.Duration {
 	raw := strings.TrimSpace(config.EnvOrFile("NMS_TRAP_INCIDENT_SUPPRESSION_WINDOW"))
 	if raw == "" {

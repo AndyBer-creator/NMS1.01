@@ -7,11 +7,13 @@ import (
 	"strings"
 )
 
+// httpsOnlyEnabled checks strict HTTPS policy switch from environment.
 func httpsOnlyEnabled() bool {
 	v := strings.TrimSpace(strings.ToLower(os.Getenv("NMS_ENFORCE_HTTPS")))
 	return v == "1" || v == "true" || v == "yes" || v == "on"
 }
 
+// isHTTPSBypassPath reports probe/static endpoints exempt from redirects.
 func isHTTPSBypassPath(path string) bool {
 	switch path {
 	case "/health", "/ready", "/metrics", "/.well-known/security.txt":
@@ -22,7 +24,7 @@ func isHTTPSBypassPath(path string) bool {
 }
 
 // EnforceHTTPS redirects plain HTTP traffic to HTTPS when enabled.
-// Health, readiness, metrics и security.txt исключены для probe и публичного security.txt.
+// Health/readiness/metrics/security.txt are excluded for probes and public metadata.
 func EnforceHTTPS(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if !httpsOnlyEnabled() || isHTTPSRequest(r) || isHTTPSBypassPath(r.URL.Path) {
@@ -39,6 +41,7 @@ func EnforceHTTPS(next http.Handler) http.Handler {
 	})
 }
 
+// canonicalRequestHost validates and normalizes request host for redirects.
 func canonicalRequestHost(r *http.Request) string {
 	if r == nil {
 		return ""

@@ -22,6 +22,7 @@ func isProductionEnv() bool {
 	return strings.EqualFold(strings.TrimSpace(os.Getenv("NMS_ENV")), "production")
 }
 
+// RuntimeSecurityRole scopes production guardrails to process responsibilities.
 type RuntimeSecurityRole string
 
 const (

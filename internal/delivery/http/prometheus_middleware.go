@@ -11,7 +11,7 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
-// responseWriter перехватывает status code для метрик.
+// responseWriter captures status code for metrics labels.
 type responseWriter struct {
 	http.ResponseWriter
 	status int
@@ -22,7 +22,7 @@ func (w *responseWriter) WriteHeader(code int) {
 	w.ResponseWriter.WriteHeader(code)
 }
 
-// Hijack нужен для WebSocket (gorilla/websocket); без него Upgrade падает и браузер даёт code 1006.
+// Hijack support is required for websocket upgrades.
 func (w *responseWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
 	hj, ok := w.ResponseWriter.(http.Hijacker)
 	if !ok {
@@ -37,7 +37,7 @@ func (w *responseWriter) Flush() {
 	}
 }
 
-// PrometheusMetrics увеличивает nms_requests_total по каждому запросу (method, endpoint, status).
+// PrometheusMetrics records request counters and duration by route/status.
 func PrometheusMetrics(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()

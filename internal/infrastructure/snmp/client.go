@@ -12,6 +12,7 @@ import (
 	"go.uber.org/zap"
 )
 
+// Client wraps SNMP v2c/v3 operations with runtime-configurable transport settings.
 type Client struct {
 	Port    int
 	Timeout time.Duration
@@ -20,12 +21,14 @@ type Client struct {
 	mu      sync.RWMutex
 }
 
+// RuntimeConfig represents current SNMP transport settings snapshot.
 type RuntimeConfig struct {
 	Port    int
 	Timeout time.Duration
 	Retries int
 }
 
+// ErrorKind classifies operational SNMP failures for observability and workflows.
 type ErrorKind string
 
 const (
@@ -35,12 +38,14 @@ const (
 	ErrorKindTransport ErrorKind = "transport"
 )
 
+// SNMPError wraps low-level errors with operation and normalized kind.
 type SNMPError struct {
 	Op   string
 	Kind ErrorKind
 	Err  error
 }
 
+// Error implements error for SNMPError.
 func (e *SNMPError) Error() string {
 	if e == nil {
 		return ""
@@ -48,8 +53,10 @@ func (e *SNMPError) Error() string {
 	return fmt.Sprintf("%s (%s): %v", e.Op, e.Kind, e.Err)
 }
 
+// Unwrap exposes the wrapped root cause error.
 func (e *SNMPError) Unwrap() error { return e.Err }
 
+// GetErrorKind extracts normalized error kind from any error value.
 func GetErrorKind(err error) ErrorKind {
 	var se *SNMPError
 	if errors.As(err, &se) {
@@ -93,6 +100,7 @@ func wrapSNMPError(op string, err error) error {
 	}
 }
 
+// New creates SNMP client with initial transport settings.
 func New(port int, timeout time.Duration, retries int) *Client {
 	return &Client{
 		Port:    port,
@@ -102,6 +110,7 @@ func New(port int, timeout time.Duration, retries int) *Client {
 	}
 }
 
+// Config returns a thread-safe snapshot of runtime SNMP settings.
 func (c *Client) Config() RuntimeConfig {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
@@ -112,6 +121,7 @@ func (c *Client) Config() RuntimeConfig {
 	}
 }
 
+// ApplyRuntimeConfig updates timeout/retries used by future operations.
 func (c *Client) ApplyRuntimeConfig(timeout time.Duration, retries int) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -119,8 +129,8 @@ func (c *Client) ApplyRuntimeConfig(timeout time.Duration, retries int) {
 	c.Retries = retries
 }
 
-// pduValueString превращает значение PDU в строку для UI/API.
-// OCTET STRING приходит как []byte; fmt.Sprintf("%v", []byte) даёт "[83 121 ...]" вместо текста.
+// pduValueString converts PDU values to API/UI friendly strings.
+// OCTET STRING values often come as []byte and require text conversion.
 func pduValueString(v interface{}) string {
 	if v == nil {
 		return ""
@@ -135,17 +145,18 @@ func pduValueString(v interface{}) string {
 	}
 }
 
+// Get performs SNMP v2c GET for explicit host/community pair.
 func (c *Client) Get(ip string, community string, oids []string) (map[string]string, error) {
 	return c.getV2c(ip, community, oids)
 }
 
+// GetDevice resolves SNMP version/credentials from device and runs GET.
 func (c *Client) GetDevice(device *domain.Device, oids []string) (map[string]string, error) {
 	switch strings.ToLower(device.SNMPVersion) {
 	case "v3":
 		return c.getV3(device, oids)
 	case "v1":
-		// Для управления/опроса v1 нужна другая реализация (Community+Version1).
-		// Пока используем v2c-совместимый режим.
+		// v1-specific behavior can be implemented later; use v2c-compatible path for now.
 		return c.getV2c(device.IP, device.Community, oids)
 	case "", "v2c":
 		fallthrough
@@ -154,14 +165,13 @@ func (c *Client) GetDevice(device *domain.Device, oids []string) (map[string]str
 	}
 }
 
-// WalkDevice делает SNMP WALK/BULKWALK по базовому OID и возвращает map[fullOID]value.
-// Нужен для LLDP (lldpLocPortTable/lldpRemTable).
+// WalkDevice performs SNMP WALK/BULKWALK and returns map[fullOID]value.
 func (c *Client) WalkDevice(device *domain.Device, baseOID string) (map[string]string, error) {
 	switch strings.ToLower(device.SNMPVersion) {
 	case "v3":
 		return c.walkV3(device, baseOID)
 	case "v1":
-		// LLDP обычно на v2c/v3; v1 пока не поддерживаем в WALK (fallback на v2c).
+		// LLDP is typically collected via v2c/v3; fallback to v2c path for v1.
 		return c.walkV2c(device.IP, device.Community, baseOID)
 	case "", "v2c":
 		fallthrough
@@ -170,12 +180,13 @@ func (c *Client) WalkDevice(device *domain.Device, baseOID string) (map[string]s
 	}
 }
 
+// SetDevice resolves SNMP version/credentials from device and runs SET.
 func (c *Client) SetDevice(device *domain.Device, oid string, pduType gosnmp.Asn1BER, value interface{}) error {
 	switch strings.ToLower(device.SNMPVersion) {
 	case "v3":
 		return c.setV3(device, oid, pduType, value)
 	case "v1":
-		// Для управления v1 нужна отдельная реализация. Пока пробуем отправить как v2c.
+		// v1 SET path can be specialized later; fallback to v2c for now.
 		return c.setV2c(device.IP, device.Community, oid, pduType, value)
 	case "", "v2c":
 		fallthrough
@@ -189,7 +200,7 @@ func (c *Client) getV2c(ip string, community string, oids []string) (map[string]
 	conn := &gosnmp.GoSNMP{
 		Target:    ip,
 		Port:      uint16(cfg.Port),
-		Community: community, // ✅ Простая строка вместо device
+		Community: community,
 		Timeout:   cfg.Timeout,
 		Version:   gosnmp.Version2c,
 		Retries:   cfg.Retries,
@@ -250,7 +261,7 @@ func (c *Client) walkV2c(ip string, community string, baseOID string) (map[strin
 
 	pdus, err := conn.BulkWalkAll(baseOID)
 	if err != nil {
-		// fallback на обычный Walk, если Bulk не поддерживается/не сработал
+		// Fallback to regular WALK if BULKWALK is unsupported/failed.
 		pdus2, err2 := conn.WalkAll(baseOID)
 		if err2 != nil {
 			return nil, wrapSNMPError("bulkwalk", fmt.Errorf("%w (fallback walk: %v)", err, err2))
@@ -276,7 +287,7 @@ func (c *Client) walkV3(device *domain.Device, baseOID string) (map[string]strin
 
 	pdus, err := conn.BulkWalkAll(baseOID)
 	if err != nil {
-		// fallback на обычный Walk
+		// Fallback to regular WALK.
 		pdus2, err2 := conn.WalkAll(baseOID)
 		if err2 != nil {
 			return nil, wrapSNMPError("bulkwalk", fmt.Errorf("%w (fallback walk: %v)", err, err2))
@@ -343,7 +354,7 @@ func (c *Client) setV3(device *domain.Device, oid string, pduType gosnmp.Asn1BER
 
 func (c *Client) newV3Conn(device *domain.Device) (*gosnmp.GoSNMP, error) {
 	cfg := c.Config()
-	userName := strings.TrimSpace(device.Community) // для v3 используем community-колонку как username
+	userName := strings.TrimSpace(device.Community) // for v3 this field stores username
 	if userName == "" {
 		return nil, fmt.Errorf("snmpv3: community/username must be set")
 	}
@@ -391,7 +402,7 @@ func (c *Client) newV3Conn(device *domain.Device) (*gosnmp.GoSNMP, error) {
 		},
 	}
 
-	// Connect() сам выполнит engine discovery, если AuthoritativeEngineID пустой.
+	// Connect performs engine discovery when AuthoritativeEngineID is empty.
 	if err := conn.Connect(); err != nil {
 		return nil, wrapSNMPError("connect", err)
 	}
@@ -424,7 +435,7 @@ func (c *Client) privProtocol(proto string) gosnmp.SnmpV3PrivProtocol {
 	case "DES":
 		return gosnmp.DES
 	case "AES":
-		// В gosnmp AES означает AES128 (по документации/типичным настройкам).
+		// In gosnmp, AES maps to AES128.
 		return gosnmp.AES
 	case "AES128":
 		return gosnmp.AES

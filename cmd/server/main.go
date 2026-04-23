@@ -13,6 +13,7 @@ import (
 	"go.uber.org/zap"
 )
 
+// main initializes runtime dependencies and runs the API process until shutdown.
 func main() {
 	timezone.InitFromEnv()
 	cfg, err := config.Load()

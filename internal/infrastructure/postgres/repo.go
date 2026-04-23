@@ -8,15 +8,17 @@ import (
 	"strings"
 	"time"
 
-	// 🚨 ОБЯЗАТЕЛЬНЫЙ BLANK IMPORT
+	// required blank import for pgx stdlib driver registration
 	_ "github.com/jackc/pgx/v5/stdlib"
 )
 
+// Repo provides PostgreSQL-backed persistence for core NMS entities.
 type Repo struct {
 	db        *sql.DB
 	protector *secretProtector
 }
 
+// SNMPSetAuditRecord describes one SNMP SET audit event row.
 type SNMPSetAuditRecord struct {
 	UserName string
 	DeviceID sql.NullInt64
@@ -36,6 +38,7 @@ type deviceSecretSnapshot struct {
 	privPassEnc    sql.NullString
 }
 
+// New opens PostgreSQL connections and initializes secret protection helpers.
 func New(dsn string) (*Repo, error) {
 	db, err := sql.Open("pgx", dsn)
 	if err != nil {
@@ -56,12 +59,12 @@ func (r *Repo) Close() error {
 	return r.db.Close()
 }
 
-// Ping проверяет доступность БД (readiness probe).
+// Ping checks database availability for readiness probes.
 func (r *Repo) Ping(ctx context.Context) error {
 	return r.db.PingContext(ctx)
 }
 
-// GetDeviceByID загружает устройство по id (стабильные URL вместо IP/IPv6 в пути).
+// GetDeviceByID loads a device by stable numeric identifier.
 func (r *Repo) GetDeviceByID(ctx context.Context, id int) (*domain.Device, error) {
 	if id <= 0 {
 		return nil, nil
@@ -382,7 +385,7 @@ func (r *Repo) CreateDevice(ctx context.Context, device *domain.Device) error {
 	}
 	device.SNMPVersion = snmpVer
 
-	// Для v3 credentials храним NULL вместо пустых строк.
+	// For v3 credentials store NULL instead of empty strings.
 	authProto := sql.NullString{Valid: strings.TrimSpace(device.AuthProto) != ""}
 	if authProto.Valid {
 		authProto.String = device.AuthProto

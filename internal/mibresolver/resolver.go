@@ -1,6 +1,5 @@
-// Package mibresolver переводит символьные имена MIB (IF-MIB::sysDescr.0) в числовые OID
-// через внешнюю утилиту snmptranslate (пакет net-snmp-tools). Загруженные MIB должны лежать
-// в каталогах из MIBDIRS.
+// Package mibresolver resolves symbolic MIB names (e.g. IF-MIB::sysDescr.0)
+// into numeric OIDs using external snmptranslate (net-snmp-tools).
 package mibresolver
 
 import (
@@ -21,13 +20,13 @@ import (
 
 var numericOID = regexp.MustCompile(`^\.?(\d+)(\.\d+)*$`)
 
-// IsNumericOID true, если строка — числовой OID (с опциональной ведущей точкой).
+// IsNumericOID reports whether input is numeric OID with optional leading dot.
 func IsNumericOID(s string) bool {
 	s = strings.TrimSpace(s)
 	return numericOID.MatchString(s)
 }
 
-// NormalizeNumeric убирает ведущую точку.
+// NormalizeNumeric strips leading dot from numeric OID.
 func NormalizeNumeric(s string) string {
 	s = strings.TrimSpace(s)
 	return strings.TrimPrefix(s, ".")
@@ -35,7 +34,7 @@ func NormalizeNumeric(s string) string {
 
 var safeSymbol = regexp.MustCompile(`^[A-Za-z0-9_.:\-]+$`)
 
-// ValidateSymbol отсекает инъекции в аргумент snmptranslate.
+// ValidateSymbol guards snmptranslate argument from invalid characters.
 func ValidateSymbol(s string) error {
 	s = strings.TrimSpace(s)
 	if len(s) == 0 || len(s) > 512 {
@@ -47,7 +46,7 @@ func ValidateSymbol(s string) error {
 	return nil
 }
 
-// Resolver вызывает snmptranslate с MIBDIRS из переданных каталогов.
+// Resolver executes snmptranslate using provided MIB directories.
 type Resolver struct {
 	dirs            []string
 	logger          *zap.Logger
@@ -107,7 +106,7 @@ func (r *Resolver) findTranslate() (string, error) {
 	return path, nil
 }
 
-// ResolveToNumeric возвращает числовой OID без ведущей точки.
+// ResolveToNumeric resolves symbolic or numeric input to normalized numeric OID.
 func (r *Resolver) ResolveToNumeric(symbol string) (string, error) {
 	s := strings.TrimSpace(symbol)
 	if IsNumericOID(s) {
@@ -146,13 +145,13 @@ func (r *Resolver) ResolveToNumeric(symbol string) (string, error) {
 	return line, nil
 }
 
-// Available сообщает, можно ли резолвить символьные имена (найден snmptranslate).
+// Available reports whether symbolic resolution is available.
 func (r *Resolver) Available() bool {
 	_, err := r.findTranslate()
 	return err == nil
 }
 
-// PickSNMPValue возвращает значение из ответа SNMP GET по числовому OID (gosnmp может вернуть ключ с/без ведущей точки).
+// PickSNMPValue returns value by numeric OID handling dot/no-dot key variants.
 func PickSNMPValue(result map[string]string, numericOID string) string {
 	numericOID = NormalizeNumeric(numericOID)
 	if v, ok := result[numericOID]; ok {

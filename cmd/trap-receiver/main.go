@@ -13,6 +13,7 @@ import (
 	"go.uber.org/zap"
 )
 
+// main starts trap receiver loop and waits for termination signals.
 func main() {
 	timezone.InitFromEnv()
 

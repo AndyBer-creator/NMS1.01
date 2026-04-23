@@ -19,6 +19,7 @@ type trapIngestService struct {
 	suppressionWindow time.Duration
 }
 
+// IngestTrap persists an incoming trap and updates correlated trap incidents.
 func (s *trapIngestService) IngestTrap(ctx context.Context, req *grpcapi.TrapIngestRequest) (*grpcapi.TrapIngestResponse, error) {
 	if s == nil || s.repo == nil {
 		return nil, fmt.Errorf("trap repo is not configured")
@@ -46,6 +47,7 @@ func (s *trapIngestService) IngestTrap(ctx context.Context, req *grpcapi.TrapIng
 	return &grpcapi.TrapIngestResponse{Status: "ok"}, nil
 }
 
+// trapIncidentSuppressionWindow returns dedup window for trap-created incidents.
 func trapIncidentSuppressionWindow() time.Duration {
 	raw := strings.TrimSpace(config.EnvOrFile("NMS_TRAP_INCIDENT_SUPPRESSION_WINDOW"))
 	if raw == "" {

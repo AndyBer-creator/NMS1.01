@@ -2,6 +2,7 @@ package domain
 
 import "time"
 
+// Device is an inventory record with SNMP credentials and poll health fields.
 type Device struct {
 	ID           int       `json:"id" db:"id"`
 	IP           string    `json:"ip" db:"ip"`
@@ -9,9 +10,9 @@ type Device struct {
 	Community    string    `json:"-" db:"community"`
 	SNMPVersion  string    `json:"snmp_version" db:"snmp_version"`
 	AuthProto    string    `json:"auth_proto,omitempty" db:"auth_proto"`
-	AuthPass     string    `json:"-" db:"auth_pass"` // Скрыто в JSON
+	AuthPass     string    `json:"-" db:"auth_pass"` // hidden in JSON
 	PrivProto    string    `json:"priv_proto,omitempty" db:"priv_proto"`
-	PrivPass     string    `json:"-" db:"priv_pass"` // Скрыто в JSON
+	PrivPass     string    `json:"-" db:"priv_pass"` // hidden in JSON
 	Version      string    `json:"version" db:"version"`
 	Status       string    `json:"status" db:"status"`
 	CreatedAt    time.Time `json:"created_at" db:"created_at"`
@@ -21,6 +22,7 @@ type Device struct {
 	LastPollOKAt time.Time `json:"last_poll_ok_at,omitempty" db:"last_poll_ok_at"`
 }
 
+// Metric is one time-series sample collected from an SNMP OID.
 type Metric struct {
 	ID        int       `json:"id"`
 	DeviceID  int       `json:"device_id"`

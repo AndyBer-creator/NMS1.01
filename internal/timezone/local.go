@@ -6,11 +6,11 @@ import (
 	"strings"
 	"time"
 
-	_ "time/tzdata" // зона для статических бинарников без системной tzdata
+	_ "time/tzdata" // include tzdata for static binaries without system zoneinfo
 )
 
-// InitFromEnv выставляет time.Local по переменной TZ (например Europe/Moscow).
-// Без TZ или при ошибке разбора зоны поведение не меняется.
+// InitFromEnv sets time.Local from TZ environment variable.
+// No-op when TZ is empty or invalid.
 func InitFromEnv() {
 	tz := strings.TrimSpace(os.Getenv("TZ"))
 	if tz == "" {

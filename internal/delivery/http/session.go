@@ -45,13 +45,13 @@ type sharedSessionRevocationStore interface {
 
 func initFallbackSessionKey() {
 	if _, err := rand.Read(fallbackSessionKey[:]); err != nil {
-		// Крайне маловероятный fallback: сохраняем работоспособность токенов в рамках процесса.
+		// Extremely unlikely fallback keeps token signing operational for this process.
 		fallbackSessionKey = sha256.Sum256([]byte(time.Now().UTC().String() + "-nms-session-fallback"))
 	}
 }
 
-// sessionSigningKey — 32 байта; рекомендуется всегда задавать NMS_SESSION_SECRET.
-// Если секрет не задан, используется случайный ключ процесса (без детерминированного вывода из паролей).
+// sessionSigningKey returns 32-byte signing key for session tokens.
+// When NMS_SESSION_SECRET is unset, a process-local random key is used.
 func sessionSigningKey() [32]byte {
 	secret := strings.TrimSpace(config.EnvOrFile("NMS_SESSION_SECRET"))
 	if secret != "" {

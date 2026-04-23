@@ -9,8 +9,10 @@ import (
 	"google.golang.org/grpc/status"
 )
 
+// TrapServiceIngestMethod is the fully-qualified unary RPC method name.
 const TrapServiceIngestMethod = "/nms.v1.TrapService/IngestTrap"
 
+// TrapIngestRequest contains trap payload fields sent over gRPC.
 type TrapIngestRequest struct {
 	DeviceIP string            `json:"device_ip"`
 	OID      string            `json:"oid"`
@@ -18,14 +20,17 @@ type TrapIngestRequest struct {
 	TrapVars map[string]string `json:"trap_vars"`
 }
 
+// TrapIngestResponse returns ingest status for trap forwarding clients.
 type TrapIngestResponse struct {
 	Status string `json:"status"`
 }
 
+// TrapServiceHandler defines server-side trap ingest behavior.
 type TrapServiceHandler interface {
 	IngestTrap(ctx context.Context, req *TrapIngestRequest) (*TrapIngestResponse, error)
 }
 
+// TrapServiceClient defines client-side trap ingest calls.
 type TrapServiceClient interface {
 	IngestTrap(ctx context.Context, req *TrapIngestRequest, opts ...grpc.CallOption) (*TrapIngestResponse, error)
 }
@@ -34,6 +39,7 @@ type trapServiceClient struct {
 	cc grpc.ClientConnInterface
 }
 
+// NewTrapServiceClient builds a typed client over a gRPC connection.
 func NewTrapServiceClient(cc grpc.ClientConnInterface) TrapServiceClient {
 	return &trapServiceClient{cc: cc}
 }
@@ -46,6 +52,7 @@ func (c *trapServiceClient) IngestTrap(ctx context.Context, req *TrapIngestReque
 	return out, nil
 }
 
+// RegisterTrapService registers TrapService handler on a gRPC server.
 func RegisterTrapService(s grpc.ServiceRegistrar, handler TrapServiceHandler) {
 	s.RegisterService(&grpc.ServiceDesc{
 		ServiceName: "nms.v1.TrapService",
@@ -75,14 +82,18 @@ func RegisterTrapService(s grpc.ServiceRegistrar, handler TrapServiceHandler) {
 	}, handler)
 }
 
+// JSONCodec is a lightweight JSON codec used for pilot internal gRPC traffic.
 type JSONCodec struct{}
 
+// Name returns codec name used by gRPC content-subtype matching.
 func (JSONCodec) Name() string { return "json" }
 
+// Marshal encodes request/response messages to JSON bytes.
 func (JSONCodec) Marshal(v interface{}) ([]byte, error) {
 	return json.Marshal(v)
 }
 
+// Unmarshal decodes JSON bytes into request/response message structs.
 func (JSONCodec) Unmarshal(data []byte, v interface{}) error {
 	return json.Unmarshal(data, v)
 }

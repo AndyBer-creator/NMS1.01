@@ -19,7 +19,7 @@ type workerPollPanelVM struct {
 	ErrMsg      string
 }
 
-// WorkerPollSettingsPanel — HTML-фрагмент для дашборда (интервал SNMP-опроса worker).
+// WorkerPollSettingsPanel renders dashboard fragment for worker poll interval.
 func (h *Handlers) WorkerPollSettingsPanel(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -38,7 +38,7 @@ func (h *Handlers) WorkerPollSettingsPanel(w http.ResponseWriter, r *http.Reques
 	_ = h.devicesTmpl.ExecuteTemplate(w, "workerPollPanel", vm)
 }
 
-// SetWorkerPollInterval — POST (HTMX), только admin (RequireAdmin).
+// SetWorkerPollInterval handles HTMX POST to update worker poll interval.
 func (h *Handlers) SetWorkerPollInterval(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)

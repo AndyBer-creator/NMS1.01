@@ -12,6 +12,7 @@ import (
 	"time"
 )
 
+// IncidentListPage contains paginated incident rows with "more" marker.
 type IncidentListPage struct {
 	Items []domain.Incident
 	More  bool

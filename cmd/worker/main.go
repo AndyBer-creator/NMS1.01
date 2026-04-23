@@ -14,6 +14,7 @@ import (
 	"go.uber.org/zap"
 )
 
+// main starts worker loops and blocks until process shutdown.
 func main() {
 	timezone.InitFromEnv()
 	cfg, err := config.Load()

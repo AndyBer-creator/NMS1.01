@@ -9,7 +9,7 @@ import (
 
 const maxAvailabilityDetailLen = 8000
 
-// AvailabilityEvent — одна запись истории доступности (worker SNMP poll).
+// AvailabilityEvent is one historical availability transition record.
 type AvailabilityEvent struct {
 	ID         int64     `json:"id"`
 	DeviceID   int       `json:"device_id"`

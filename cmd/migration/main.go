@@ -13,6 +13,7 @@ import (
 	"go.uber.org/zap"
 )
 
+// main runs all database migrations and exits with fatal on failure.
 func main() {
 	timezone.InitFromEnv()
 	logger := applog.MustNewZapFile("nms-migration")
@@ -39,6 +40,7 @@ func main() {
 	logger.Info("database migration completed")
 }
 
+// migrationDSN loads DB DSN from env/file and validates it is not empty.
 func migrationDSN() (string, error) {
 	dsn := config.EnvOrFile("DB_DSN")
 	if dsn == "" {

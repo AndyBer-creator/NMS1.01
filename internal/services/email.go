@@ -12,6 +12,7 @@ import (
 	"time"
 )
 
+// SMTPClient encapsulates SMTP transport and sender configuration.
 type SMTPClient struct {
 	Host string
 	Port string
@@ -20,6 +21,7 @@ type SMTPClient struct {
 	From string
 }
 
+// NewSMTPClient creates SMTP client with normalized static settings.
 func NewSMTPClient(host, port, user, pass, from string) *SMTPClient {
 	return &SMTPClient{
 		Host: strings.TrimSpace(host),
@@ -30,19 +32,23 @@ func NewSMTPClient(host, port, user, pass, from string) *SMTPClient {
 	}
 }
 
+// Enabled reports whether minimal SMTP settings are configured.
 func (c *SMTPClient) Enabled() bool {
 	return c.Host != "" && c.Port != "" && c.From != ""
 }
 
+// allowPlainSMTP enables legacy plaintext SMTP transport by explicit override.
 func allowPlainSMTP() bool {
 	v := strings.TrimSpace(strings.ToLower(os.Getenv("NMS_SMTP_ALLOW_PLAINTEXT")))
 	return v == "1" || v == "true" || v == "yes" || v == "on"
 }
 
+// Send sends message with background context.
 func (c *SMTPClient) Send(to, subject, body string) error {
 	return c.SendContext(context.Background(), to, subject, body)
 }
 
+// SendContext sends message with context-aware network deadlines/cancelation.
 func (c *SMTPClient) SendContext(ctx context.Context, to, subject, body string) error {
 	if !c.Enabled() {
 		return fmt.Errorf("smtp is not configured")
@@ -76,11 +82,13 @@ func (c *SMTPClient) SendContext(ctx context.Context, to, subject, body string) 
 	return c.sendPlain(ctx, addr, to, []byte(msg))
 }
 
+// dialTimeout opens TCP connection with bounded dial timeout.
 func (c *SMTPClient) dialTimeout(ctx context.Context, network, addr string) (net.Conn, error) {
 	d := net.Dialer{Timeout: 6 * time.Second}
 	return d.DialContext(ctx, network, addr)
 }
 
+// sendTLS sends mail via direct SMTPS (typically port 465).
 func (c *SMTPClient) sendTLS(ctx context.Context, addr, to string, msg []byte) error {
 	conn, err := c.dialTimeout(ctx, "tcp", addr)
 	if err != nil {
@@ -127,6 +135,7 @@ func (c *SMTPClient) sendTLS(ctx context.Context, addr, to string, msg []byte) e
 	return client.Quit()
 }
 
+// validateSMTPPort validates SMTP port format and range.
 func validateSMTPPort(port string) (int, error) {
 	p, err := strconv.Atoi(strings.TrimSpace(port))
 	if err != nil {
@@ -138,6 +147,7 @@ func validateSMTPPort(port string) (int, error) {
 	return p, nil
 }
 
+// smtpDialAddr builds host:port endpoint handling bracketed hosts.
 func smtpDialAddr(host, port string) string {
 	h := strings.TrimSpace(host)
 	h = strings.TrimPrefix(h, "[")
@@ -145,6 +155,7 @@ func smtpDialAddr(host, port string) string {
 	return net.JoinHostPort(h, strings.TrimSpace(port))
 }
 
+// sendStartTLS sends mail over STARTTLS with optional auth.
 func (c *SMTPClient) sendStartTLS(ctx context.Context, addr, to string, msg []byte) error {
 	conn, err := c.dialTimeout(ctx, "tcp", addr)
 	if err != nil {
@@ -189,6 +200,7 @@ func (c *SMTPClient) sendStartTLS(ctx context.Context, addr, to string, msg []by
 	return client.Quit()
 }
 
+// sendPlain sends mail without TLS (legacy compatibility mode).
 func (c *SMTPClient) sendPlain(ctx context.Context, addr, to string, msg []byte) error {
 	conn, err := c.dialTimeout(ctx, "tcp", addr)
 	if err != nil {

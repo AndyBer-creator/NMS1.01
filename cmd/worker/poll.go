@@ -83,6 +83,7 @@ var (
 	pollBackoff = newDeviceBackoff()
 )
 
+// pollingIncidentSuppressionWindow returns dedup window for polling incidents.
 func pollingIncidentSuppressionWindow() time.Duration {
 	raw := strings.TrimSpace(config.EnvOrFile("NMS_POLL_INCIDENT_SUPPRESSION_WINDOW"))
 	if raw == "" {
@@ -95,6 +96,7 @@ func pollingIncidentSuppressionWindow() time.Duration {
 	return d
 }
 
+// pollWorkerConcurrency returns bounded worker parallelism for device polling.
 func pollWorkerConcurrency() int {
 	v := strings.TrimSpace(os.Getenv("NMS_WORKER_POLL_CONCURRENCY"))
 	if v == "" {
@@ -110,6 +112,7 @@ func pollWorkerConcurrency() int {
 	return n
 }
 
+// pollRateLimitPerSec returns bounded start rate for poll requests.
 func pollRateLimitPerSec() int {
 	v := strings.TrimSpace(os.Getenv("NMS_WORKER_POLL_RATE_LIMIT_PER_SEC"))
 	if v == "" {
@@ -138,6 +141,7 @@ const (
 	pollResultSkipped
 )
 
+// newPollThrottle creates a token throttle limiting poll starts per second.
 func newPollThrottle(ratePerSec int) pollThrottle {
 	if ratePerSec <= 0 {
 		return pollThrottle{
@@ -188,6 +192,7 @@ type deviceBackoff struct {
 	maxGap time.Duration
 }
 
+// newDeviceBackoff allocates per-device retry backoff state.
 func newDeviceBackoff() *deviceBackoff {
 	return &deviceBackoff{
 		byIP:   make(map[string]backoffState),
@@ -195,6 +200,7 @@ func newDeviceBackoff() *deviceBackoff {
 	}
 }
 
+// shouldSkip reports whether device polling should be skipped until nextTry.
 func (b *deviceBackoff) shouldSkip(ip string, now time.Time) (bool, time.Duration) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
@@ -205,6 +211,7 @@ func (b *deviceBackoff) shouldSkip(ip string, now time.Time) (bool, time.Duratio
 	return true, st.nextTry.Sub(now)
 }
 
+// onFailure records a failed poll and returns next retry delay.
 func (b *deviceBackoff) onFailure(ip, errText string, now time.Time) time.Duration {
 	b.mu.Lock()
 	defer b.mu.Unlock()
@@ -223,12 +230,14 @@ func (b *deviceBackoff) onFailure(ip, errText string, now time.Time) time.Durati
 	return delay
 }
 
+// onSuccess clears backoff state for a device after successful polling.
 func (b *deviceBackoff) onSuccess(ip string) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	delete(b.byIP, ip)
 }
 
+// init registers worker-related Prometheus metrics.
 func init() {
 	prometheus.MustRegister(workerPollDurationSeconds)
 	prometheus.MustRegister(workerPollDevicesTotal)
@@ -244,6 +253,7 @@ func init() {
 	prometheus.MustRegister(lldpLinksInsertedTotal)
 }
 
+// pollAllDevices polls all devices with configured concurrency and throttling.
 func pollAllDevices(ctx context.Context, repo *postgres.Repo, snmpClient *snmp.Client, logger *zap.Logger) (success int, failed int, err error) {
 	select {
 	case <-ctx.Done():
@@ -338,6 +348,7 @@ func pollAllDevices(ctx context.Context, repo *postgres.Repo, snmpClient *snmp.C
 	return success, failed, nil
 }
 
+// pollOneDevice performs one SNMP poll and records availability transitions.
 func pollOneDevice(
 	ctx context.Context,
 	repo *postgres.Repo,
@@ -422,6 +433,7 @@ func pollOneDevice(
 	return pollResultSuccess
 }
 
+// getValue returns metric value by OID or "N/A" if absent.
 func getValue(result map[string]string, oid string) string {
 	if val, ok := result[oid]; ok {
 		return val
@@ -429,11 +441,13 @@ func getValue(result map[string]string, oid string) string {
 	return "N/A"
 }
 
+// snmpPollWasOK reports whether status indicates a healthy poll state.
 func snmpPollWasOK(status string) bool {
 	s := strings.TrimSpace(strings.ToLower(status))
 	return s == "" || s == "active"
 }
 
+// snmpPollWasFailure reports whether status is any failed_* poll state.
 func snmpPollWasFailure(status string) bool {
 	s := strings.TrimSpace(status)
 	return strings.HasPrefix(s, "failed")

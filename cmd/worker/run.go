@@ -20,6 +20,7 @@ import (
 	"go.uber.org/zap"
 )
 
+// envIntOrDefault parses a positive integer from env or returns fallback.
 func envIntOrDefault(name string, fallback int) int {
 	v := strings.TrimSpace(os.Getenv(name))
 	if v == "" {
@@ -32,22 +33,27 @@ func envIntOrDefault(name string, fallback int) int {
 	return n
 }
 
+// escalationAckTimeout returns stage-1 incident escalation timeout.
 func escalationAckTimeout() time.Duration {
 	return config.EnvDurationOrDefault("NMS_INCIDENT_ESCALATION_ACK_TIMEOUT", 0)
 }
 
+// escalationCheckInterval returns periodic interval for escalation checks.
 func escalationCheckInterval() time.Duration {
 	return config.EnvDurationOrDefault("NMS_INCIDENT_ESCALATION_CHECK_INTERVAL", time.Minute)
 }
 
+// escalationTargetAssignee returns default stage-1 escalation assignee.
 func escalationTargetAssignee() string {
 	return strings.TrimSpace(config.EnvOrFile("NMS_INCIDENT_ASSIGNEE_ESCALATION"))
 }
 
+// metricsRetentionMonths returns metrics partition retention in months.
 func metricsRetentionMonths() int {
 	return envIntOrDefault("NMS_METRICS_RETENTION_MONTHS", 6)
 }
 
+// metricsRetentionCheckInterval returns prune interval for old metric partitions.
 func metricsRetentionCheckInterval() time.Duration {
 	return config.EnvDurationOrDefault("NMS_METRICS_RETENTION_CHECK_INTERVAL", 24*time.Hour)
 }
@@ -62,6 +68,7 @@ type incidentEscalationPolicy struct {
 	comment          string
 }
 
+// appendEscalationPolicy validates and appends an escalation policy.
 func appendEscalationPolicy(out []incidentEscalationPolicy, p incidentEscalationPolicy) []incidentEscalationPolicy {
 	if p.olderThan <= 0 || strings.TrimSpace(p.targetAssignee) == "" {
 		return out
@@ -73,6 +80,7 @@ func appendEscalationPolicy(out []incidentEscalationPolicy, p incidentEscalation
 	return append(out, p)
 }
 
+// loadEscalationPoliciesV2 builds active escalation policies from runtime env.
 func loadEscalationPoliciesV2() []incidentEscalationPolicy {
 	policies := make([]incidentEscalationPolicy, 0, 8)
 	stage1Timeout := escalationAckTimeout()
@@ -130,6 +138,7 @@ type workerOpts struct {
 	metricsAddr string
 }
 
+// metricsListenAddr returns explicit metrics address or a default one.
 func (o workerOpts) metricsListenAddr() string {
 	if o.metricsAddr == "" {
 		return ":8081"

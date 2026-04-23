@@ -7,12 +7,14 @@ import (
 	"strings"
 )
 
+// RotateDeviceSecretsStats summarizes DB secret rotation processing counters.
 type RotateDeviceSecretsStats struct {
 	Scanned int
 	Updated int
 	Skipped int
 }
 
+// RotateDeviceSNMPSecrets re-encrypts device SNMP secret columns with a new key.
 func RotateDeviceSNMPSecrets(ctx context.Context, db *sql.DB, oldKey, newKey string, dryRun bool) (RotateDeviceSecretsStats, error) {
 	var stats RotateDeviceSecretsStats
 	oldProtector, err := newSecretProtector(oldKey)

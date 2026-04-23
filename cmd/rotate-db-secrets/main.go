@@ -16,6 +16,7 @@ import (
 	"go.uber.org/zap"
 )
 
+// main rotates encrypted device secrets in the database.
 func main() {
 	dryRun := flag.Bool("dry-run", false, "calculate and validate rotation without writing updates")
 	timeout := flag.Duration("timeout", 5*time.Minute, "overall rotation timeout")
@@ -54,6 +55,7 @@ func main() {
 	_, _ = fmt.Fprintf(os.Stdout, "db-secret-rotation (%s): scanned=%d updated=%d skipped=%d\n", mode, stats.Scanned, stats.Updated, stats.Skipped)
 }
 
+// validateRotateEnv ensures required rotation inputs are present and valid.
 func validateRotateEnv(dsn, oldKey, newKey string) error {
 	if dsn == "" {
 		return errors.New("DB_DSN must be set")
@@ -70,6 +72,7 @@ func validateRotateEnv(dsn, oldKey, newKey string) error {
 	return nil
 }
 
+// rotationMode returns a human-readable mode for logs and stdout.
 func rotationMode(dryRun bool) string {
 	if dryRun {
 		return "dry-run"

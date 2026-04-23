@@ -102,7 +102,7 @@ func (h *Handlers) renderMibPanel(w http.ResponseWriter, vm mibPanelView) {
 	}
 }
 
-// MibPanel — HTML-блок для дашборда (admin или открытый режим без auth).
+// MibPanel renders dashboard MIB upload/list block.
 func (h *Handlers) MibPanel(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -128,7 +128,7 @@ func (h *Handlers) MibPanel(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// MibUpload — загрузка одного файла (multipart, поле file).
+// MibUpload handles single multipart MIB file upload.
 func (h *Handlers) MibUpload(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -218,7 +218,7 @@ func truncateQuery(s string, max int) string {
 	return s[:max]
 }
 
-// MibDelete — удаление файла по имени (form: name=...).
+// MibDelete removes uploaded MIB file by form field name.
 func (h *Handlers) MibDelete(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)

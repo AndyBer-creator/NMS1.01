@@ -40,13 +40,13 @@ func hashShort(s string) string {
 	return hexed
 }
 
-// LldpTopologyPage отдает HTML страницу с графом LLDP.
+// LldpTopologyPage renders LLDP topology graph page.
 func (h *Handlers) LldpTopologyPage(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	_ = h.topologyTmpl.Execute(w, map[string]any{"CSPNonce": cspNonceFromContext(r)})
 }
 
-// LldpTopologyData отдает JSON: узлы и ребра последнего LLDP-снимка.
+// LldpTopologyData returns nodes/edges from latest LLDP snapshot.
 func (h *Handlers) LldpTopologyData(w http.ResponseWriter, r *http.Request) {
 	scanID, err := h.repo.GetLatestLldpScanID(r.Context())
 	if err != nil {

@@ -86,8 +86,8 @@ func envBool(name string) bool {
 	return v == "1" || v == "true" || v == "yes" || v == "on"
 }
 
-// RequireAuth: cookie-сессия (форма /login) или HTTP Basic.
-// По умолчанию отсутствие сконфигурированных кредов считается ошибкой конфигурации (fail-closed).
+// RequireAuth allows cookie session or HTTP Basic authentication.
+// By default, missing configured credentials is treated as fail-closed.
 func RequireAuth(next http.Handler) http.Handler {
 	admin, viewer := loadCreds()
 
@@ -155,7 +155,7 @@ func RequireAuth(next http.Handler) http.Handler {
 	})
 }
 
-// adminUserFromRequest — только admin: cookie-сессия или HTTP Basic (как RequireAuth, но без viewer).
+// adminUserFromRequest resolves admin user from session cookie or HTTP Basic.
 type adminAuthOutcome struct {
 	user       *authUser
 	retryAfter time.Duration
@@ -188,7 +188,7 @@ func RequireAdmin(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		u := userFromContext(r.Context())
 		if u == nil {
-			// Запрещаем fail-open на admin-маршрутах; legacy-режим можно включить явно.
+			// Do not fail-open on admin routes unless explicitly enabled.
 			if envBool("NMS_ALLOW_NO_AUTH") {
 				next.ServeHTTP(w, r)
 				return

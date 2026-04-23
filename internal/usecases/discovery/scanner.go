@@ -23,29 +23,29 @@ const (
 	defaultWorkers  = 80
 )
 
-// ScanParams задаёт параметры поиска SNMP-агентов в подсети.
+// ScanParams defines subnet discovery parameters for SNMP agent probing.
 type ScanParams struct {
 	CIDR         string
-	Community    string // v2c: community; v3: имя пользователя (как в БД)
+	Community    string // v2c community; v3 username (stored in DB community field)
 	SNMPVersion  string
 	AuthProto    string
 	AuthPass     string
 	PrivProto    string
 	PrivPass     string
-	AutoAdd      bool // добавлять найденные IP в devices
-	TCPPrefilter bool // сначала проверять открытые TCP-порты (часто пропускает «чистый» SNMP)
+	AutoAdd      bool // auto-register discovered hosts in devices table
+	TCPPrefilter bool // probe common TCP ports first (may skip SNMP-only hosts)
 	Concurrency  int  // 0 → defaultWorkers
-	MaxHosts     int  // 0 → defaultMaxHosts, верхняя граница числа проверяемых адресов
+	MaxHosts     int  // 0 → defaultMaxHosts upper bound for host fanout
 }
 
-// FoundHost — один ответивший по SNMP хост.
+// FoundHost describes one host that successfully answered SNMP probe.
 type FoundHost struct {
 	IP       string `json:"ip"`
 	SysDescr string `json:"sys_descr,omitempty"`
-	Added    bool   `json:"added"` // успешно вставлен в БД (AutoAdd и не было дубликата)
+	Added    bool   `json:"added"` // inserted into DB when AutoAdd is enabled
 }
 
-// ScanResult — итог сканирования.
+// ScanResult contains discovery output and runtime metadata.
 type ScanResult struct {
 	CIDR       string      `json:"cidr"`
 	HostCount  int         `json:"host_count"`
@@ -54,12 +54,14 @@ type ScanResult struct {
 	DurationMs int64       `json:"duration_ms"`
 }
 
+// Scanner executes subnet discovery probes and optional device auto-registration.
 type Scanner struct {
 	snmpClient *snmp.Client
 	repo       *postgres.Repo
 	logger     *zap.Logger
 }
 
+// NewScanner creates a discovery scanner with SNMP client and device repository.
 func NewScanner(snmpClient *snmp.Client, repo *postgres.Repo, logger *zap.Logger) *Scanner {
 	return &Scanner{
 		snmpClient: snmpClient,
@@ -68,7 +70,7 @@ func NewScanner(snmpClient *snmp.Client, repo *postgres.Repo, logger *zap.Logger
 	}
 }
 
-// ScanCIDR оставлен для обратной совместимости: v2c/public, TCP-префильтр, авто-добавление в БД.
+// ScanCIDR keeps legacy behavior (v2c/public + TCP prefilter + auto-add).
 func (s *Scanner) ScanCIDR(ctx context.Context, cidr string) ([]string, error) {
 	res, err := s.ScanNetwork(ctx, ScanParams{
 		CIDR:         cidr,
@@ -87,7 +89,7 @@ func (s *Scanner) ScanCIDR(ctx context.Context, cidr string) ([]string, error) {
 	return out, nil
 }
 
-// ScanNetwork перебирает адреса в CIDR и проверяет SNMP Get sysDescr.
+// ScanNetwork iterates CIDR hosts and probes sysDescr via SNMP GET.
 func (s *Scanner) ScanNetwork(ctx context.Context, p ScanParams) (*ScanResult, error) {
 	start := time.Now()
 	_, ipNet, err := net.ParseCIDR(strings.TrimSpace(p.CIDR))
@@ -171,7 +173,7 @@ func (s *Scanner) ScanNetwork(ctx context.Context, p ScanParams) (*ScanResult, e
 			if len(result) == 0 {
 				continue
 			}
-			// gosnmp может вернуть OID-ключ с ведущей точкой. Берем значение устойчиво.
+			// gosnmp may return OID keys with/without leading dot.
 			desc := strings.TrimSpace(mibresolver.PickSNMPValue(result, sysDescrOID))
 			if desc == "" {
 				continue
@@ -230,6 +232,7 @@ func (s *Scanner) ScanNetwork(ctx context.Context, p ScanParams) (*ScanResult, e
 	return res, nil
 }
 
+// emptyScanHints returns operator hints when a scan finds no reachable agents.
 func emptyScanHints(p ScanParams) []string {
 	ver := domain.NormalizeSNMPVersionOrDefault(p.SNMPVersion)
 	h := []string{
@@ -246,13 +249,15 @@ func emptyScanHints(p ScanParams) []string {
 	return h
 }
 
-// ScanError — ошибка валидации параметров сканирования (4xx).
+// ScanError represents scan input validation errors (HTTP 4xx at handlers).
 type ScanError struct {
 	Msg string
 }
 
+// Error implements error for scan parameter validation failures.
 func (e *ScanError) Error() string { return e.Msg }
 
+// deviceNameFromDescr builds a sanitized default device name from sysDescr.
 func deviceNameFromDescr(ip, descr string) string {
 	const maxLen = 120
 	var b strings.Builder
@@ -273,6 +278,7 @@ func deviceNameFromDescr(ip, descr string) string {
 	return name
 }
 
+// tcpPing checks whether host has at least one common management TCP port open.
 func tcpPing(host string) bool {
 	ports := []string{"80", "443", "22", "21", "161"}
 	for _, port := range ports {
@@ -285,7 +291,7 @@ func tcpPing(host string) bool {
 	return false
 }
 
-// generateIPs возвращает адреса для опроса: для типичной IPv4-подсети без network и broadcast.
+// generateIPs returns probe candidates, skipping network/broadcast for common IPv4 ranges.
 func generateIPs(ipNet *net.IPNet) []net.IP {
 	var ips []net.IP
 	for ip := ipNet.IP.Mask(ipNet.Mask); ipNet.Contains(ip); incIP(ip) {
@@ -300,6 +306,7 @@ func generateIPs(ipNet *net.IPNet) []net.IP {
 	return ips[1 : len(ips)-1]
 }
 
+// incIP increments an IP address in-place by one.
 func incIP(ip net.IP) {
 	for j := len(ip) - 1; j >= 0; j-- {
 		ip[j]++

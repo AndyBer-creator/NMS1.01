@@ -9,8 +9,8 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
-// Router возвращает корневой HTTP-handler: WebSocket терминала обслуживается отдельной
-// цепочкой без Prometheus/Logger, чтобы Hijack всегда доходил до net.Conn (иначе браузер: 1006).
+// Router returns root HTTP handler and routes terminal WS separately.
+// WS path skips middlewares that may interfere with connection hijacking.
 func Router(handlers *Handlers) http.Handler {
 	main := mainRouter(handlers)
 	term := terminalWSRouter(handlers)
@@ -41,7 +41,7 @@ func mainRouter(handlers *Handlers) *chi.Mux {
 	r.Use(SecurityHeaders)
 	r.Use(EnforceHTTPS)
 
-	// Без авторизации: статика, проверки для оркестраторов, метрики, вход/выход
+	// Public routes: static assets, probes, metrics, login/logout.
 	r.Handle("/static/*", http.StripPrefix("/static/", http.FileServer(http.Dir("./static"))))
 	r.Get("/health", handlers.Health)
 	r.Get("/ready", handlers.Ready)

@@ -12,7 +12,7 @@ import (
 	"go.uber.org/zap"
 )
 
-// DiscoverScan — POST /discovery/scan: поиск SNMP-агентов в подсети (Get sysDescr).
+// DiscoverScan handles POST /discovery/scan subnet SNMP discovery requests.
 func (h *Handlers) DiscoverScan(w http.ResponseWriter, r *http.Request) {
 	h.syncSNMPRuntimeConfig(r.Context())
 	if r.Method != http.MethodPost {

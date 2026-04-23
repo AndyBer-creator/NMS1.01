@@ -26,6 +26,7 @@ import (
 	"go.uber.org/zap"
 )
 
+// envIntOrDefault parses a positive integer from env or returns fallback.
 func envIntOrDefault(name string, fallback int) int {
 	v := strings.TrimSpace(os.Getenv(name))
 	if v == "" {

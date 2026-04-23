@@ -5,7 +5,7 @@ import (
 	"database/sql"
 )
 
-// LldpLink — сырые данные ребра (сопоставление/лейблы делаем в endpoint).
+// LldpLink stores raw LLDP edge payload before view-level enrichment.
 type LldpLink struct {
 	LocalDeviceIP  string
 	LocalPortNum   int
@@ -38,9 +38,9 @@ func (r *Repo) CreateLldpScan(ctx context.Context) (int64, error) {
 	return id, err
 }
 
-// InsertLldpLink возвращает число реально вставленных строк (0 если конфликт по UNIQUE).
+// InsertLldpLink inserts one LLDP link and returns affected rows.
 func (r *Repo) InsertLldpLink(ctx context.Context, scanID int64, link LldpLink) (int64, error) {
-	// remote_device_ip может быть NULL — для этого используем *string.
+	// remote_device_ip may be NULL, represented by *string.
 	res, err := r.db.ExecContext(ctx,
 		`INSERT INTO lldp_links
 			(scan_id, local_device_ip, local_port_num, local_port_desc,

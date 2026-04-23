@@ -10,12 +10,14 @@ import (
 	"time"
 )
 
+// TelegramAlert sends trap notifications to Telegram bot API.
 type TelegramAlert struct {
 	BotToken   string
 	ChatID     string
-	HTTPClient *http.Client // nil — http.DefaultClient (для тестов подставляют Transport)
+	HTTPClient *http.Client // nil -> http.DefaultClient
 }
 
+// NewTelegramAlert creates Telegram sender with bot token and chat ID.
 func NewTelegramAlert(botToken, chatID string) *TelegramAlert {
 	return &TelegramAlert{
 		BotToken: botToken,
@@ -23,12 +25,14 @@ func NewTelegramAlert(botToken, chatID string) *TelegramAlert {
 	}
 }
 
+// SendCriticalTrap sends critical trap notification with background context.
 func (t *TelegramAlert) SendCriticalTrap(deviceIP, oid, trapVars string) error {
 	return t.SendCriticalTrapContext(context.Background(), deviceIP, oid, trapVars)
 }
 
+// SendCriticalTrapContext sends critical trap notification with context.
 func (t *TelegramAlert) SendCriticalTrapContext(ctx context.Context, deviceIP, oid, trapVars string) error {
-	// ✅ Простой текст БЕЗ Markdown
+	// Plain text format avoids markdown escaping issues.
 	msg := fmt.Sprintf(
 		"🔴 CRITICAL TRAP DETECTED\n\n"+
 			"📱 Device: %s\n"+
@@ -41,10 +45,9 @@ func (t *TelegramAlert) SendCriticalTrapContext(ctx context.Context, deviceIP, o
 		trapVars[:min(100, len(trapVars))],
 	)
 
-	data := map[string]string{ // ✅ string вместо interface{}
+	data := map[string]string{
 		"chat_id": t.ChatID,
 		"text":    msg,
-		// "parse_mode": "Markdown",  // ❌ УДАЛЕНО!
 	}
 
 	jsonData, err := json.Marshal(data)
@@ -80,6 +83,7 @@ func (t *TelegramAlert) SendCriticalTrapContext(ctx context.Context, deviceIP, o
 	return nil
 }
 
+// min returns smaller integer.
 func min(a, b int) int {
 	if a < b {
 		return a

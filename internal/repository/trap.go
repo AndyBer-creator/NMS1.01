@@ -13,14 +13,17 @@ import (
 	"time"
 )
 
+// TrapsRepo persists traps and trap-driven incident correlation state.
 type TrapsRepo struct {
 	db *sql.DB
 }
 
+// NewTrapsRepo creates a trap repository over an existing SQL connection.
 func NewTrapsRepo(db *sql.DB) *TrapsRepo {
 	return &TrapsRepo{db: db}
 }
 
+// List returns latest traps ordered by received_at descending.
 func (r *TrapsRepo) List(ctx context.Context, limit int) ([]domain.Trap, error) {
 	query := `
         SELECT id, device_ip, oid, uptime, trap_vars, received_at 
@@ -48,6 +51,7 @@ func (r *TrapsRepo) List(ctx context.Context, limit int) ([]domain.Trap, error) 
 	return traps, nil
 }
 
+// ByDevice returns latest traps for a specific device IP.
 func (r *TrapsRepo) ByDevice(ctx context.Context, ip string, limit int) ([]domain.Trap, error) {
 	query := `
         SELECT id, device_ip, oid, uptime, trap_vars, received_at
@@ -55,7 +59,6 @@ func (r *TrapsRepo) ByDevice(ctx context.Context, ip string, limit int) ([]domai
         WHERE device_ip = $1
         ORDER BY received_at DESC LIMIT $2`
 
-	// ✅ 2 аргумента: ip + limit
 	rows, err := r.db.QueryContext(ctx, query, ip, limit)
 	if err != nil {
 		return nil, err
@@ -64,7 +67,7 @@ func (r *TrapsRepo) ByDevice(ctx context.Context, ip string, limit int) ([]domai
 
 	traps := make([]domain.Trap, 0)
 	for rows.Next() {
-		var t domain.Trap // ✅ ОДИНОЧНЫЙ Trap, НЕ слайс!
+		var t domain.Trap
 		err := rows.Scan(&t.ID, &t.DeviceIP, &t.OID, &t.Uptime, &t.TrapVars, &t.ReceivedAt)
 		if err != nil {
 			return nil, err
@@ -77,6 +80,7 @@ func (r *TrapsRepo) ByDevice(ctx context.Context, ip string, limit int) ([]domai
 	return traps, nil
 }
 
+// Insert writes one trap event into traps table.
 func (r *TrapsRepo) Insert(ctx context.Context, deviceIP, oid string, uptime int64, trapVars map[string]string, isCritical bool) error {
 	if oid == "" {
 		oid = "unknown"

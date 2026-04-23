@@ -32,11 +32,12 @@ type remoteEntry struct {
 	PortDesc string
 }
 
+// ScanParams keeps LLDP scan options placeholder for future extensions.
 type ScanParams struct {
-	// TCP-префильтр НЕ используется для LLDP, потому что LLDP по умолчанию через UDP/161.
-	// Оставим структуру на будущее.
+	// Reserved for future LLDP scan options.
 }
 
+// ScanSummary contains counters collected during one LLDP topology snapshot.
 type ScanSummary struct {
 	ScanID         int64
 	DevicesScanned int
@@ -44,14 +45,17 @@ type ScanSummary struct {
 	LinksInserted  int
 }
 
+// normalizeKey trims and lowercases inventory keys for map matching.
 func normalizeKey(s string) string {
 	return strings.ToLower(strings.TrimSpace(s))
 }
 
+// normalizeOID returns OID without surrounding spaces and leading dot.
 func normalizeOID(s string) string {
 	return strings.TrimPrefix(strings.TrimSpace(s), ".")
 }
 
+// parseSingleIndexFromWalk parses "<base>.<index>" OID walk rows.
 func parseSingleIndexFromWalk(fullOID, baseOID string) (int, bool) {
 	fullOID = normalizeOID(fullOID)
 	baseOID = normalizeOID(baseOID)
@@ -70,7 +74,7 @@ func parseSingleIndexFromWalk(fullOID, baseOID string) (int, bool) {
 	return n, true
 }
 
-// LLDP remote entry индексируется (timeMark, localPortNum, remIndex).
+// LLDP remote entries are indexed as (timeMark, localPortNum, remIndex).
 func parseRemoteIndexes(fullOID, baseOID string) (localPortNum int, remIndex int, ok bool) {
 	fullOID = normalizeOID(fullOID)
 	baseOID = normalizeOID(baseOID)
@@ -94,15 +98,15 @@ func parseRemoteIndexes(fullOID, baseOID string) (localPortNum int, remIndex int
 	return localPortNum, remIndex, true
 }
 
-// ScanAllDevicesLLDP делает один снимок топологии и пишет links в БД.
+// ScanAllDevicesLLDP builds one LLDP topology snapshot and persists links.
 func ScanAllDevicesLLDP(ctx context.Context, repo *postgres.Repo, client *snmp.Client, logger *zap.Logger, _ ScanParams) (*ScanSummary, error) {
-	// Статусы/версии в LLDP обычно важны только для credentials.
+	// Device status/version are mostly relevant for credentials selection here.
 	devices, err := repo.ListDevices(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	// Мапа name -> ip для лучшего сопоставления remote sysName с inventory.
+	// name -> ip map improves matching remote sysName to known inventory.
 	nameToIP := make(map[string]string, len(devices))
 	for _, d := range devices {
 		if d == nil {
@@ -123,7 +127,7 @@ func ScanAllDevicesLLDP(ctx context.Context, repo *postgres.Repo, client *snmp.C
 
 	summary := &ScanSummary{ScanID: scanID}
 
-	// Walk по каждой таблице — это несколько запросов, но делаем раз в 5 минут.
+	// We walk each LLDP table; this is periodic and acceptable every few minutes.
 	for _, device := range devices {
 		select {
 		case <-ctx.Done():
@@ -134,7 +138,7 @@ func ScanAllDevicesLLDP(ctx context.Context, repo *postgres.Repo, client *snmp.C
 			continue
 		}
 
-		// Подготовим credentials через копию device.
+		// Prepare credentials using device copy.
 		d := device
 
 		// local ports mapping
@@ -238,7 +242,7 @@ func ScanAllDevicesLLDP(ctx context.Context, repo *postgres.Repo, client *snmp.C
 			}
 		}
 
-		// Сохраняем links
+		// Persist links.
 		linksFound := 0
 		linksInserted := 0
 		for _, entry := range remoteEntries {

@@ -5,6 +5,7 @@ import (
 	"context"
 )
 
+// DeviceRepository defines device persistence operations used by use-cases.
 type DeviceRepository interface {
 	CreateDevice(ctx context.Context, device *domain.Device) error
 	GetDeviceByID(ctx context.Context, id int) (*domain.Device, error)
@@ -14,6 +15,7 @@ type DeviceRepository interface {
 	UpdateDeviceLastSeen(deviceID int) error
 }
 
+// MetricRepository defines metric persistence and retention operations.
 type MetricRepository interface {
 	SaveMetric(ctx context.Context, deviceID int, oid, value string) error
 	PruneOldMetricPartitions(ctx context.Context, retainMonths int) (int, error)

@@ -10,6 +10,7 @@ import (
 	"github.com/spf13/viper"
 )
 
+// Config contains runtime settings loaded from file and environment.
 type Config struct {
 	HTTP struct {
 		Addr string `mapstructure:"addr"`
@@ -17,14 +18,14 @@ type Config struct {
 
 	SNMP struct {
 		Port    uint16 `mapstructure:"port"`
-		Timeout int    `mapstructure:"timeout"` // секунды
+		Timeout int    `mapstructure:"timeout"` // seconds
 		Retries int    `mapstructure:"retries"`
 	} `mapstructure:"snmp"`
 
 	Paths struct {
-		// Каталог для MIB, загружаемых через веб (файлы на диске; NMS по-прежнему оперирует числовыми OID).
+		// Directory for MIB files uploaded from UI.
 		MibUploadDir string `mapstructure:"mib_upload_dir"`
-		// Дополнительные каталоги для snmptranslate (если пусто — добавляются ../public и ../vendor относительно uploads).
+		// Extra directories for snmptranslate; if empty, defaults are derived.
 		MibSearchDirs []string `mapstructure:"mib_search_dirs"`
 	} `mapstructure:"paths"`
 
@@ -33,24 +34,25 @@ type Config struct {
 	} `mapstructure:"db"`
 }
 
+// Load reads config.yaml (if present), applies env overrides and defaults.
 func Load() (*Config, error) {
 	viper.SetConfigName("config")
 	viper.SetConfigType("yaml")
 	viper.AddConfigPath(".")
-	// Конфиг опционален: если файла нет, работаем с дефолтами и env
+	// Config file is optional: defaults + env still work when absent.
 	_ = viper.ReadInConfig()
 
 	var cfg Config
 	_ = viper.Unmarshal(&cfg)
 
-	// DSN из DB_DSN_FILE/DB_DSN (секреты).
+	// DSN from DB_DSN_FILE/DB_DSN secret sources.
 	if dsn := EnvOrFile("DB_DSN"); dsn != "" {
 		cfg.DB.DSN = dsn
 	}
 	if cfg.DB.DSN == "" {
 		return nil, fmt.Errorf("DB_DSN must be set in environment")
 	}
-	// Дефолты для несекретных полей, если конфиг не задан
+	// Defaults for non-secret settings.
 	if cfg.HTTP.Addr == "" {
 		cfg.HTTP.Addr = ":8080"
 	}
@@ -76,6 +78,7 @@ func Load() (*Config, error) {
 	return &cfg, nil
 }
 
+// EnvDurationOrDefault parses positive duration from env or returns fallback.
 func EnvDurationOrDefault(name string, fallback time.Duration) time.Duration {
 	v := strings.TrimSpace(os.Getenv(name))
 	if v == "" {
@@ -88,7 +91,7 @@ func EnvDurationOrDefault(name string, fallback time.Duration) time.Duration {
 	return d
 }
 
-// MIBSearchDirs — каталоги для MIBDIRS (snmptranslate): uploads, опционально из конфига, иначе public/vendor рядом с mibs/.
+// MIBSearchDirs returns effective MIBDIRS list for snmptranslate lookups.
 func MIBSearchDirs(cfg *Config) []string {
 	var dirs []string
 	if cfg.Paths.MibUploadDir != "" {
@@ -110,6 +113,7 @@ func MIBSearchDirs(cfg *Config) []string {
 	return dedupeDirList(dirs)
 }
 
+// dedupeDirList removes empty and duplicate directory entries preserving order.
 func dedupeDirList(dirs []string) []string {
 	seen := make(map[string]bool)
 	var out []string
@@ -123,7 +127,7 @@ func dedupeDirList(dirs []string) []string {
 	return out
 }
 
-// ✅ НОВЫЙ МЕТОД для SNMP Worker
+// SNMPClientConfig returns SNMP client settings in runtime-friendly types.
 func (c *Config) SNMPClientConfig() (int, time.Duration, int) {
 	return int(c.SNMP.Port), time.Duration(c.SNMP.Timeout) * time.Second, c.SNMP.Retries
 }
