@@ -97,6 +97,9 @@ func NewHandlers(repo *postgres.Repo, snmpClient *snmp.Client, scanner *discover
 		"templates/worker_poll_panel.html",
 		"templates/snmp_runtime_panel.html",
 		"templates/alert_email_panel.html",
+		"templates/runtime_settings_panel.html",
+		"templates/secret_settings_panel.html",
+		"templates/settings_page.html",
 	))
 	mibPanelTmpl := template.Must(template.ParseFiles("templates/mibs_panel.html"))
 	loginTmpl := template.Must(template.ParseFiles("templates/login.html"))

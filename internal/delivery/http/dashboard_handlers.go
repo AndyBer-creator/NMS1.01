@@ -2,6 +2,7 @@ package http
 
 import (
 	"NMS1/internal/config"
+	"NMS1/internal/infrastructure/postgres"
 	"context"
 	"net/http"
 	"net/url"
@@ -54,8 +55,14 @@ func (h *Handlers) dashboardExternalHealth(ctx context.Context, admin bool) exte
 	if !admin {
 		return externalHealthStatus{}
 	}
-	grafanaURL := strings.TrimSpace(config.EnvOrFile("NMS_GRAFANA_BASE_URL"))
-	prometheusURL := strings.TrimSpace(config.EnvOrFile("NMS_PROMETHEUS_BASE_URL"))
+	grafanaURL := strings.TrimSpace(h.repo.GetStringSetting(ctx, postgres.SettingKeyGrafanaBaseURL))
+	if grafanaURL == "" {
+		grafanaURL = strings.TrimSpace(config.EnvOrFile("NMS_GRAFANA_BASE_URL"))
+	}
+	prometheusURL := strings.TrimSpace(h.repo.GetStringSetting(ctx, postgres.SettingKeyPrometheusBaseURL))
+	if prometheusURL == "" {
+		prometheusURL = strings.TrimSpace(config.EnvOrFile("NMS_PROMETHEUS_BASE_URL"))
+	}
 	if prometheusURL == "" {
 		prometheusURL = strings.TrimSpace(config.EnvOrFile("PROMETHEUS_BASE_URL"))
 	}

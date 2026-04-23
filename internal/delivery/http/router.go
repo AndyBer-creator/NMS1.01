@@ -82,6 +82,11 @@ func mainRouter(handlers *Handlers) *chi.Mux {
 		r.With(RequireAdmin).Post("/settings/snmp-runtime", handlers.SetSNMPRuntimeSettings)
 		r.Get("/settings/alert-email-panel", handlers.AlertEmailPanel)
 		r.With(RequireAdmin).Post("/settings/alert-email", handlers.SetAlertEmail)
+		r.Get("/settings/page", handlers.SettingsPage)
+		r.Get("/settings/runtime-panel", handlers.RuntimeSettingsPanel)
+		r.With(RequireAdmin).Post("/settings/runtime", handlers.SetRuntimeSettings)
+		r.Get("/settings/secrets-panel", handlers.SecretSettingsPanel)
+		r.With(RequireAdmin).Post("/settings/secrets", handlers.SetSecretSettings)
 
 		r.Get("/mibs/panel", handlers.MibPanel)
 		r.Post("/mibs/resolve", handlers.MibResolve)

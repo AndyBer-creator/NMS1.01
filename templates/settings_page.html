@@ -1,0 +1,87 @@
+{{define "settingsPage"}}
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>NMS1 — Настройки</title>
+    <link rel="stylesheet" href="/static/css/app.css">
+    <script src="/static/js/htmx.min.js"></script>
+    <script nonce="{{.CSPNonce}}">
+    (function () {
+        function readCookie(name) {
+            const prefix = name + "=";
+            const parts = (document.cookie || "").split("; ");
+            for (const p of parts) {
+                if (p.indexOf(prefix) === 0) return decodeURIComponent(p.slice(prefix.length));
+            }
+            return "";
+        }
+        document.addEventListener("htmx:configRequest", function (e) {
+            const token = readCookie("nms_csrf");
+            if (token && e && e.detail && e.detail.headers) {
+                e.detail.headers["X-CSRF-Token"] = token;
+            }
+        });
+    })();
+    </script>
+</head>
+<body class="bg-gray-900 text-white min-h-screen">
+<div class="container mx-auto w-full px-4 sm:px-8 py-8 max-w-[1600px]">
+    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-6 mb-10">
+        <div class="flex items-center gap-4">
+            <a href="/" class="shrink-0 opacity-90 hover:opacity-100 transition-opacity">
+                <img src="/static/logo.svg" alt="NMS1" class="h-16 w-auto drop-shadow-2xl">
+            </a>
+            <div>
+                <h1 class="text-3xl sm:text-4xl font-bold bg-gradient-to-r from-indigo-400 to-fuchsia-500 bg-clip-text text-transparent">
+                    Настройки
+                </h1>
+                <p class="text-gray-400 mt-1 text-sm">Runtime и секреты в отдельной странице</p>
+            </div>
+        </div>
+        <div class="flex flex-wrap items-center gap-3 justify-end">
+            <form method="post" action="/logout" class="inline">
+                <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+                <button type="submit" class="text-sm px-4 py-3 rounded-xl bg-gray-800 hover:bg-gray-700 border border-gray-600 text-gray-300 transition-colors">
+                    Выйти
+                </button>
+            </form>
+            <a href="/devices/list"
+               class="inline-flex items-center justify-center gap-2 px-5 py-3 rounded-xl bg-gray-800 hover:bg-gray-700 border border-gray-600 text-sm font-medium transition-all hover:scale-[1.02] shadow-lg">
+                ← К устройствам
+            </a>
+        </div>
+    </div>
+
+    <div class="bg-gradient-to-br from-slate-900/80 to-indigo-950/40 border border-indigo-700/40 p-6 rounded-xl shadow-xl mb-8">
+        <h2 class="text-xl font-semibold mb-3 flex items-center">
+            <span class="w-2 h-2 bg-indigo-400 rounded-full mr-2"></span>
+            ⚙️ Runtime settings
+        </h2>
+        <p class="text-sm text-gray-400 mb-3">SMTP host/port/from and external dashboard URLs (non-secret only).</p>
+        <div id="runtime-settings-panel-wrap"
+             hx-get="/settings/runtime-panel"
+             hx-trigger="load"
+             hx-swap="innerHTML">
+            <p class="text-sm text-gray-500">Загрузка…</p>
+        </div>
+    </div>
+
+    <div class="bg-gradient-to-br from-slate-900/80 to-fuchsia-950/40 border border-fuchsia-700/40 p-6 rounded-xl shadow-xl mb-8">
+        <h2 class="text-xl font-semibold mb-3 flex items-center">
+            <span class="w-2 h-2 bg-fuchsia-400 rounded-full mr-2"></span>
+            🔐 Secret settings
+        </h2>
+        <p class="text-sm text-gray-400 mb-3">SMTP password, Telegram credentials, Alert webhook token, gRPC token.</p>
+        <div id="secret-settings-panel-wrap"
+             hx-get="/settings/secrets-panel"
+             hx-trigger="load"
+             hx-swap="innerHTML">
+            <p class="text-sm text-gray-500">Загрузка…</p>
+        </div>
+    </div>
+</div>
+</body>
+</html>
+{{end}}

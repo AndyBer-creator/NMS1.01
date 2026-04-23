@@ -260,7 +260,7 @@ services:
       dockerfile: cmd/trap-receiver/Dockerfile
     container_name: nms1-trap-receiver
     network_mode: host
-    user: "0:0"
+    user: "nms:nms"
     cap_drop:
       - ALL
     cap_add:

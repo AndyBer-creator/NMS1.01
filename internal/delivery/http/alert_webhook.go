@@ -2,6 +2,7 @@ package http
 
 import (
 	"NMS1/internal/config"
+	"NMS1/internal/infrastructure/postgres"
 	"context"
 	"crypto/subtle"
 	"encoding/json"
@@ -25,15 +26,19 @@ type alertmanagerWebhookPayload struct {
 	} `json:"alerts"`
 }
 
-func alertWebhookToken() string {
+func (h *Handlers) alertWebhookToken(ctx context.Context) string {
+	fromDB, err := h.repo.GetSecretSetting(ctx, postgres.SettingKeyAlertWebhookSecret)
+	if err == nil && strings.TrimSpace(fromDB) != "" {
+		return strings.TrimSpace(fromDB)
+	}
 	return strings.TrimSpace(config.EnvOrFile("NMS_ALERT_WEBHOOK_TOKEN"))
 }
 
-func alertWebhookAuthorized(r *http.Request) bool {
+func (h *Handlers) alertWebhookAuthorized(r *http.Request) bool {
 	if r == nil {
 		return false
 	}
-	want := alertWebhookToken()
+	want := h.alertWebhookToken(r.Context())
 	if want == "" {
 		return false
 	}
@@ -53,7 +58,7 @@ func (h *Handlers) AlertWebhook(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	if !alertWebhookAuthorized(r) {
+	if !h.alertWebhookAuthorized(r) {
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
 	}
@@ -68,17 +73,41 @@ func (h *Handlers) AlertWebhook(w http.ResponseWriter, r *http.Request) {
 	}
 
 	emailTo := h.repo.GetAlertEmailTo(r.Context())
+	smtpHost := strings.TrimSpace(h.repo.GetStringSetting(r.Context(), postgres.SettingKeySMTPHost))
+	if smtpHost == "" {
+		smtpHost = config.EnvOrFile("SMTP_HOST")
+	}
+	smtpPort := strings.TrimSpace(h.repo.GetStringSetting(r.Context(), postgres.SettingKeySMTPPort))
+	if smtpPort == "" {
+		smtpPort = defaultIfEmpty(config.EnvOrFile("SMTP_PORT"), "587")
+	}
+	smtpFrom := strings.TrimSpace(h.repo.GetStringSetting(r.Context(), postgres.SettingKeySMTPFrom))
+	if smtpFrom == "" {
+		smtpFrom = config.EnvOrFile("SMTP_FROM")
+	}
+	smtpPass, passErr := h.repo.GetSecretSetting(r.Context(), postgres.SettingKeySMTPPassSecret)
+	if passErr != nil || strings.TrimSpace(smtpPass) == "" {
+		smtpPass = config.EnvOrFile("SMTP_PASS")
+	}
 	smtpClient := services.NewSMTPClient(
-		config.EnvOrFile("SMTP_HOST"),
-		defaultIfEmpty(config.EnvOrFile("SMTP_PORT"), "587"),
+		smtpHost,
+		smtpPort,
 		config.EnvOrFile("SMTP_USER"),
-		config.EnvOrFile("SMTP_PASS"),
-		config.EnvOrFile("SMTP_FROM"),
+		smtpPass,
+		smtpFrom,
 	)
+	telegramToken, tErr := h.repo.GetSecretSetting(r.Context(), postgres.SettingKeyTelegramTokenSecret)
+	if tErr != nil || strings.TrimSpace(telegramToken) == "" {
+		telegramToken = config.EnvOrFile("TELEGRAM_TOKEN")
+	}
+	telegramChatID, cErr := h.repo.GetSecretSetting(r.Context(), postgres.SettingKeyTelegramChatIDSecret)
+	if cErr != nil || strings.TrimSpace(telegramChatID) == "" {
+		telegramChatID = config.EnvOrFile("TELEGRAM_CHAT_ID")
+	}
 
 	telegram := services.NewTelegramAlert(
-		config.EnvOrFile("TELEGRAM_TOKEN"),
-		config.EnvOrFile("TELEGRAM_CHAT_ID"),
+		telegramToken,
+		telegramChatID,
 	)
 
 	var sent, skipped int

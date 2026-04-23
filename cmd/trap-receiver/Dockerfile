@@ -14,12 +14,13 @@ WORKDIR /src/cmd/trap-receiver
 RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /app/trap-receiver .
 
 FROM alpine:3.21
-RUN apk --no-cache add tzdata ca-certificates net-snmp
+RUN apk --no-cache add tzdata ca-certificates net-snmp libcap-setcap
 WORKDIR /app
 COPY --from=builder /app/trap-receiver .
 RUN addgroup -S nms && adduser -S -G nms -h /app -s /sbin/nologin nms && \
     mkdir -p /app/config /app/logs /tmp && \
-    chown -R nms:nms /app /tmp
+    chown -R nms:nms /app /tmp && \
+    setcap 'cap_net_bind_service=+ep' /app/trap-receiver
 COPY config/critical_oids.json /app/config/critical_oids.json
 USER nms:nms
 EXPOSE 162/udp

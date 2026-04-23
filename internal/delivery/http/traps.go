@@ -3,6 +3,7 @@ package http
 import (
 	"NMS1/internal/config"
 	"NMS1/internal/domain"
+	"NMS1/internal/infrastructure/postgres"
 	"NMS1/internal/services"
 	"encoding/json"
 	"net/http"
@@ -82,8 +83,14 @@ func (h *Handlers) testAlert(w http.ResponseWriter, r *http.Request) {
 		trapVars = input.Message
 	}
 
-	botToken := config.EnvOrFile("TELEGRAM_TOKEN")
-	chatID := config.EnvOrFile("TELEGRAM_CHAT_ID")
+	botToken, tokErr := h.repo.GetSecretSetting(r.Context(), postgres.SettingKeyTelegramTokenSecret)
+	if tokErr != nil || strings.TrimSpace(botToken) == "" {
+		botToken = config.EnvOrFile("TELEGRAM_TOKEN")
+	}
+	chatID, chatErr := h.repo.GetSecretSetting(r.Context(), postgres.SettingKeyTelegramChatIDSecret)
+	if chatErr != nil || strings.TrimSpace(chatID) == "" {
+		chatID = config.EnvOrFile("TELEGRAM_CHAT_ID")
+	}
 	if botToken == "" || chatID == "" {
 		http.Error(w, "TELEGRAM_TOKEN and TELEGRAM_CHAT_ID must be set", http.StatusInternalServerError)
 		return

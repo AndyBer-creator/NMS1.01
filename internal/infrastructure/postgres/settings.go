@@ -2,6 +2,7 @@ package postgres
 
 import (
 	"context"
+	"database/sql"
 	"strconv"
 	"strings"
 )
@@ -11,6 +12,16 @@ const (
 	SettingKeyAlertEmailTo          = "alert_email_to"
 	SettingKeySNMPTimeoutSec        = "snmp_timeout_sec"
 	SettingKeySNMPRetries           = "snmp_retries"
+	SettingKeySMTPHost              = "smtp_host"
+	SettingKeySMTPPort              = "smtp_port"
+	SettingKeySMTPFrom              = "smtp_from"
+	SettingKeyGrafanaBaseURL        = "grafana_base_url"
+	SettingKeyPrometheusBaseURL     = "prometheus_base_url"
+	SettingKeySMTPPassSecret        = "smtp_pass_secret"
+	SettingKeyTelegramTokenSecret   = "telegram_token_secret"
+	SettingKeyTelegramChatIDSecret  = "telegram_chat_id_secret"
+	SettingKeyAlertWebhookSecret    = "alert_webhook_token_secret"
+	SettingKeyGRPCAuthTokenSecret   = "grpc_auth_token_secret"
 
 	DefaultWorkerPollIntervalSeconds = 60
 	MinWorkerPollIntervalSeconds     = 10
@@ -70,9 +81,9 @@ func (r *Repo) getIntSetting(ctx context.Context, key string, fallback int, clam
 
 func (r *Repo) setIntSetting(ctx context.Context, key string, value int) error {
 	_, err := r.db.ExecContext(ctx, `
-		INSERT INTO nms_settings (key, value, updated_at)
-		VALUES ($1, $2, NOW())
-		ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()`,
+		INSERT INTO nms_settings (key, value, value_enc, updated_at)
+		VALUES ($1, $2, NULL, NOW())
+		ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, value_enc = NULL, updated_at = NOW()`,
 		key, strconv.Itoa(value))
 	return err
 }
@@ -107,21 +118,81 @@ func (r *Repo) SetSNMPRetries(ctx context.Context, retries int) error {
 }
 
 func (r *Repo) GetAlertEmailTo(ctx context.Context) string {
+	return r.GetStringSetting(ctx, SettingKeyAlertEmailTo)
+}
+
+func (r *Repo) SetAlertEmailTo(ctx context.Context, email string) error {
+	return r.SetStringSetting(ctx, SettingKeyAlertEmailTo, email)
+}
+
+func (r *Repo) GetStringSetting(ctx context.Context, key string) string {
 	var raw string
-	err := r.db.QueryRowContext(ctx,
-		`SELECT value FROM nms_settings WHERE key = $1`, SettingKeyAlertEmailTo).Scan(&raw)
+	err := r.db.QueryRowContext(ctx, `SELECT value FROM nms_settings WHERE key = $1`, key).Scan(&raw)
 	if err != nil {
 		return ""
 	}
 	return strings.TrimSpace(raw)
 }
 
-func (r *Repo) SetAlertEmailTo(ctx context.Context, email string) error {
-	email = strings.TrimSpace(email)
+func (r *Repo) SetStringSetting(ctx context.Context, key, value string) error {
+	value = strings.TrimSpace(value)
 	_, err := r.db.ExecContext(ctx, `
-		INSERT INTO nms_settings (key, value, updated_at)
-		VALUES ($1, $2, NOW())
-		ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()`,
-		SettingKeyAlertEmailTo, email)
+		INSERT INTO nms_settings (key, value, value_enc, updated_at)
+		VALUES ($1, $2, NULL, NOW())
+		ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, value_enc = NULL, updated_at = NOW()`,
+		key, value)
+	return err
+}
+
+// GetSecretSetting returns decrypted setting value when encrypted storage is used.
+func (r *Repo) GetSecretSetting(ctx context.Context, key string) (string, error) {
+	var plain string
+	var enc sql.NullString
+	err := r.db.QueryRowContext(ctx, `SELECT value, value_enc FROM nms_settings WHERE key = $1`, key).Scan(&plain, &enc)
+	if err != nil {
+		return "", nil
+	}
+	val, err := r.protector.mergeSecretFromStorage(plain, enc)
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(val), nil
+}
+
+// HasSecretSetting reports whether a secret has any persisted value.
+func (r *Repo) HasSecretSetting(ctx context.Context, key string) bool {
+	var plain string
+	var enc sql.NullString
+	err := r.db.QueryRowContext(ctx, `SELECT value, value_enc FROM nms_settings WHERE key = $1`, key).Scan(&plain, &enc)
+	if err != nil {
+		return false
+	}
+	if strings.TrimSpace(plain) != "" {
+		return true
+	}
+	return enc.Valid && strings.TrimSpace(enc.String) != ""
+}
+
+// SetSecretSetting stores secret as encrypted payload when DB encryption is enabled.
+func (r *Repo) SetSecretSetting(ctx context.Context, key, value string) error {
+	value = strings.TrimSpace(value)
+	plain := ""
+	var enc sql.NullString
+	if value != "" {
+		if r.protector.enabled {
+			ciphertext, err := r.protector.encrypt(value)
+			if err != nil {
+				return err
+			}
+			enc = sql.NullString{String: ciphertext, Valid: true}
+		} else {
+			plain = value
+		}
+	}
+	_, err := r.db.ExecContext(ctx, `
+		INSERT INTO nms_settings (key, value, value_enc, updated_at)
+		VALUES ($1, $2, $3, NOW())
+		ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, value_enc = EXCLUDED.value_enc, updated_at = NOW()`,
+		key, plain, enc)
 	return err
 }

@@ -80,14 +80,12 @@ func envBoolOrDefault(name string, fallback bool) bool {
 	return b
 }
 
-func grpcTokenInterceptor(token string) grpc.UnaryServerInterceptor {
-	required := strings.TrimSpace(token)
-	if required == "" {
-		return func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
+func grpcTokenInterceptor(tokenProvider func() string) grpc.UnaryServerInterceptor {
+	return func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
+		required := strings.TrimSpace(tokenProvider())
+		if required == "" {
 			return handler(ctx, req)
 		}
-	}
-	return func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
 		md, ok := metadata.FromIncomingContext(ctx)
 		if !ok {
 			return nil, status.Error(codes.Unauthenticated, "missing metadata")
@@ -232,8 +230,20 @@ func run(ctx context.Context, cfg *config.Config, log *zap.Logger, onListen func
 		trapRepo := repository.NewTrapsRepo(grpcDB)
 		grpcOpts := []grpc.ServerOption{
 			grpc.ForceServerCodec(grpcapi.JSONCodec{}),
-			grpc.UnaryInterceptor(grpcTokenInterceptor(config.EnvOrFile("NMS_GRPC_AUTH_TOKEN"))),
 		}
+		settingsRepo, settingsErr := postgres.New(cfg.DB.DSN)
+		if settingsErr != nil {
+			return fmt.Errorf("grpc settings repo: %w", settingsErr)
+		}
+		defer func() { _ = settingsRepo.Close() }()
+		tokenProvider := func() string {
+			t, err := settingsRepo.GetSecretSetting(context.Background(), postgres.SettingKeyGRPCAuthTokenSecret)
+			if err == nil && strings.TrimSpace(t) != "" {
+				return strings.TrimSpace(t)
+			}
+			return strings.TrimSpace(config.EnvOrFile("NMS_GRPC_AUTH_TOKEN"))
+		}
+		grpcOpts = append(grpcOpts, grpc.UnaryInterceptor(grpcTokenInterceptor(tokenProvider)))
 		tlsCreds, tlsErr := grpcServerTLSCredsFromEnv()
 		if tlsErr != nil {
 			return fmt.Errorf("grpc tls: %w", tlsErr)

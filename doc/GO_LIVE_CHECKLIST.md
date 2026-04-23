@@ -34,7 +34,7 @@
 
 | Шаг | Действие |
 |-----|----------|
-| Миграции до старта сервисов | `make migrate` или `go run ./cmd/migration` с корректным `DB_DSN` (как в [`README.md`](../README.md)); обязательно проверить, что применена миграция `014_login_rate_limit_state.sql` для shared login rate limiter |
+| Миграции до старта сервисов | `make migrate` или `go run ./cmd/migration` с корректным `DB_DSN` (как в [`README.md`](../README.md)); обязательно проверить, что применены `014_login_rate_limit_state.sql` (shared login rate limiter) и `015_nms_settings_value_enc.sql` (encrypted settings UI) |
 | Образы | `docker compose -f deploy/compose/docker-compose.yml build` / `docker compose -f deploy/compose/docker-compose.yml up -d --build` по вашему процессу релиза |
 
 ---

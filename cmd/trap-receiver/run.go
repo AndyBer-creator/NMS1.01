@@ -14,6 +14,7 @@ import (
 
 	"NMS1/internal/config"
 	"NMS1/internal/grpcapi"
+	"NMS1/internal/infrastructure/postgres"
 	"NMS1/internal/repository"
 
 	"github.com/gosnmp/gosnmp"
@@ -48,8 +49,8 @@ func run(ctx context.Context, log *zap.Logger, dsn string, grpcTarget string, ud
 		if err != nil {
 			return err
 		}
-		token := strings.TrimSpace(config.EnvOrFile("NMS_TRAP_GRPC_AUTH_TOKEN"))
-		unaryInterceptor := grpcAuthUnaryClientInterceptor(token)
+		tokenProvider := newTrapGRPCTokenProvider(ctx, dsn, log)
+		unaryInterceptor := grpcAuthUnaryClientInterceptor(tokenProvider)
 		conn, err = grpc.NewClient(
 			grpcTarget,
 			grpc.WithTransportCredentials(grpcCreds),
@@ -64,7 +65,7 @@ func run(ctx context.Context, log *zap.Logger, dsn string, grpcTarget string, ud
 		log.Info("trap forwarding via gRPC enabled",
 			zap.String("target", grpcTarget),
 			zap.Bool("tls_enabled", !isInsecureCreds(grpcCreds)),
-			zap.Bool("token_auth_enabled", token != ""))
+			zap.Bool("token_auth_enabled", strings.TrimSpace(tokenProvider()) != ""))
 	} else {
 		db, err = sql.Open("pgx", dsn)
 		if err != nil {
@@ -174,13 +175,39 @@ func run(ctx context.Context, log *zap.Logger, dsn string, grpcTarget string, ud
 	}
 }
 
-func grpcAuthUnaryClientInterceptor(token string) grpc.UnaryClientInterceptor {
-	trimmed := strings.TrimSpace(token)
+func grpcAuthUnaryClientInterceptor(tokenProvider func() string) grpc.UnaryClientInterceptor {
 	return func(ctx context.Context, method string, req, reply interface{}, cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {
+		trimmed := strings.TrimSpace(tokenProvider())
 		if trimmed != "" {
 			ctx = metadata.AppendToOutgoingContext(ctx, "authorization", "Bearer "+trimmed)
 		}
 		return invoker(ctx, method, req, reply, cc, opts...)
+	}
+}
+
+func newTrapGRPCTokenProvider(ctx context.Context, dsn string, log *zap.Logger) func() string {
+	envToken := strings.TrimSpace(config.EnvOrFile("NMS_TRAP_GRPC_AUTH_TOKEN"))
+	dsn = strings.TrimSpace(dsn)
+	if dsn == "" {
+		return func() string { return envToken }
+	}
+	repo, err := postgres.New(dsn)
+	if err != nil {
+		if log != nil {
+			log.Warn("trap-receiver: cannot init settings repo for gRPC token, using env fallback", zap.Error(err))
+		}
+		return func() string { return envToken }
+	}
+	go func() {
+		<-ctx.Done()
+		_ = repo.Close()
+	}()
+	return func() string {
+		dbToken, err := repo.GetSecretSetting(context.Background(), postgres.SettingKeyGRPCAuthTokenSecret)
+		if err == nil && strings.TrimSpace(dbToken) != "" {
+			return strings.TrimSpace(dbToken)
+		}
+		return envToken
 	}
 }
 
