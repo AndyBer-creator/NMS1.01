@@ -1,5 +1,6 @@
 -- +goose Up
 
+-- +goose StatementBegin
 CREATE OR REPLACE FUNCTION prune_old_metrics_partitions(retain_months integer)
 RETURNS integer
 LANGUAGE plpgsql
@@ -36,6 +37,7 @@ BEGIN
     RETURN dropped_count;
 END;
 $$;
+-- +goose StatementEnd
 
 -- +goose Down
 

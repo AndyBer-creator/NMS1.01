@@ -1,5 +1,6 @@
 -- +goose Up
 
+-- +goose StatementBegin
 DO $$
 BEGIN
     IF EXISTS (
@@ -20,6 +21,7 @@ BEGIN
         ALTER TABLE metrics RENAME TO metrics_legacy;
     END IF;
 END $$;
+-- +goose StatementEnd
 
 CREATE SEQUENCE IF NOT EXISTS metrics_id_seq;
 
@@ -34,6 +36,7 @@ CREATE TABLE IF NOT EXISTS metrics (
 CREATE OR REPLACE FUNCTION ensure_metrics_partition_for(ts timestamptz)
 RETURNS void
 LANGUAGE plpgsql
+-- +goose StatementBegin
 AS $$
 DECLARE
     part_start timestamptz := date_trunc('month', ts);
@@ -48,6 +51,7 @@ BEGIN
     );
 END;
 $$;
+-- +goose StatementEnd
 
 SELECT ensure_metrics_partition_for(NOW() - interval '1 month');
 SELECT ensure_metrics_partition_for(NOW());
@@ -56,6 +60,7 @@ SELECT ensure_metrics_partition_for(NOW() + interval '2 month');
 
 CREATE TABLE IF NOT EXISTS metrics_default PARTITION OF metrics DEFAULT;
 
+-- +goose StatementBegin
 DO $$
 BEGIN
     IF EXISTS (
@@ -70,16 +75,17 @@ BEGIN
         ';
     END IF;
 END $$;
+-- +goose StatementEnd
 
-DROP TABLE IF EXISTS metrics_legacy;
+DROP TABLE IF EXISTS metrics_legacy CASCADE;
 
+CREATE SEQUENCE IF NOT EXISTS metrics_id_seq;
+ALTER TABLE metrics ALTER COLUMN id SET DEFAULT nextval('metrics_id_seq');
 SELECT setval('metrics_id_seq', COALESCE((SELECT MAX(id) FROM metrics), 0) + 1, false);
 
 CREATE INDEX IF NOT EXISTS idx_metrics_device_oid ON metrics(device_id, oid);
 CREATE INDEX IF NOT EXISTS idx_metrics_device_time ON metrics(device_id, "timestamp" DESC);
 CREATE INDEX IF NOT EXISTS idx_metrics_timestamp ON metrics("timestamp" DESC);
-
-ALTER TABLE metrics SET (autovacuum_vacuum_scale_factor = 0.1);
 
 -- +goose Down
 

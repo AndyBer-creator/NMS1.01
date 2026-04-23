@@ -224,6 +224,7 @@ SMTP env:
   - `/metrics` (api)
   - `/login`
   - `/devices/list` (если заданы `NMS_ADMIN_USER/NMS_ADMIN_PASS`)
+  - `/settings/page` (runtime + secret settings UI, при admin-сессии)
   - `/events/availability/page`
   - `http://localhost:8081/metrics` (worker)
 

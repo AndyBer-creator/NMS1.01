@@ -71,14 +71,8 @@ services:
     - /bin/sh
     - -c
     - |
-      echo "⏳ Installing postgresql-client..."
-      apk add --no-cache postgresql-client
-      echo "⏳ Waiting for postgres..."
-      until pg_isready -h postgres -p 5432 -U nms-user -d NMS; do
-        echo "⏳ Postgres not ready - waiting..."
-        sleep 2
-      done
-      echo "✅ Postgres READY! Running migration..."
+      set -e
+      echo "⏳ Running migration..."
       cd /app
       go run cmd/migration/main.go
       echo "🎉 Migration COMPLETED!"
