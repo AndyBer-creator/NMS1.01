@@ -10,6 +10,7 @@ import (
 	"net"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	"NMS1/internal/config"
@@ -185,30 +186,66 @@ func grpcAuthUnaryClientInterceptor(tokenProvider func() string) grpc.UnaryClien
 	}
 }
 
+type cachedStringProvider struct {
+	mu        sync.RWMutex
+	value     string
+	expiresAt time.Time
+	ttl       time.Duration
+	load      func() string
+}
+
+func newCachedStringProvider(ttl time.Duration, load func() string) func() string {
+	if ttl <= 0 {
+		ttl = 2 * time.Second
+	}
+	p := &cachedStringProvider{ttl: ttl, load: load}
+	return func() string {
+		now := time.Now()
+		p.mu.RLock()
+		if now.Before(p.expiresAt) {
+			v := p.value
+			p.mu.RUnlock()
+			return v
+		}
+		p.mu.RUnlock()
+
+		p.mu.Lock()
+		defer p.mu.Unlock()
+		now = time.Now()
+		if now.Before(p.expiresAt) {
+			return p.value
+		}
+		p.value = strings.TrimSpace(p.load())
+		p.expiresAt = now.Add(p.ttl)
+		return p.value
+	}
+}
+
 func newTrapGRPCTokenProvider(ctx context.Context, dsn string, log *zap.Logger) func() string {
 	envToken := strings.TrimSpace(config.EnvOrFile("NMS_TRAP_GRPC_AUTH_TOKEN"))
+	ttl := config.EnvDurationOrDefault("NMS_TRAP_GRPC_AUTH_TOKEN_CACHE_TTL", 2*time.Second)
 	dsn = strings.TrimSpace(dsn)
 	if dsn == "" {
-		return func() string { return envToken }
+		return newCachedStringProvider(ttl, func() string { return envToken })
 	}
 	repo, err := postgres.New(dsn)
 	if err != nil {
 		if log != nil {
 			log.Warn("trap-receiver: cannot init settings repo for gRPC token, using env fallback", zap.Error(err))
 		}
-		return func() string { return envToken }
+		return newCachedStringProvider(ttl, func() string { return envToken })
 	}
 	go func() {
 		<-ctx.Done()
 		_ = repo.Close()
 	}()
-	return func() string {
+	return newCachedStringProvider(ttl, func() string {
 		dbToken, err := repo.GetSecretSetting(context.Background(), postgres.SettingKeyGRPCAuthTokenSecret)
 		if err == nil && strings.TrimSpace(dbToken) != "" {
 			return strings.TrimSpace(dbToken)
 		}
 		return envToken
-	}
+	})
 }
 
 func grpcClientTransportCreds() (credentials.TransportCredentials, error) {

@@ -22,6 +22,13 @@ func isProductionEnv() bool {
 	return strings.EqualFold(strings.TrimSpace(os.Getenv("NMS_ENV")), "production")
 }
 
+func isRuntimeHardeningRequired() bool {
+	if isProductionEnv() {
+		return true
+	}
+	return envEnabled("NMS_REQUIRE_PROD_GUARDRAILS")
+}
+
 // RuntimeSecurityRole scopes production guardrails to process responsibilities.
 type RuntimeSecurityRole string
 
@@ -38,7 +45,7 @@ func ValidateRuntimeSecurity() error {
 }
 
 func ValidateRuntimeSecurityFor(role RuntimeSecurityRole) error {
-	if !isProductionEnv() {
+	if !isRuntimeHardeningRequired() {
 		return nil
 	}
 

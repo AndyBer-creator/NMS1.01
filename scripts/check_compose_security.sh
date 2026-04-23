@@ -37,7 +37,26 @@ check_docker_sock_readonly() {
   fi
 }
 
-for compose_file in deploy/compose/docker-compose.yml deploy/compose/docker-compose.bridge.yml; do
+check_management_ports() {
+  local file="$1"
+  if [[ "$file" == "deploy/compose/docker-compose.prom-host.yml" ]]; then
+    return
+  fi
+  check_forbidden "^\\s*-\\s*\"(0\\.0\\.0\\.0:)?(5432|9090|9093|3000|8080):" "$file" "management ports must not be published on all interfaces"
+}
+
+compose_files=(
+  "deploy/compose/docker-compose.yml"
+  "deploy/compose/docker-compose.bridge.yml"
+  "deploy/compose/docker-compose.secrets.yml"
+  "deploy/compose/docker-compose.prod.yml"
+  "deploy/compose/docker-compose.prom-host.yml"
+)
+
+for compose_file in "${compose_files[@]}"; do
+  if [[ ! -f "$compose_file" ]]; then
+    continue
+  fi
   check_forbidden "privileged:\\s*true" "$compose_file" "privileged containers are forbidden"
   check_forbidden "image:\\s*[^[:space:]]+:latest" "$compose_file" "latest image tags are forbidden"
   check_forbidden "^\\s*disable:\\s*true\\s*$" "$compose_file" "disabled healthcheck is forbidden"
@@ -45,7 +64,7 @@ for compose_file in deploy/compose/docker-compose.yml deploy/compose/docker-comp
   check_forbidden "^\\s*ipc:\\s*host\\s*$" "$compose_file" "ipc host mode is forbidden"
   check_forbidden "seccomp=unconfined|apparmor=unconfined" "$compose_file" "unconfined security_opt is forbidden"
   check_docker_sock_readonly "$compose_file"
-  check_forbidden "^\\s*-\\s*\"(0\\.0\\.0\\.0:)?(5432|9090|9093|3000|8080):" "$compose_file" "management ports must not be published on all interfaces"
+  check_management_ports "$compose_file"
   check_forbidden "^\\s*-\\s*(SYS_ADMIN|SYS_MODULE|DAC_READ_SEARCH|DAC_OVERRIDE|SYS_PTRACE|NET_ADMIN)\\s*$" "$compose_file" "dangerous Linux capabilities in cap_add are forbidden"
 done
 

@@ -61,7 +61,7 @@ func junkDSN() string {
 
 func TestBuildApp_Health(t *testing.T) {
 	cfg := testServerConfig(t, t.TempDir(), junkDSN())
-	h, cleanup, err := buildApp(cfg, zap.NewNop())
+	h, _, _, cleanup, err := buildApp(cfg, zap.NewNop())
 	if err != nil {
 		t.Fatal(err)
 	}

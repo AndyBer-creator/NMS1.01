@@ -16,6 +16,7 @@ import (
 type Repo struct {
 	db        *sql.DB
 	protector *secretProtector
+	ownDB     bool
 }
 
 // SNMPSetAuditRecord describes one SNMP SET audit event row.
@@ -44,19 +45,39 @@ func New(dsn string) (*Repo, error) {
 	if err != nil {
 		return nil, err
 	}
-	db.SetMaxOpenConns(25)
-	db.SetMaxIdleConns(25)
-	db.SetConnMaxLifetime(5 * time.Minute)
+	applyDefaultPoolSettings(db)
 	protector, err := newSecretProtectorFromEnv()
 	if err != nil {
 		_ = db.Close()
 		return nil, err
 	}
-	return &Repo{db: db, protector: protector}, nil
+	return &Repo{db: db, protector: protector, ownDB: true}, nil
+}
+
+// NewFromDB wires repo to an existing SQL connection pool.
+func NewFromDB(db *sql.DB) (*Repo, error) {
+	if db == nil {
+		return nil, fmt.Errorf("db is required")
+	}
+	applyDefaultPoolSettings(db)
+	protector, err := newSecretProtectorFromEnv()
+	if err != nil {
+		return nil, err
+	}
+	return &Repo{db: db, protector: protector, ownDB: false}, nil
 }
 
 func (r *Repo) Close() error {
+	if r == nil || r.db == nil || !r.ownDB {
+		return nil
+	}
 	return r.db.Close()
+}
+
+func applyDefaultPoolSettings(db *sql.DB) {
+	db.SetMaxOpenConns(25)
+	db.SetMaxIdleConns(25)
+	db.SetConnMaxLifetime(5 * time.Minute)
 }
 
 // Ping checks database availability for readiness probes.

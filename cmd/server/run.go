@@ -12,6 +12,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"NMS1/internal/config"
@@ -103,6 +104,40 @@ func grpcTokenInterceptor(tokenProvider func() string) grpc.UnaryServerIntercept
 	}
 }
 
+type cachedTokenProvider struct {
+	mu        sync.RWMutex
+	value     string
+	expiresAt time.Time
+	ttl       time.Duration
+	load      func() string
+}
+
+func newCachedTokenProvider(ttl time.Duration, load func() string) func() string {
+	if ttl <= 0 {
+		ttl = 2 * time.Second
+	}
+	p := &cachedTokenProvider{ttl: ttl, load: load}
+	return func() string {
+		now := time.Now()
+		p.mu.RLock()
+		if now.Before(p.expiresAt) {
+			v := p.value
+			p.mu.RUnlock()
+			return v
+		}
+		p.mu.RUnlock()
+		p.mu.Lock()
+		defer p.mu.Unlock()
+		now = time.Now()
+		if now.Before(p.expiresAt) {
+			return p.value
+		}
+		p.value = strings.TrimSpace(p.load())
+		p.expiresAt = now.Add(p.ttl)
+		return p.value
+	}
+}
+
 func firstMetadataValue(values []string) string {
 	if len(values) == 0 {
 		return ""
@@ -140,20 +175,19 @@ func grpcServerTLSCredsFromEnv() (credentials.TransportCredentials, error) {
 	return credentials.NewTLS(tlsCfg), nil
 }
 
-// buildApp собирает HTTP-handler и cleanup (два отдельных *sql.DB: repo + traps).
-func buildApp(cfg *config.Config, log *zap.Logger) (http.Handler, func(), error) {
+// buildApp builds HTTP handler and shared DB-backed dependencies.
+func buildApp(cfg *config.Config, log *zap.Logger) (http.Handler, *postgres.Repo, *sql.DB, func(), error) {
 	snmpClient := snmp.New(int(cfg.SNMP.Port),
 		time.Duration(cfg.SNMP.Timeout)*time.Second, cfg.SNMP.Retries)
 
-	repo, err := postgres.New(cfg.DB.DSN)
-	if err != nil {
-		return nil, nil, fmt.Errorf("postgres repo: %w", err)
-	}
-
 	db, err := sql.Open("pgx", cfg.DB.DSN)
 	if err != nil {
-		_ = repo.Close()
-		return nil, nil, fmt.Errorf("sql open: %w", err)
+		return nil, nil, nil, nil, fmt.Errorf("sql open: %w", err)
+	}
+	repo, err := postgres.NewFromDB(db)
+	if err != nil {
+		_ = db.Close()
+		return nil, nil, nil, nil, fmt.Errorf("postgres repo: %w", err)
 	}
 
 	cleanup := func() {
@@ -163,7 +197,7 @@ func buildApp(cfg *config.Config, log *zap.Logger) (http.Handler, func(), error)
 
 	if err := os.MkdirAll(cfg.Paths.MibUploadDir, 0o755); err != nil {
 		cleanup()
-		return nil, nil, fmt.Errorf("mib upload dir: %w", err)
+		return nil, nil, nil, nil, fmt.Errorf("mib upload dir: %w", err)
 	}
 
 	trapsRepo := repository.NewTrapsRepo(db)
@@ -171,13 +205,13 @@ func buildApp(cfg *config.Config, log *zap.Logger) (http.Handler, func(), error)
 	mib := mibresolver.New(config.MIBSearchDirs(cfg), log)
 	handlers := h.NewHandlers(repo, snmpClient, scanner, trapsRepo, log, cfg.Paths.MibUploadDir, mib)
 	router := h.Router(handlers)
-	return router, cleanup, nil
+	return router, repo, db, cleanup, nil
 }
 
 // run слушает TCP, обслуживает router до отмены ctx, затем graceful shutdown.
 // onListen вызывается после успешного net.Listen (можно nil); для тестов — узнать ephemeral-порт.
 func run(ctx context.Context, cfg *config.Config, log *zap.Logger, onListen func(net.Addr)) error {
-	handler, cleanup, err := buildApp(cfg, log)
+	handler, repo, db, cleanup, err := buildApp(cfg, log)
 	if err != nil {
 		return err
 	}
@@ -209,7 +243,6 @@ func run(ctx context.Context, cfg *config.Config, log *zap.Logger, onListen func
 	var (
 		grpcErrCh chan error
 		grpcSrv   *grpc.Server
-		grpcDB    *sql.DB
 	)
 	if grpcAddr := strings.TrimSpace(os.Getenv("NMS_GRPC_ADDR")); grpcAddr != "" {
 		if isPublicBindAddress(grpcAddr) && !envBoolOrDefault("NMS_GRPC_ALLOW_PUBLIC_BIND", false) {
@@ -221,28 +254,20 @@ func run(ctx context.Context, cfg *config.Config, log *zap.Logger, onListen func
 		}
 		defer func() { _ = grpcLn.Close() }()
 
-		grpcDB, gerr = sql.Open("pgx", cfg.DB.DSN)
-		if gerr != nil {
-			return fmt.Errorf("grpc db open: %w", gerr)
-		}
-		defer func() { _ = grpcDB.Close() }()
-
-		trapRepo := repository.NewTrapsRepo(grpcDB)
+		trapRepo := repository.NewTrapsRepo(db)
 		grpcOpts := []grpc.ServerOption{
 			grpc.ForceServerCodec(grpcapi.JSONCodec{}),
 		}
-		settingsRepo, settingsErr := postgres.New(cfg.DB.DSN)
-		if settingsErr != nil {
-			return fmt.Errorf("grpc settings repo: %w", settingsErr)
-		}
-		defer func() { _ = settingsRepo.Close() }()
-		tokenProvider := func() string {
-			t, err := settingsRepo.GetSecretSetting(context.Background(), postgres.SettingKeyGRPCAuthTokenSecret)
-			if err == nil && strings.TrimSpace(t) != "" {
-				return strings.TrimSpace(t)
-			}
-			return strings.TrimSpace(config.EnvOrFile("NMS_GRPC_AUTH_TOKEN"))
-		}
+		tokenProvider := newCachedTokenProvider(
+			config.EnvDurationOrDefault("NMS_GRPC_AUTH_TOKEN_CACHE_TTL", 2*time.Second),
+			func() string {
+				t, err := repo.GetSecretSetting(context.Background(), postgres.SettingKeyGRPCAuthTokenSecret)
+				if err == nil && strings.TrimSpace(t) != "" {
+					return strings.TrimSpace(t)
+				}
+				return strings.TrimSpace(config.EnvOrFile("NMS_GRPC_AUTH_TOKEN"))
+			},
+		)
 		grpcOpts = append(grpcOpts, grpc.UnaryInterceptor(grpcTokenInterceptor(tokenProvider)))
 		tlsCreds, tlsErr := grpcServerTLSCredsFromEnv()
 		if tlsErr != nil {
@@ -264,7 +289,7 @@ func run(ctx context.Context, cfg *config.Config, log *zap.Logger, onListen func
 		log.Info("gRPC trap ingest enabled",
 			zap.String("addr", grpcAddr),
 			zap.Bool("tls_enabled", tlsCreds != nil),
-			zap.Bool("token_auth_enabled", strings.TrimSpace(config.EnvOrFile("NMS_GRPC_AUTH_TOKEN")) != ""))
+			zap.Bool("token_auth_enabled", strings.TrimSpace(tokenProvider()) != ""))
 	}
 
 	select {
