@@ -1,11 +1,14 @@
 package http
 
 import (
+	"context"
 	"net"
 	"net/http"
 	"strings"
 	"sync"
 	"time"
+
+	"go.uber.org/zap"
 )
 
 const (
@@ -36,6 +39,58 @@ func newLoginLimiter() *loginLimiter {
 }
 
 var authLoginLimiter = newLoginLimiter()
+
+func (h *Handlers) loginLimiterCheck(ip, user string, now time.Time) (bool, time.Duration) {
+	if h == nil || h.repo == nil {
+		return authLoginLimiter.check(ip, user, now)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	ipAllowed, ipRetry, err := h.repo.LoginRateLimitCheck(ctx, "ip", ip, now, loginWindow, loginLockoutDuration, loginMaxAttemptsIP)
+	if err != nil {
+		h.logger.Warn("shared login limiter check failed for ip, fallback to local", zap.Error(err))
+		return authLoginLimiter.check(ip, user, now)
+	}
+	if !ipAllowed {
+		return false, ipRetry
+	}
+	userAllowed, userRetry, err := h.repo.LoginRateLimitCheck(ctx, "user", user, now, loginWindow, loginLockoutDuration, loginMaxAttemptsUser)
+	if err != nil {
+		h.logger.Warn("shared login limiter check failed for user, fallback to local", zap.Error(err))
+		return authLoginLimiter.check(ip, user, now)
+	}
+	if !userAllowed {
+		return false, userRetry
+	}
+	return true, 0
+}
+
+func (h *Handlers) loginLimiterFailure(ip, user string, now time.Time) {
+	authLoginLimiter.onFailure(ip, user, now)
+	if h == nil || h.repo == nil {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	if err := h.repo.LoginRateLimitOnFailure(ctx, "ip", ip, now, loginWindow, loginLockoutDuration, loginMaxAttemptsIP); err != nil {
+		h.logger.Warn("shared login limiter failure update failed for ip", zap.Error(err))
+	}
+	if err := h.repo.LoginRateLimitOnFailure(ctx, "user", user, now, loginWindow, loginLockoutDuration, loginMaxAttemptsUser); err != nil {
+		h.logger.Warn("shared login limiter failure update failed for user", zap.Error(err))
+	}
+}
+
+func (h *Handlers) loginLimiterSuccess(ip, user string) {
+	authLoginLimiter.onSuccess(ip, user)
+	if h == nil || h.repo == nil {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	if err := h.repo.LoginRateLimitOnSuccess(ctx, ip, user); err != nil {
+		h.logger.Warn("shared login limiter success reset failed", zap.Error(err))
+	}
+}
 
 func clientIP(r *http.Request) string {
 	if fromTrustedProxy(r) {

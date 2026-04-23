@@ -29,6 +29,7 @@ write_secret "nms_session_secret" "${NMS_SESSION_SECRET:-}"
 write_secret "nms_db_encryption_key" "${NMS_DB_ENCRYPTION_KEY:-}"
 write_secret "nms_alert_webhook_token" "${NMS_ALERT_WEBHOOK_TOKEN:-}"
 write_secret "nms_itsm_inbound_token" "${NMS_ITSM_INBOUND_TOKEN:-}"
+write_secret "nms_grpc_auth_token" "${NMS_GRPC_AUTH_TOKEN:-${NMS_TRAP_GRPC_AUTH_TOKEN:-}}"
 if [[ -n "${NMS_TERMINAL_SSH_KNOWN_HOSTS:-}" ]]; then
   if [[ -f "${NMS_TERMINAL_SSH_KNOWN_HOSTS}" ]]; then
     chmod 600 "${NMS_TERMINAL_SSH_KNOWN_HOSTS}" 2>/dev/null || true

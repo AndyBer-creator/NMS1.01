@@ -2,6 +2,9 @@ package main
 
 import (
 	"context"
+	"crypto/subtle"
+	"crypto/tls"
+	"crypto/x509"
 	"database/sql"
 	"fmt"
 	"net"
@@ -22,9 +25,34 @@ import (
 
 	_ "github.com/jackc/pgx/v5/stdlib"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/credentials"
+	"google.golang.org/grpc/metadata"
+	"google.golang.org/grpc/status"
 
 	"go.uber.org/zap"
 )
+
+// isPublicBindAddress returns true for wildcard/unscoped listen addresses.
+func isPublicBindAddress(addr string) bool {
+	trimmed := strings.TrimSpace(addr)
+	if trimmed == "" {
+		return false
+	}
+	if strings.HasPrefix(trimmed, ":") {
+		return true
+	}
+	host, _, err := net.SplitHostPort(trimmed)
+	if err != nil {
+		return false
+	}
+	switch strings.TrimSpace(host) {
+	case "", "0.0.0.0", "::", "[::]":
+		return true
+	default:
+		return false
+	}
+}
 
 // envIntOrDefault parses a positive integer from env or returns fallback.
 func envIntOrDefault(name string, fallback int) int {
@@ -37,6 +65,81 @@ func envIntOrDefault(name string, fallback int) int {
 		return fallback
 	}
 	return n
+}
+
+// envBoolOrDefault parses bool from env or returns fallback.
+func envBoolOrDefault(name string, fallback bool) bool {
+	v := strings.TrimSpace(os.Getenv(name))
+	if v == "" {
+		return fallback
+	}
+	b, err := strconv.ParseBool(v)
+	if err != nil {
+		return fallback
+	}
+	return b
+}
+
+func grpcTokenInterceptor(token string) grpc.UnaryServerInterceptor {
+	required := strings.TrimSpace(token)
+	if required == "" {
+		return func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
+			return handler(ctx, req)
+		}
+	}
+	return func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
+		md, ok := metadata.FromIncomingContext(ctx)
+		if !ok {
+			return nil, status.Error(codes.Unauthenticated, "missing metadata")
+		}
+		authz := strings.TrimSpace(firstMetadataValue(md.Get("authorization")))
+		if strings.HasPrefix(strings.ToLower(authz), "bearer ") {
+			authz = strings.TrimSpace(authz[7:])
+		} else if authz == "" {
+			authz = strings.TrimSpace(firstMetadataValue(md.Get("x-nms-grpc-token")))
+		}
+		if subtle.ConstantTimeCompare([]byte(authz), []byte(required)) != 1 {
+			return nil, status.Error(codes.Unauthenticated, "invalid token")
+		}
+		return handler(ctx, req)
+	}
+}
+
+func firstMetadataValue(values []string) string {
+	if len(values) == 0 {
+		return ""
+	}
+	return values[0]
+}
+
+func grpcServerTLSCredsFromEnv() (credentials.TransportCredentials, error) {
+	certPath := strings.TrimSpace(os.Getenv("NMS_GRPC_TLS_CERT_FILE"))
+	keyPath := strings.TrimSpace(os.Getenv("NMS_GRPC_TLS_KEY_FILE"))
+	if certPath == "" || keyPath == "" {
+		return nil, nil
+	}
+	cert, err := tls.LoadX509KeyPair(certPath, keyPath)
+	if err != nil {
+		return nil, fmt.Errorf("load grpc tls cert/key: %w", err)
+	}
+	tlsCfg := &tls.Config{
+		MinVersion:   tls.VersionTLS12,
+		Certificates: []tls.Certificate{cert},
+	}
+	clientCAPath := strings.TrimSpace(os.Getenv("NMS_GRPC_TLS_CLIENT_CA_FILE"))
+	if clientCAPath != "" {
+		caPEM, err := os.ReadFile(clientCAPath)
+		if err != nil {
+			return nil, fmt.Errorf("read grpc client ca: %w", err)
+		}
+		pool := x509.NewCertPool()
+		if !pool.AppendCertsFromPEM(caPEM) {
+			return nil, fmt.Errorf("parse grpc client ca")
+		}
+		tlsCfg.ClientCAs = pool
+		tlsCfg.ClientAuth = tls.RequireAndVerifyClientCert
+	}
+	return credentials.NewTLS(tlsCfg), nil
 }
 
 // buildApp собирает HTTP-handler и cleanup (два отдельных *sql.DB: repo + traps).
@@ -111,6 +214,9 @@ func run(ctx context.Context, cfg *config.Config, log *zap.Logger, onListen func
 		grpcDB    *sql.DB
 	)
 	if grpcAddr := strings.TrimSpace(os.Getenv("NMS_GRPC_ADDR")); grpcAddr != "" {
+		if isPublicBindAddress(grpcAddr) && !envBoolOrDefault("NMS_GRPC_ALLOW_PUBLIC_BIND", false) {
+			return fmt.Errorf("unsafe NMS_GRPC_ADDR=%q: bind to loopback/private interface or set NMS_GRPC_ALLOW_PUBLIC_BIND=true explicitly", grpcAddr)
+		}
 		grpcLn, gerr := net.Listen("tcp", grpcAddr)
 		if gerr != nil {
 			return fmt.Errorf("grpc listen: %w", gerr)
@@ -124,7 +230,18 @@ func run(ctx context.Context, cfg *config.Config, log *zap.Logger, onListen func
 		defer func() { _ = grpcDB.Close() }()
 
 		trapRepo := repository.NewTrapsRepo(grpcDB)
-		grpcSrv = grpc.NewServer(grpc.ForceServerCodec(grpcapi.JSONCodec{}))
+		grpcOpts := []grpc.ServerOption{
+			grpc.ForceServerCodec(grpcapi.JSONCodec{}),
+			grpc.UnaryInterceptor(grpcTokenInterceptor(config.EnvOrFile("NMS_GRPC_AUTH_TOKEN"))),
+		}
+		tlsCreds, tlsErr := grpcServerTLSCredsFromEnv()
+		if tlsErr != nil {
+			return fmt.Errorf("grpc tls: %w", tlsErr)
+		}
+		if tlsCreds != nil {
+			grpcOpts = append(grpcOpts, grpc.Creds(tlsCreds))
+		}
+		grpcSrv = grpc.NewServer(grpcOpts...)
 		grpcapi.RegisterTrapService(grpcSrv, &trapIngestService{
 			repo:              trapRepo,
 			log:               log,
@@ -134,7 +251,10 @@ func run(ctx context.Context, cfg *config.Config, log *zap.Logger, onListen func
 		go func() {
 			grpcErrCh <- grpcSrv.Serve(grpcLn)
 		}()
-		log.Info("gRPC trap ingest enabled", zap.String("addr", grpcAddr))
+		log.Info("gRPC trap ingest enabled",
+			zap.String("addr", grpcAddr),
+			zap.Bool("tls_enabled", tlsCreds != nil),
+			zap.Bool("token_auth_enabled", strings.TrimSpace(config.EnvOrFile("NMS_GRPC_AUTH_TOKEN")) != ""))
 	}
 
 	select {

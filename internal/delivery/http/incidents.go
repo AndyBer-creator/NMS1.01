@@ -22,6 +22,8 @@ import (
 var (
 	itsmNotifierOnce sync.Once
 	itsmNotifierInst *services.ITSMWebhookNotifier
+	itsmDispatchOnce sync.Once
+	itsmDispatchInst *itsmDispatchQueue
 )
 
 func itsmNotifier() *services.ITSMWebhookNotifier {
@@ -52,28 +54,93 @@ func itsmNotifier() *services.ITSMWebhookNotifier {
 	return itsmNotifierInst
 }
 
+type itsmDispatchTask struct {
+	logger *zap.Logger
+	event  services.ITSMIncidentEvent
+}
+
+type itsmDispatchQueue struct {
+	ch chan itsmDispatchTask
+	n  *services.ITSMWebhookNotifier
+}
+
+func itsmDispatchQueueConfig() (size, workers int) {
+	size = 256
+	workers = 2
+	if v := strings.TrimSpace(os.Getenv("NMS_ITSM_QUEUE_SIZE")); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			size = n
+		}
+	}
+	if v := strings.TrimSpace(os.Getenv("NMS_ITSM_QUEUE_WORKERS")); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			workers = n
+		}
+	}
+	return size, workers
+}
+
+func itsmDispatcher() *itsmDispatchQueue {
+	itsmDispatchOnce.Do(func() {
+		n := itsmNotifier()
+		if n == nil || !n.Enabled() {
+			return
+		}
+		size, workers := itsmDispatchQueueConfig()
+		q := &itsmDispatchQueue{
+			ch: make(chan itsmDispatchTask, size),
+			n:  n,
+		}
+		for i := 0; i < workers; i++ {
+			go q.worker()
+		}
+		itsmDispatchInst = q
+	})
+	return itsmDispatchInst
+}
+
+func (q *itsmDispatchQueue) worker() {
+	for task := range q.ch {
+		ctx, cancel := context.WithTimeout(context.Background(), q.n.Timeout+2*time.Second)
+		err := q.n.SendIncidentEvent(ctx, task.event)
+		cancel()
+		if err != nil && task.logger != nil {
+			task.logger.Warn("itsm incident webhook failed",
+				zap.String("event_type", task.event.EventType),
+				zap.Int64("incident_id", task.event.Incident.ID),
+				zap.Error(err))
+		}
+	}
+}
+
 func notifyITSMIncidentAsync(logger *zap.Logger, eventType, changedBy, comment string, item *domain.Incident) {
 	n := itsmNotifier()
 	if n == nil || !n.Enabled() || item == nil {
 		return
 	}
-	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), n.Timeout+2*time.Second)
-		defer cancel()
-		err := n.SendIncidentEvent(ctx, services.ITSMIncidentEvent{
+	q := itsmDispatcher()
+	if q == nil {
+		return
+	}
+	task := itsmDispatchTask{
+		logger: logger,
+		event: services.ITSMIncidentEvent{
 			EventType: eventType,
 			ChangedBy: changedBy,
 			Comment:   comment,
 			At:        time.Now().UTC(),
 			Incident:  item,
-		})
-		if err != nil && logger != nil {
-			logger.Warn("itsm incident webhook failed",
+		},
+	}
+	select {
+	case q.ch <- task:
+	default:
+		if logger != nil {
+			logger.Warn("itsm incident queue full, dropping event",
 				zap.String("event_type", eventType),
-				zap.Int64("incident_id", item.ID),
-				zap.Error(err))
+				zap.Int64("incident_id", item.ID))
 		}
-	}()
+	}
 }
 
 func (h *Handlers) ListIncidents(w http.ResponseWriter, r *http.Request) {

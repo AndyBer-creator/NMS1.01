@@ -114,6 +114,7 @@ services:
       NMS_GRAFANA_BASE_URL: "${NMS_GRAFANA_BASE_URL}"
       NMS_PROMETHEUS_BASE_URL: "${NMS_PROMETHEUS_BASE_URL}"
       PROMETHEUS_BASE_URL: "${PROMETHEUS_BASE_URL}"
+      NMS_GRPC_ADDR: "${NMS_GRPC_ADDR:-127.0.0.1:9091}"
       NMS_ADMIN_USER: "${NMS_ADMIN_USER}"
       NMS_ADMIN_PASS: "${NMS_ADMIN_PASS}"
       NMS_VIEWER_USER: "${NMS_VIEWER_USER}"
@@ -258,25 +259,26 @@ services:
       context: ../../
       dockerfile: cmd/trap-receiver/Dockerfile
     container_name: nms1-trap-receiver
-    ports:
-      - "162:162/udp"
+    network_mode: host
+    user: "0:0"
+    cap_drop:
+      - ALL
     cap_add:
       - NET_BIND_SERVICE
     environment:
       TZ: ${TZ:-UTC}
       NMS_ENV: docker
-      DB_DSN: "${DB_DSN}"
+      DB_DSN: "host=127.0.0.1 port=5432 user=nms-user password=${POSTGRES_PASSWORD} dbname=NMS sslmode=${DB_SSLMODE:-disable}"
+      NMS_TRAP_GRPC_TARGET: "${NMS_TRAP_GRPC_TARGET:-127.0.0.1:9091}"
       TELEGRAM_TOKEN: "${TELEGRAM_TOKEN}"
       TELEGRAM_CHAT_ID: "${TELEGRAM_CHAT_ID}"
     volumes:
       - ../../logs:/app/logs:delegated
-      - ../../config/critical_oids.json:/app/critical_oids.json
+      - ../../config/critical_oids.json:/app/critical_oids.json:ro
       - ../../mibs:/app/mibs:ro
     depends_on:
       postgres:
         condition: service_healthy
-    networks:
-      - nms-network
     deploy:
       resources:
         limits:

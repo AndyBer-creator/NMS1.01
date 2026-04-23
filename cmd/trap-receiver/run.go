@@ -2,10 +2,13 @@ package main
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"database/sql"
 	"encoding/json"
 	"fmt"
 	"net"
+	"os"
 	"strings"
 	"time"
 
@@ -16,7 +19,9 @@ import (
 	"github.com/gosnmp/gosnmp"
 	_ "github.com/jackc/pgx/v5/stdlib"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/metadata"
 
 	"go.uber.org/zap"
 )
@@ -39,17 +44,27 @@ func run(ctx context.Context, log *zap.Logger, dsn string, grpcTarget string, ud
 	)
 
 	if useGRPC {
+		grpcCreds, err := grpcClientTransportCreds()
+		if err != nil {
+			return err
+		}
+		token := strings.TrimSpace(config.EnvOrFile("NMS_TRAP_GRPC_AUTH_TOKEN"))
+		unaryInterceptor := grpcAuthUnaryClientInterceptor(token)
 		conn, err = grpc.NewClient(
 			grpcTarget,
-			grpc.WithTransportCredentials(insecure.NewCredentials()),
+			grpc.WithTransportCredentials(grpcCreds),
 			grpc.WithDefaultCallOptions(grpc.ForceCodec(grpcapi.JSONCodec{})),
+			grpc.WithUnaryInterceptor(unaryInterceptor),
 		)
 		if err != nil {
 			return fmt.Errorf("grpc dial: %w", err)
 		}
 		defer func() { _ = conn.Close() }()
 		client = grpcapi.NewTrapServiceClient(conn)
-		log.Info("trap forwarding via gRPC enabled", zap.String("target", grpcTarget))
+		log.Info("trap forwarding via gRPC enabled",
+			zap.String("target", grpcTarget),
+			zap.Bool("tls_enabled", !isInsecureCreds(grpcCreds)),
+			zap.Bool("token_auth_enabled", token != ""))
 	} else {
 		db, err = sql.Open("pgx", dsn)
 		if err != nil {
@@ -157,6 +172,56 @@ func run(ctx context.Context, log *zap.Logger, dsn string, grpcTarget string, ud
 		}
 		return nil
 	}
+}
+
+func grpcAuthUnaryClientInterceptor(token string) grpc.UnaryClientInterceptor {
+	trimmed := strings.TrimSpace(token)
+	return func(ctx context.Context, method string, req, reply interface{}, cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {
+		if trimmed != "" {
+			ctx = metadata.AppendToOutgoingContext(ctx, "authorization", "Bearer "+trimmed)
+		}
+		return invoker(ctx, method, req, reply, cc, opts...)
+	}
+}
+
+func grpcClientTransportCreds() (credentials.TransportCredentials, error) {
+	caPath := strings.TrimSpace(os.Getenv("NMS_TRAP_GRPC_TLS_CA_FILE"))
+	certPath := strings.TrimSpace(os.Getenv("NMS_TRAP_GRPC_TLS_CERT_FILE"))
+	keyPath := strings.TrimSpace(os.Getenv("NMS_TRAP_GRPC_TLS_KEY_FILE"))
+	serverName := strings.TrimSpace(os.Getenv("NMS_TRAP_GRPC_TLS_SERVER_NAME"))
+	if caPath == "" && certPath == "" && keyPath == "" && serverName == "" {
+		return insecure.NewCredentials(), nil
+	}
+	tlsCfg := &tls.Config{MinVersion: tls.VersionTLS12}
+	if caPath != "" {
+		caPEM, err := os.ReadFile(caPath)
+		if err != nil {
+			return nil, fmt.Errorf("read grpc ca: %w", err)
+		}
+		pool := x509.NewCertPool()
+		if !pool.AppendCertsFromPEM(caPEM) {
+			return nil, fmt.Errorf("parse grpc ca")
+		}
+		tlsCfg.RootCAs = pool
+	}
+	if certPath != "" || keyPath != "" {
+		if certPath == "" || keyPath == "" {
+			return nil, fmt.Errorf("both NMS_TRAP_GRPC_TLS_CERT_FILE and NMS_TRAP_GRPC_TLS_KEY_FILE are required for mTLS")
+		}
+		cert, err := tls.LoadX509KeyPair(certPath, keyPath)
+		if err != nil {
+			return nil, fmt.Errorf("load grpc client cert/key: %w", err)
+		}
+		tlsCfg.Certificates = []tls.Certificate{cert}
+	}
+	if serverName != "" {
+		tlsCfg.ServerName = serverName
+	}
+	return credentials.NewTLS(tlsCfg), nil
+}
+
+func isInsecureCreds(creds credentials.TransportCredentials) bool {
+	return strings.EqualFold(creds.Info().SecurityProtocol, "insecure")
 }
 
 // trapIncidentSuppressionWindow returns dedup window for trap incidents.

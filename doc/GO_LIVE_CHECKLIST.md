@@ -15,7 +15,7 @@
 | Политика HTTPS / SLO / хаос (если используете) | `make https-policy-check`, `make slo-gates`, `make chaos-worker-check` |
 | Логи без секретов (после настройки логирования) | `make log-secrets-check` |
 
-В CI уже есть: lint, **static-css-sync** (совпадение `static/css/app.css` с билдом Tailwind), `govulncheck`, unit с race+coverage (**порог 25%** по умолчанию), миграции + integration job (см. `.github/workflows/test.yml`), а также ручной promotion flow `stage -> prod` (см. `.github/workflows/promote.yml`).
+В CI уже есть: lint, **static-css-sync** (совпадение `static/css/app.css` с билдом Tailwind), `govulncheck`, unit с race+coverage (**порог 35%** в workflow `test.yml`), миграции + integration job (см. `.github/workflows/test.yml`), а также ручной promotion flow `stage -> prod` (см. `.github/workflows/promote.yml`).
 
 ---
 
@@ -34,7 +34,7 @@
 
 | Шаг | Действие |
 |-----|----------|
-| Миграции до старта сервисов | `make migrate` или `go run ./cmd/migration` с корректным `DB_DSN` (как в [`README.md`](../README.md)) |
+| Миграции до старта сервисов | `make migrate` или `go run ./cmd/migration` с корректным `DB_DSN` (как в [`README.md`](../README.md)); обязательно проверить, что применена миграция `014_login_rate_limit_state.sql` для shared login rate limiter |
 | Образы | `docker compose -f deploy/compose/docker-compose.yml build` / `docker compose -f deploy/compose/docker-compose.yml up -d --build` по вашему процессу релиза |
 
 ---

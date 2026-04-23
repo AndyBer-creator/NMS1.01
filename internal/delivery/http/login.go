@@ -53,7 +53,7 @@ func (h *Handlers) LoginPost(w http.ResponseWriter, r *http.Request) {
 	ip := clientIP(r)
 	now := time.Now()
 
-	if ok, retryAfter := authLoginLimiter.check(ip, user, now); !ok {
+	if ok, retryAfter := h.loginLimiterCheck(ip, user, now); !ok {
 		msg := "Слишком много попыток входа. Повторите позже."
 		if retryAfter > 0 {
 			msg = fmt.Sprintf("Слишком много попыток входа. Повторите через %d сек.", int(retryAfter.Seconds())+1)
@@ -78,7 +78,7 @@ func (h *Handlers) LoginPost(w http.ResponseWriter, r *http.Request) {
 	case basicMatch(viewer, user, pass):
 		rl = roleViewer
 	default:
-		authLoginLimiter.onFailure(ip, user, now)
+		h.loginLimiterFailure(ip, user, now)
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		w.WriteHeader(http.StatusUnauthorized)
 		_ = h.loginTmpl.ExecuteTemplate(w, "login.html", map[string]any{
@@ -90,7 +90,7 @@ func (h *Handlers) LoginPost(w http.ResponseWriter, r *http.Request) {
 		h.logger.Warn("login failed", zap.String("ip", ip), zap.String("user", user))
 		return
 	}
-	authLoginLimiter.onSuccess(ip, user)
+	h.loginLimiterSuccess(ip, user)
 
 	token, err := signSessionToken(user, rl)
 	if err != nil {
