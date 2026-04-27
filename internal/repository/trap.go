@@ -18,6 +18,8 @@ type TrapsRepo struct {
 	db *sql.DB
 }
 
+var _ TrapRepository = (*TrapsRepo)(nil)
+
 // NewTrapsRepo creates a trap repository over an existing SQL connection.
 func NewTrapsRepo(db *sql.DB) *TrapsRepo {
 	return &TrapsRepo{db: db}
@@ -450,52 +452,35 @@ func (r *TrapsRepo) ResolveOpenTrapIncidents(ctx context.Context, deviceID sql.N
 	if len(titleConds) == 0 {
 		return 0, nil
 	}
-	query := `
-		SELECT id, status
-		  FROM incidents
-		 WHERE source = 'trap'
-		   AND device_id = $1
-		   AND status IN ('new', 'acknowledged', 'in_progress')
-		   AND (` + strings.Join(titleConds, " OR ") + `)
-		 FOR UPDATE`
-	rows, err := tx.QueryContext(ctx, query, args...)
-	if err != nil {
-		return 0, err
-	}
-	defer func() { _ = rows.Close() }()
-	type incidentRow struct {
-		id     int64
-		status string
-	}
-	var items []incidentRow
-	for rows.Next() {
-		var it incidentRow
-		if err := rows.Scan(&it.id, &it.status); err != nil {
-			return 0, err
-		}
-		items = append(items, it)
-	}
-	if err := rows.Err(); err != nil {
-		return 0, err
-	}
 	var changed int64
-	for _, it := range items {
-		if _, err := tx.ExecContext(ctx, `
-			UPDATE incidents
+	query := `
+		WITH candidates AS (
+			SELECT id, status
+			  FROM incidents
+			 WHERE source = 'trap'
+			   AND device_id = $1
+			   AND status IN ('new', 'acknowledged', 'in_progress')
+			   AND (` + strings.Join(titleConds, " OR ") + `)
+			 FOR UPDATE
+		),
+		updated AS (
+			UPDATE incidents i
 			   SET status = 'resolved',
 			       updated_at = NOW(),
 			       resolved_at = NOW()
-			 WHERE id = $1`, it.id); err != nil {
-			return changed, err
-		}
-		if _, err := tx.ExecContext(ctx, `
+			  FROM candidates c
+			 WHERE i.id = c.id
+			RETURNING i.id, c.status AS from_status
+		),
+		inserted AS (
 			INSERT INTO incident_transitions (incident_id, from_status, to_status, changed_by, comment)
-			VALUES ($1, $2, 'resolved', $3, $4)`,
-			it.id, it.status, changedBy, comment,
-		); err != nil {
-			return changed, err
-		}
-		changed++
+			SELECT id, from_status, 'resolved', $` + strconv.Itoa(len(args)+1) + `, $` + strconv.Itoa(len(args)+2) + `
+			  FROM updated
+		)
+		SELECT COUNT(*) FROM updated`
+	args = append(args, changedBy, comment)
+	if err := tx.QueryRowContext(ctx, query, args...).Scan(&changed); err != nil {
+		return 0, err
 	}
 	if err := tx.Commit(); err != nil {
 		return changed, err

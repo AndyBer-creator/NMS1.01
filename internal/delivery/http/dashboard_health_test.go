@@ -35,13 +35,13 @@ func TestProbeExternalEndpoint_Statuses(t *testing.T) {
 	if got := h.probeExternalEndpoint(ctx, ""); got != "not_configured" {
 		t.Fatalf("empty URL status=%q", got)
 	}
-	if got := h.probeExternalEndpoint(ctx, okSrv.URL); got != "up" {
-		t.Fatalf("ok URL status=%q", got)
+	if got := h.probeExternalEndpoint(ctx, okSrv.URL); got != "not_configured" {
+		t.Fatalf("localhost URL should be blocked, got=%q", got)
 	}
-	if got := h.probeExternalEndpoint(ctx, degradedSrv.URL); got != "degraded" {
-		t.Fatalf("degraded URL status=%q", got)
+	if got := h.probeExternalEndpoint(ctx, degradedSrv.URL); got != "not_configured" {
+		t.Fatalf("localhost degraded URL should be blocked, got=%q", got)
 	}
-	if got := h.probeExternalEndpoint(ctx, "http://127.0.0.1:1"); got != "down" {
-		t.Fatalf("down URL status=%q", got)
+	if got := h.probeExternalEndpoint(ctx, "http://127.0.0.1:1"); got != "not_configured" {
+		t.Fatalf("local IP should be blocked, got=%q", got)
 	}
 }

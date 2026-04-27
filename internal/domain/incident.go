@@ -1,9 +1,28 @@
 package domain
 
 import (
-	"encoding/json"
 	"time"
 )
+
+// JSONPayload stores raw JSON bytes without transport-specific dependencies.
+type JSONPayload []byte
+
+// MarshalJSON emits the payload as-is.
+func (p JSONPayload) MarshalJSON() ([]byte, error) {
+	if len(p) == 0 {
+		return []byte("null"), nil
+	}
+	return p, nil
+}
+
+// UnmarshalJSON copies raw JSON bytes into payload.
+func (p *JSONPayload) UnmarshalJSON(data []byte) error {
+	if p == nil {
+		return nil
+	}
+	*p = append((*p)[:0], data...)
+	return nil
+}
 
 type Incident struct {
 	ID             int64           `json:"id"`
@@ -13,7 +32,7 @@ type Incident struct {
 	Severity       string          `json:"severity"`
 	Status         string          `json:"status"`
 	Source         string          `json:"source"`
-	Details        json.RawMessage `json:"details,omitempty"`
+	Details        JSONPayload     `json:"details,omitempty"`
 	CreatedAt      time.Time       `json:"created_at"`
 	UpdatedAt      time.Time       `json:"updated_at"`
 	AcknowledgedAt *time.Time      `json:"acknowledged_at,omitempty"`

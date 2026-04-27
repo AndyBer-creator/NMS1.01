@@ -259,7 +259,7 @@ func (h *Handlers) CreateIncident(w http.ResponseWriter, r *http.Request) {
 		Source:   input.Source,
 	}
 	if input.Details != nil {
-		item.Details = *input.Details
+		item.Details = domain.JSONPayload(*input.Details)
 	}
 	out, err := h.repo.CreateIncident(r.Context(), item)
 	if err != nil {

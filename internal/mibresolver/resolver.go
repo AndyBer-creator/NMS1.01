@@ -48,11 +48,19 @@ func ValidateSymbol(s string) error {
 
 // Resolver executes snmptranslate using provided MIB directories.
 type Resolver struct {
-	dirs            []string
-	logger          *zap.Logger
-	mu              sync.Mutex
-	translateBin    string
+	dirs             []string
+	logger           *zap.Logger
+	mu               sync.Mutex
+	translateBin     string
 	translateChecked bool
+	cache            map[string]resolveCacheEntry
+	negativeCacheTTL time.Duration
+}
+
+type resolveCacheEntry struct {
+	oid       string
+	errMsg    string
+	expiresAt time.Time
 }
 
 func New(dirs []string, logger *zap.Logger) *Resolver {
@@ -65,7 +73,24 @@ func New(dirs []string, logger *zap.Logger) *Resolver {
 		clean = append(clean, filepath.Clean(d))
 	}
 	clean = appendStandardMIBDirs(clean)
-	return &Resolver{dirs: clean, logger: logger}
+	return &Resolver{
+		dirs:             clean,
+		logger:           logger,
+		cache:            make(map[string]resolveCacheEntry),
+		negativeCacheTTL: parseNegativeCacheTTL(),
+	}
+}
+
+func parseNegativeCacheTTL() time.Duration {
+	raw := strings.TrimSpace(os.Getenv("NMS_MIB_NEGATIVE_CACHE_TTL"))
+	if raw == "" {
+		return 5 * time.Minute
+	}
+	d, err := time.ParseDuration(raw)
+	if err != nil || d <= 0 {
+		return 5 * time.Minute
+	}
+	return d
 }
 
 func appendStandardMIBDirs(dirs []string) []string {
@@ -115,6 +140,12 @@ func (r *Resolver) ResolveToNumeric(symbol string) (string, error) {
 	if err := ValidateSymbol(s); err != nil {
 		return "", err
 	}
+	if oid, errMsg, ok := r.cachedResolution(s); ok {
+		if errMsg != "" {
+			return "", errors.New(errMsg)
+		}
+		return oid, nil
+	}
 	bin, err := r.findTranslate()
 	if err != nil {
 		return "", fmt.Errorf("MIB resolver unavailable: %w (install net-snmp-tools and place MIB files under configured dirs)", err)
@@ -132,6 +163,9 @@ func (r *Resolver) ResolveToNumeric(symbol string) (string, error) {
 	if err != nil {
 		msg := strings.TrimSpace(stderr.String())
 		if msg != "" {
+			if isTranslateNotFoundError(msg) {
+				r.storeNegativeResolution(s, fmt.Sprintf("snmptranslate: %s", msg))
+			}
 			return "", fmt.Errorf("snmptranslate: %s", msg)
 		}
 		return "", fmt.Errorf("snmptranslate: %w", err)
@@ -142,7 +176,44 @@ func (r *Resolver) ResolveToNumeric(symbol string) (string, error) {
 	if !IsNumericOID(line) {
 		return "", fmt.Errorf("snmptranslate returned unexpected output: %q", strings.TrimSpace(string(out)))
 	}
+	r.storePositiveResolution(s, line)
 	return line, nil
+}
+
+func (r *Resolver) cachedResolution(symbol string) (oid string, errMsg string, ok bool) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	entry, exists := r.cache[symbol]
+	if !exists {
+		return "", "", false
+	}
+	if !entry.expiresAt.IsZero() && time.Now().After(entry.expiresAt) {
+		delete(r.cache, symbol)
+		return "", "", false
+	}
+	return entry.oid, entry.errMsg, true
+}
+
+func (r *Resolver) storePositiveResolution(symbol, oid string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.cache[symbol] = resolveCacheEntry{oid: oid}
+}
+
+func (r *Resolver) storeNegativeResolution(symbol, errMsg string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.cache[symbol] = resolveCacheEntry{
+		errMsg:    errMsg,
+		expiresAt: time.Now().Add(r.negativeCacheTTL),
+	}
+}
+
+func isTranslateNotFoundError(msg string) bool {
+	s := strings.ToLower(strings.TrimSpace(msg))
+	return strings.Contains(s, "unknown object identifier") ||
+		strings.Contains(s, "cannot find module") ||
+		strings.Contains(s, "unknown object")
 }
 
 // Available reports whether symbolic resolution is available.

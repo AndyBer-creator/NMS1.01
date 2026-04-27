@@ -7,11 +7,45 @@
 #
 # Сеть по умолчанию: bridge (nms-network). Контейнеры получают отдельную подсеть Docker и NAT.
 services:
+  socket-proxy:
+    image: tecnativa/docker-socket-proxy:0.1.1
+    container_name: nms1-socket-proxy
+    environment:
+      CONTAINERS: 1
+      SERVICES: 1
+      TASKS: 1
+      NETWORKS: 1
+      NODES: 0
+      SECRETS: 0
+      POST: 0
+      AUTH: 0
+      BUILD: 0
+      COMMIT: 0
+      CONFIGS: 0
+      DISTRIBUTION: 0
+      EXEC: 0
+      IMAGES: 1
+      INFO: 1
+      PING: 1
+      PLUGINS: 0
+      SESSION: 0
+      SWARM: 0
+      SYSTEM: 0
+      VOLUMES: 1
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    expose:
+      - "2375"
+    networks:
+      - nms-network
+    restart: unless-stopped
+
   traefik:
     image: traefik:v3.0
     container_name: nms1-traefik
     command:
       - "--providers.docker=true"
+      - "--providers.docker.endpoint=tcp://socket-proxy:2375"
       - "--providers.docker.exposedbydefault=false"
       - "--entrypoints.web.address=:80"
       - "--entrypoints.websecure.address=:443"
@@ -25,10 +59,11 @@ services:
       - "80:80"
       - "443:443"
     volumes:
-      - /var/run/docker.sock:/var/run/docker.sock:ro
       - ../../letsencrypt:/letsencrypt
     networks:
       - nms-network
+    depends_on:
+      - socket-proxy
     restart: unless-stopped
 
   postgres:
@@ -56,7 +91,7 @@ services:
     image: prometheuscommunity/postgres-exporter:v0.15.0
     container_name: nms-postgres-exporter
     environment:
-      DATA_SOURCE_NAME: "postgresql://nms-user:${POSTGRES_PASSWORD}@postgres:5432/NMS?sslmode=disable"
+      DATA_SOURCE_NAME: "postgresql://nms-user:${POSTGRES_PASSWORD}@postgres:5432/NMS?sslmode=${DB_SSLMODE_EXPORTER:-disable}"
     expose:
       - "9187"
     depends_on:
@@ -75,14 +110,8 @@ services:
     - /bin/sh
     - -c
     - |
-      echo "⏳ Installing postgresql-client..."
-      apk add --no-cache postgresql-client
-      echo "⏳ Waiting for postgres..."
-      until pg_isready -h postgres -p 5432 -U nms-user -d NMS; do
-        echo "⏳ Postgres not ready - waiting..."
-        sleep 2
-      done
-      echo "✅ Postgres READY! Running migration..."
+      set -e
+      echo "⏳ Running migration..."
       cd /app
       go run cmd/migration/main.go
       echo "🎉 Migration COMPLETED!"
@@ -129,8 +158,12 @@ services:
       NMS_SESSION_SECRET: "${NMS_SESSION_SECRET}"
     volumes:
       - ../../logs:/app/logs:delegated
-      - ../../config.yaml:/app/config.yaml
-      - ../../mibs:/app/mibs
+      - ../../config.yaml:/app/config.yaml:ro
+      - ../../mibs:/app/mibs:ro
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
     command: ["./nms-api"]
     depends_on:
       postgres:
@@ -145,7 +178,7 @@ services:
       - "traefik.http.routers.nms.tls.certresolver=le"
       - "traefik.http.services.nms.loadbalancer.server.port=8080"
     healthcheck:
-      test: ["CMD-SHELL", "wget -q -O- http://127.0.0.1:8080/health | grep -q '^OK$'"]
+      test: ["CMD-SHELL", "wget -q -O- http://127.0.0.1:8080/health | grep -q '^OK$' || wget --no-check-certificate -q -O- https://127.0.0.1:8080/health | grep -q '^OK$'"]
       interval: 15s
       timeout: 5s
       retries: 10
@@ -242,8 +275,12 @@ services:
       DB_DSN: ${DB_DSN}
     volumes:
       - ../../logs:/app/logs:delegated
-      - ../../config.yaml:/app/config.yaml
+      - ../../config.yaml:/app/config.yaml:ro
       - ../../mibs:/app/mibs:ro
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
     command: ["./nms-worker"]
     depends_on:
       postgres:
@@ -278,6 +315,8 @@ services:
       - ALL
     cap_add:
       - NET_BIND_SERVICE
+    security_opt:
+      - no-new-privileges:true
     environment:
       TZ: ${TZ:-UTC}
       NMS_ENV: docker

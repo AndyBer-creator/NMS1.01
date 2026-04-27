@@ -1,14 +1,30 @@
 package http
 
 import (
+	"NMS1/internal/config"
 	"fmt"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
 	"go.uber.org/zap"
 )
+
+const defaultLoginMaxBodyBytes int64 = 16 << 10 // 16 KiB
+
+func loginMaxBodyBytes() int64 {
+	raw := strings.TrimSpace(config.EnvOrFile("NMS_LOGIN_MAX_BODY_BYTES"))
+	if raw == "" {
+		return defaultLoginMaxBodyBytes
+	}
+	v, err := strconv.ParseInt(raw, 10, 64)
+	if err != nil || v <= 0 {
+		return defaultLoginMaxBodyBytes
+	}
+	return v
+}
 
 func (h *Handlers) LoginPage(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
@@ -43,7 +59,12 @@ func (h *Handlers) LoginPost(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/", http.StatusFound)
 		return
 	}
+	r.Body = http.MaxBytesReader(w, r.Body, loginMaxBodyBytes())
 	if err := r.ParseForm(); err != nil {
+		if strings.Contains(strings.ToLower(err.Error()), "request body too large") {
+			http.Error(w, "Request body too large", http.StatusRequestEntityTooLarge)
+			return
+		}
 		http.Error(w, "Bad form", http.StatusBadRequest)
 		return
 	}

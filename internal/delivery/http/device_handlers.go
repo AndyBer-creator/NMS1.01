@@ -279,7 +279,8 @@ func (h *Handlers) UpdateDevice(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "Device not found", http.StatusNotFound)
 			return
 		}
-		http.Error(w, "Update failed: "+err.Error(), http.StatusInternalServerError)
+		h.logger.Error("UpdateDevice failed", zap.Int("id", id), zap.Error(err))
+		http.Error(w, "Update failed", http.StatusInternalServerError)
 		return
 	}
 	if updated == nil {
@@ -343,7 +344,7 @@ func (h *Handlers) GetMetric(w http.ResponseWriter, r *http.Request) {
 	result, err := h.snmp.GetDevice(device, []string{numericOID})
 	if err != nil {
 		h.logger.Error("SNMP Get failed", zap.String("ip", device.IP), zap.String("oid", numericOID), zap.Error(err))
-		http.Error(w, "SNMP failed: "+err.Error(), http.StatusServiceUnavailable)
+		http.Error(w, "SNMP failed", http.StatusServiceUnavailable)
 		return
 	}
 

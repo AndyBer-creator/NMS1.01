@@ -10,6 +10,7 @@
 
 Поддерживаемые переменные: `DB_DSN`, `NMS_ADMIN_USER/PASS`, `NMS_VIEWER_USER/PASS`, `NMS_SESSION_SECRET`, `TELEGRAM_TOKEN/CHAT_ID`, `SMTP_USER/PASS/FROM`, `NMS_ALERT_WEBHOOK_TOKEN`, `NMS_ITSM_INBOUND_TOKEN`, `NMS_GRPC_AUTH_TOKEN` (для `trap-receiver -> api` gRPC ingest).
 Опционально (если включаете TLS/mTLS для gRPC): сертификаты/ключи хранятся отдельными файлами в `.secrets` и передаются через `*_FILE` переменные.
+UI для runtime/secret настроек доступен на странице `/settings/page`.
 
 ## 2) Bootstrap
 
@@ -75,6 +76,7 @@ docker compose -f deploy/compose/docker-compose.yml -f deploy/compose/docker-com
 ```bash
 make smoke-test
 make rbac-smoke
+make grpc-auth-sync-check
 ```
 
 ## 4) Revoke (внеплановый отзыв при инциденте)
@@ -90,3 +92,7 @@ make rbac-smoke
 - Каталог `.secrets/` хранится только на хосте, в git не коммитится.
 - Права на каталог: `0700`, на файлы: `0600`.
 - Доступ к хосту и бэкапам `.secrets` ограничен минимально необходимым кругом.
+- Для кэширования gRPC токена после ротации:
+  - `NMS_GRPC_AUTH_TOKEN_CACHE_TTL` — TTL кэша токена на стороне `api` (default `2s`);
+  - `NMS_TRAP_GRPC_AUTH_TOKEN_CACHE_TTL` — TTL кэша токена на стороне `trap-receiver` (default `2s`).
+- Для принудительного запуска production-guardrails даже в non-production окружении: `NMS_REQUIRE_PROD_GUARDRAILS=true`.

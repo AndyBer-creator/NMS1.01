@@ -1,0 +1,12 @@
+.git
+.gitignore
+.cursor
+.env
+.env.*
+.secrets
+logs
+backups
+coverage.out
+*.log
+*.tmp
+node_modules

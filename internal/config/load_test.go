@@ -1,6 +1,7 @@
 package config
 
 import (
+	"os"
 	"path/filepath"
 	"testing"
 
@@ -64,5 +65,28 @@ func TestLoad_MibUploadDirOverride(t *testing.T) {
 	}
 	if cfg.Paths.MibUploadDir != "/custom/mibs/up" {
 		t.Fatalf("MibUploadDir: got %q", cfg.Paths.MibUploadDir)
+	}
+}
+
+func TestLoad_InvalidConfigYAMLReturnsError(t *testing.T) {
+	viper.Reset()
+	t.Cleanup(func() { viper.Reset() })
+	t.Setenv("DB_DSN", "postgres://localhost/nms_test")
+
+	tmp := t.TempDir()
+	oldWD, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(oldWD) })
+	if err := os.Chdir(tmp); err != nil {
+		t.Fatalf("chdir temp: %v", err)
+	}
+	if err := os.WriteFile("config.yaml", []byte("http: [invalid"), 0o600); err != nil {
+		t.Fatalf("write invalid config: %v", err)
+	}
+
+	if _, err := Load(); err == nil {
+		t.Fatal("expected error for invalid config.yaml")
 	}
 }

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 )
 
@@ -42,7 +43,7 @@ func (t *TelegramAlert) SendCriticalTrapContext(ctx context.Context, deviceIP, o
 		deviceIP,
 		oid,
 		time.Now().Format("15:04 02.01.2006"),
-		trapVars[:min(100, len(trapVars))],
+		truncateRunes(strings.TrimSpace(trapVars), 100),
 	)
 
 	data := map[string]string{
@@ -83,10 +84,14 @@ func (t *TelegramAlert) SendCriticalTrapContext(ctx context.Context, deviceIP, o
 	return nil
 }
 
-// min returns smaller integer.
-func min(a, b int) int {
-	if a < b {
-		return a
+// truncateRunes returns s truncated to at most maxRunes runes.
+func truncateRunes(s string, maxRunes int) string {
+	if maxRunes <= 0 {
+		return ""
 	}
-	return b
+	r := []rune(s)
+	if len(r) <= maxRunes {
+		return s
+	}
+	return string(r[:maxRunes])
 }

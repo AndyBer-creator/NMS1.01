@@ -2,11 +2,13 @@ package lldp
 
 import (
 	"context"
+	"os"
 	"strconv"
 	"strings"
+	"time"
 
+	"NMS1/internal/domain"
 	"NMS1/internal/infrastructure/postgres"
-	"NMS1/internal/infrastructure/snmp"
 
 	"go.uber.org/zap"
 )
@@ -19,6 +21,9 @@ const (
 	lldpRemSysDescBase  = "1.0.8802.1.1.2.1.4.1.1.10"
 	lldpRemPortIdBase   = "1.0.8802.1.1.2.1.4.1.1.7"
 	lldpRemPortDescBase = "1.0.8802.1.1.2.1.4.1.1.8"
+
+	defaultLLDPDeviceWalkTimeout = 15 * time.Second
+	defaultLLDPMaxRemoteEntries  = 4096
 )
 
 type remoteEntry struct {
@@ -43,6 +48,64 @@ type ScanSummary struct {
 	DevicesScanned int
 	LinksFound     int
 	LinksInserted  int
+}
+
+type lldpRepo interface {
+	ListDevices(ctx context.Context) ([]*domain.Device, error)
+	CreateLldpScan(ctx context.Context) (int64, error)
+	DeleteLldpScan(ctx context.Context, scanID int64) error
+	InsertLldpLink(ctx context.Context, scanID int64, link postgres.LldpLink) (int64, error)
+}
+
+type lldpWalker interface {
+	WalkDevice(device *domain.Device, baseOID string) (map[string]string, error)
+}
+
+func lldpDeviceWalkTimeout() time.Duration {
+	v := strings.TrimSpace(os.Getenv("NMS_LLDP_DEVICE_WALK_TIMEOUT"))
+	if v == "" {
+		return defaultLLDPDeviceWalkTimeout
+	}
+	d, err := time.ParseDuration(v)
+	if err != nil || d <= 0 {
+		return defaultLLDPDeviceWalkTimeout
+	}
+	return d
+}
+
+func lldpMaxRemoteEntries() int {
+	v := strings.TrimSpace(os.Getenv("NMS_LLDP_MAX_REMOTE_ENTRIES"))
+	if v == "" {
+		return defaultLLDPMaxRemoteEntries
+	}
+	n, err := strconv.Atoi(v)
+	if err != nil || n <= 0 {
+		return defaultLLDPMaxRemoteEntries
+	}
+	return n
+}
+
+func walkWithTimeout(ctx context.Context, timeout time.Duration, walkFn func() (map[string]string, error)) (map[string]string, error) {
+	if timeout <= 0 {
+		timeout = defaultLLDPDeviceWalkTimeout
+	}
+	walkCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+	type result struct {
+		values map[string]string
+		err    error
+	}
+	ch := make(chan result, 1)
+	go func() {
+		v, err := walkFn()
+		ch <- result{values: v, err: err}
+	}()
+	select {
+	case <-walkCtx.Done():
+		return nil, walkCtx.Err()
+	case out := <-ch:
+		return out.values, out.err
+	}
 }
 
 // normalizeKey trims and lowercases inventory keys for map matching.
@@ -99,7 +162,7 @@ func parseRemoteIndexes(fullOID, baseOID string) (localPortNum int, remIndex int
 }
 
 // ScanAllDevicesLLDP builds one LLDP topology snapshot and persists links.
-func ScanAllDevicesLLDP(ctx context.Context, repo *postgres.Repo, client *snmp.Client, logger *zap.Logger, _ ScanParams) (*ScanSummary, error) {
+func ScanAllDevicesLLDP(ctx context.Context, repo lldpRepo, client lldpWalker, logger *zap.Logger, _ ScanParams) (*ScanSummary, error) {
 	// Device status/version are mostly relevant for credentials selection here.
 	devices, err := repo.ListDevices(ctx)
 	if err != nil {
@@ -126,11 +189,26 @@ func ScanAllDevicesLLDP(ctx context.Context, repo *postgres.Repo, client *snmp.C
 	logger.Info("LLDP scan started", zap.Int("devices", len(devices)), zap.Int64("scan_id", scanID))
 
 	summary := &ScanSummary{ScanID: scanID}
+	deviceWalkTimeout := lldpDeviceWalkTimeout()
+	maxRemoteEntries := lldpMaxRemoteEntries()
+	cleanupAbortedScan := func(reason error) {
+		if reason == nil || scanID <= 0 {
+			return
+		}
+		cleanupCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if derr := repo.DeleteLldpScan(cleanupCtx, scanID); derr != nil {
+			logger.Warn("LLDP aborted scan cleanup failed", zap.Int64("scan_id", scanID), zap.Error(derr))
+			return
+		}
+		logger.Warn("LLDP aborted scan cleaned up", zap.Int64("scan_id", scanID), zap.Error(reason))
+	}
 
 	// We walk each LLDP table; this is periodic and acceptable every few minutes.
 	for _, device := range devices {
 		select {
 		case <-ctx.Done():
+			cleanupAbortedScan(ctx.Err())
 			return summary, ctx.Err()
 		default:
 		}
@@ -145,34 +223,40 @@ func ScanAllDevicesLLDP(ctx context.Context, repo *postgres.Repo, client *snmp.C
 		locPortDescMap := make(map[int]string)
 		locPortIdMap := make(map[int]string)
 
-		locPortDesc, err := client.WalkDevice(d, lldpLocPortDescBase)
-		if err == nil {
-			for fullOID, val := range locPortDesc {
-				if portNum, ok := parseSingleIndexFromWalk(fullOID, lldpLocPortDescBase); ok {
-					locPortDescMap[portNum] = val
-				}
+		locPortDesc, err := walkWithTimeout(ctx, deviceWalkTimeout, func() (map[string]string, error) {
+			return client.WalkDevice(d, lldpLocPortDescBase)
+		})
+		if err != nil {
+			logger.Warn("LLDP: skip device due to incomplete walk set", zap.String("ip", d.IP), zap.String("table", "lldpLocPortDesc"), zap.Error(err))
+			continue
+		}
+		for fullOID, val := range locPortDesc {
+			if portNum, ok := parseSingleIndexFromWalk(fullOID, lldpLocPortDescBase); ok {
+				locPortDescMap[portNum] = val
 			}
-		} else {
-			logger.Warn("LLDP: failed walk lldpLocPortDesc", zap.String("ip", d.IP), zap.Error(err))
 		}
 
-		locPortId, err := client.WalkDevice(d, lldpLocPortIdBase)
-		if err == nil {
-			for fullOID, val := range locPortId {
-				if portNum, ok := parseSingleIndexFromWalk(fullOID, lldpLocPortIdBase); ok {
-					locPortIdMap[portNum] = val
-				}
+		locPortId, err := walkWithTimeout(ctx, deviceWalkTimeout, func() (map[string]string, error) {
+			return client.WalkDevice(d, lldpLocPortIdBase)
+		})
+		if err != nil {
+			logger.Warn("LLDP: skip device due to incomplete walk set", zap.String("ip", d.IP), zap.String("table", "lldpLocPortId"), zap.Error(err))
+			continue
+		}
+		for fullOID, val := range locPortId {
+			if portNum, ok := parseSingleIndexFromWalk(fullOID, lldpLocPortIdBase); ok {
+				locPortIdMap[portNum] = val
 			}
-		} else {
-			logger.Warn("LLDP: failed walk lldpLocPortId", zap.String("ip", d.IP), zap.Error(err))
 		}
 
 		remoteEntries := make(map[string]*remoteEntry) // key = localPortNum/remIndex
 
 		// remote sysName
-		walkSysName, err := client.WalkDevice(d, lldpRemSysNameBase)
+		walkSysName, err := walkWithTimeout(ctx, deviceWalkTimeout, func() (map[string]string, error) {
+			return client.WalkDevice(d, lldpRemSysNameBase)
+		})
 		if err != nil {
-			logger.Warn("LLDP: failed walk lldpRemSysName", zap.String("ip", d.IP), zap.Error(err))
+			logger.Warn("LLDP: skip device due to incomplete walk set", zap.String("ip", d.IP), zap.String("table", "lldpRemSysName"), zap.Error(err))
 			continue
 		}
 		for fullOID, val := range walkSysName {
@@ -183,6 +267,12 @@ func ScanAllDevicesLLDP(ctx context.Context, repo *postgres.Repo, client *snmp.C
 			key := strconv.Itoa(localPortNum) + "/" + strconv.Itoa(remIndex)
 			entry := remoteEntries[key]
 			if entry == nil {
+				if len(remoteEntries) >= maxRemoteEntries {
+					logger.Warn("LLDP: remote entry cap reached, skipping remaining entries",
+						zap.String("ip", d.IP),
+						zap.Int("max_remote_entries", maxRemoteEntries))
+					break
+				}
 				entry = &remoteEntry{LocalPortNum: localPortNum, RemIndex: remIndex}
 				remoteEntries[key] = entry
 			}
@@ -190,56 +280,86 @@ func ScanAllDevicesLLDP(ctx context.Context, repo *postgres.Repo, client *snmp.C
 		}
 
 		// remote sysDesc
-		walkSysDesc, err := client.WalkDevice(d, lldpRemSysDescBase)
-		if err == nil {
-			for fullOID, val := range walkSysDesc {
-				localPortNum, remIndex, ok := parseRemoteIndexes(fullOID, lldpRemSysDescBase)
-				if !ok {
-					continue
-				}
-				key := strconv.Itoa(localPortNum) + "/" + strconv.Itoa(remIndex)
-				entry := remoteEntries[key]
-				if entry == nil {
-					entry = &remoteEntry{LocalPortNum: localPortNum, RemIndex: remIndex}
-					remoteEntries[key] = entry
-				}
-				entry.SysDesc = strings.TrimSpace(val)
+		walkSysDesc, err := walkWithTimeout(ctx, deviceWalkTimeout, func() (map[string]string, error) {
+			return client.WalkDevice(d, lldpRemSysDescBase)
+		})
+		if err != nil {
+			logger.Warn("LLDP: skip device due to incomplete walk set", zap.String("ip", d.IP), zap.String("table", "lldpRemSysDesc"), zap.Error(err))
+			continue
+		}
+		for fullOID, val := range walkSysDesc {
+			localPortNum, remIndex, ok := parseRemoteIndexes(fullOID, lldpRemSysDescBase)
+			if !ok {
+				continue
 			}
+			key := strconv.Itoa(localPortNum) + "/" + strconv.Itoa(remIndex)
+			entry := remoteEntries[key]
+			if entry == nil {
+				if len(remoteEntries) >= maxRemoteEntries {
+					logger.Warn("LLDP: remote entry cap reached, skipping remaining entries",
+						zap.String("ip", d.IP),
+						zap.Int("max_remote_entries", maxRemoteEntries))
+					break
+				}
+				entry = &remoteEntry{LocalPortNum: localPortNum, RemIndex: remIndex}
+				remoteEntries[key] = entry
+			}
+			entry.SysDesc = strings.TrimSpace(val)
 		}
 
 		// remote port ID/desc
-		walkPortId, err := client.WalkDevice(d, lldpRemPortIdBase)
-		if err == nil {
-			for fullOID, val := range walkPortId {
-				localPortNum, remIndex, ok := parseRemoteIndexes(fullOID, lldpRemPortIdBase)
-				if !ok {
-					continue
-				}
-				key := strconv.Itoa(localPortNum) + "/" + strconv.Itoa(remIndex)
-				entry := remoteEntries[key]
-				if entry == nil {
-					entry = &remoteEntry{LocalPortNum: localPortNum, RemIndex: remIndex}
-					remoteEntries[key] = entry
-				}
-				entry.PortID = strings.TrimSpace(val)
+		walkPortId, err := walkWithTimeout(ctx, deviceWalkTimeout, func() (map[string]string, error) {
+			return client.WalkDevice(d, lldpRemPortIdBase)
+		})
+		if err != nil {
+			logger.Warn("LLDP: skip device due to incomplete walk set", zap.String("ip", d.IP), zap.String("table", "lldpRemPortId"), zap.Error(err))
+			continue
+		}
+		for fullOID, val := range walkPortId {
+			localPortNum, remIndex, ok := parseRemoteIndexes(fullOID, lldpRemPortIdBase)
+			if !ok {
+				continue
 			}
+			key := strconv.Itoa(localPortNum) + "/" + strconv.Itoa(remIndex)
+			entry := remoteEntries[key]
+			if entry == nil {
+				if len(remoteEntries) >= maxRemoteEntries {
+					logger.Warn("LLDP: remote entry cap reached, skipping remaining entries",
+						zap.String("ip", d.IP),
+						zap.Int("max_remote_entries", maxRemoteEntries))
+					break
+				}
+				entry = &remoteEntry{LocalPortNum: localPortNum, RemIndex: remIndex}
+				remoteEntries[key] = entry
+			}
+			entry.PortID = strings.TrimSpace(val)
 		}
 
-		walkPortDesc, err := client.WalkDevice(d, lldpRemPortDescBase)
-		if err == nil {
-			for fullOID, val := range walkPortDesc {
-				localPortNum, remIndex, ok := parseRemoteIndexes(fullOID, lldpRemPortDescBase)
-				if !ok {
-					continue
-				}
-				key := strconv.Itoa(localPortNum) + "/" + strconv.Itoa(remIndex)
-				entry := remoteEntries[key]
-				if entry == nil {
-					entry = &remoteEntry{LocalPortNum: localPortNum, RemIndex: remIndex}
-					remoteEntries[key] = entry
-				}
-				entry.PortDesc = strings.TrimSpace(val)
+		walkPortDesc, err := walkWithTimeout(ctx, deviceWalkTimeout, func() (map[string]string, error) {
+			return client.WalkDevice(d, lldpRemPortDescBase)
+		})
+		if err != nil {
+			logger.Warn("LLDP: skip device due to incomplete walk set", zap.String("ip", d.IP), zap.String("table", "lldpRemPortDesc"), zap.Error(err))
+			continue
+		}
+		for fullOID, val := range walkPortDesc {
+			localPortNum, remIndex, ok := parseRemoteIndexes(fullOID, lldpRemPortDescBase)
+			if !ok {
+				continue
 			}
+			key := strconv.Itoa(localPortNum) + "/" + strconv.Itoa(remIndex)
+			entry := remoteEntries[key]
+			if entry == nil {
+				if len(remoteEntries) >= maxRemoteEntries {
+					logger.Warn("LLDP: remote entry cap reached, skipping remaining entries",
+						zap.String("ip", d.IP),
+						zap.Int("max_remote_entries", maxRemoteEntries))
+					break
+				}
+				entry = &remoteEntry{LocalPortNum: localPortNum, RemIndex: remIndex}
+				remoteEntries[key] = entry
+			}
+			entry.PortDesc = strings.TrimSpace(val)
 		}
 
 		// Persist links.

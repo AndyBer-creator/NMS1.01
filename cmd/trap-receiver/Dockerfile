@@ -13,7 +13,7 @@ COPY internal/ ./internal/
 WORKDIR /src/cmd/trap-receiver
 RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /app/trap-receiver .
 
-FROM alpine:3.21
+FROM alpine:3.22
 RUN apk --no-cache add tzdata ca-certificates net-snmp libcap-setcap
 WORKDIR /app
 COPY --from=builder /app/trap-receiver .

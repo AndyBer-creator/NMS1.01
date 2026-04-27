@@ -26,7 +26,7 @@ func Router(handlers *Handlers) http.Handler {
 func terminalWSRouter(handlers *Handlers) http.Handler {
 	r := chi.NewRouter()
 	r.Use(middleware.RequestID)
-	r.Use(middleware.Logger)
+	r.Use(AccessLog)
 	r.Use(middleware.Recoverer)
 	r.Use(SecurityHeaders)
 	r.Use(EnforceHTTPS)
@@ -37,7 +37,7 @@ func terminalWSRouter(handlers *Handlers) http.Handler {
 func mainRouter(handlers *Handlers) *chi.Mux {
 	r := chi.NewRouter()
 	r.Use(middleware.RequestID)
-	r.Use(PrometheusMetrics, middleware.Logger, middleware.Recoverer)
+	r.Use(PrometheusMetrics, AccessLog, middleware.Recoverer)
 	r.Use(SecurityHeaders)
 	r.Use(EnforceHTTPS)
 

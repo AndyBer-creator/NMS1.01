@@ -147,6 +147,20 @@ func TestLoginPost_BadFormReturnsBadRequest(t *testing.T) {
 	}
 }
 
+func TestLoginPost_LargeBodyReturnsRequestEntityTooLarge(t *testing.T) {
+	h := newLoginTestHandlers(t)
+	setAuthCredsForTest(t, "admin", "secret", "", "")
+	t.Setenv("NMS_LOGIN_MAX_BODY_BYTES", "32")
+	req := httptest.NewRequest(http.MethodPost, "/login", strings.NewReader("username=admin&password=secret&padding=abcdefghijklmnopqrstuvwxyz"))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	rr := httptest.NewRecorder()
+
+	h.LoginPost(rr, req)
+	if rr.Code != http.StatusRequestEntityTooLarge {
+		t.Fatalf("expected 413, got %d", rr.Code)
+	}
+}
+
 func TestLoginPost_InvalidCredentialsUnauthorized(t *testing.T) {
 	h := newLoginTestHandlers(t)
 	resetLoginLimiterForTest(t)

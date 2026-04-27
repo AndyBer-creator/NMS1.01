@@ -87,6 +87,12 @@ func clearAlertDeliveryEnv(t *testing.T) {
 	} {
 		t.Setenv(k, "")
 	}
+	alertWebhookRateMu.Lock()
+	alertWebhookRateState = map[string]webhookRateState{}
+	alertWebhookRateMu.Unlock()
+	alertWebhookDedupeMu.Lock()
+	alertWebhookDedupe = map[string]time.Time{}
+	alertWebhookDedupeMu.Unlock()
 }
 
 func setAlertWebhookToken(t *testing.T) string {
@@ -594,6 +600,107 @@ func TestIntegration_HTTP_AlertWebhookMixedStatusesCountsOnlyFiringDelivery(t *t
 	}
 	if v, ok := out["email_skipped"].(float64); !ok || int(v) != 1 {
 		t.Fatalf("email_skipped: got %v", out["email_skipped"])
+	}
+}
+
+func TestIntegration_HTTP_AlertWebhookRateLimited(t *testing.T) {
+	clearAlertDeliveryEnv(t)
+	t.Setenv("NMS_ALERT_WEBHOOK_RATE_LIMIT_PER_MIN", "1")
+	alertWebhookRateMu.Lock()
+	alertWebhookRateState = map[string]webhookRateState{}
+	alertWebhookRateMu.Unlock()
+	token := setAlertWebhookToken(t)
+	srv, _ := newIntegrationServer(t, integrationAuthOpts{})
+	payload := `{"status":"firing","alerts":[{"status":"firing","labels":{"alertname":"RateLimitOne"},"annotations":{"summary":"sum","description":"desc"},"startsAt":"2026-01-01T00:00:00Z"}]}`
+	req1, err := http.NewRequest(http.MethodPost, srv.URL+"/alerts/webhook", strings.NewReader(payload))
+	if err != nil {
+		t.Fatal(err)
+	}
+	req1.Header.Set("Content-Type", "application/json")
+	req1.Header.Set("Authorization", "Bearer "+token)
+	req1.RemoteAddr = "198.51.100.250:50001"
+	res1, err := http.DefaultClient.Do(req1)
+	if err != nil {
+		t.Fatalf("POST /alerts/webhook first: %v", err)
+	}
+	_, _ = io.Copy(io.Discard, res1.Body)
+	_ = res1.Body.Close()
+	if res1.StatusCode != http.StatusOK {
+		t.Fatalf("expected first request 200, got %d", res1.StatusCode)
+	}
+
+	req2, err := http.NewRequest(http.MethodPost, srv.URL+"/alerts/webhook", strings.NewReader(payload))
+	if err != nil {
+		t.Fatal(err)
+	}
+	req2.Header.Set("Content-Type", "application/json")
+	req2.Header.Set("Authorization", "Bearer "+token)
+	req2.RemoteAddr = "198.51.100.250:50001"
+	res2, err := http.DefaultClient.Do(req2)
+	if err != nil {
+		t.Fatalf("POST /alerts/webhook second: %v", err)
+	}
+	body2, _ := io.ReadAll(res2.Body)
+	_ = res2.Body.Close()
+	if res2.StatusCode != http.StatusTooManyRequests {
+		t.Fatalf("expected second request 429, got %d: %s", res2.StatusCode, body2)
+	}
+	if res2.Header.Get("Retry-After") == "" {
+		t.Fatal("expected Retry-After header on rate limit")
+	}
+}
+
+func TestIntegration_HTTP_AlertWebhookIdempotencySuppressesDuplicatePayload(t *testing.T) {
+	clearAlertDeliveryEnv(t)
+	t.Setenv("NMS_ALERT_WEBHOOK_IDEMPOTENCY_TTL", "5m")
+	token := setAlertWebhookToken(t)
+	srv, _ := newIntegrationServer(t, integrationAuthOpts{})
+	payload := `{"status":"firing","alerts":[{"status":"firing","labels":{"alertname":"DupOne"},"annotations":{"summary":"sum","description":"desc"},"startsAt":"2026-01-01T00:00:00Z"}]}`
+
+	req1, err := http.NewRequest(http.MethodPost, srv.URL+"/alerts/webhook", strings.NewReader(payload))
+	if err != nil {
+		t.Fatal(err)
+	}
+	req1.Header.Set("Content-Type", "application/json")
+	req1.Header.Set("Authorization", "Bearer "+token)
+	res1, err := http.DefaultClient.Do(req1)
+	if err != nil {
+		t.Fatalf("POST /alerts/webhook first: %v", err)
+	}
+	body1, _ := io.ReadAll(res1.Body)
+	_ = res1.Body.Close()
+	if res1.StatusCode != http.StatusOK {
+		t.Fatalf("expected first request 200, got %d: %s", res1.StatusCode, body1)
+	}
+	var out1 map[string]any
+	if err := json.Unmarshal(body1, &out1); err != nil {
+		t.Fatalf("decode first json: %v", err)
+	}
+	if v, ok := out1["suppressed"].(float64); !ok || int(v) != 0 {
+		t.Fatalf("first suppressed: got %v", out1["suppressed"])
+	}
+
+	req2, err := http.NewRequest(http.MethodPost, srv.URL+"/alerts/webhook", strings.NewReader(payload))
+	if err != nil {
+		t.Fatal(err)
+	}
+	req2.Header.Set("Content-Type", "application/json")
+	req2.Header.Set("Authorization", "Bearer "+token)
+	res2, err := http.DefaultClient.Do(req2)
+	if err != nil {
+		t.Fatalf("POST /alerts/webhook second: %v", err)
+	}
+	body2, _ := io.ReadAll(res2.Body)
+	_ = res2.Body.Close()
+	if res2.StatusCode != http.StatusOK {
+		t.Fatalf("expected second request 200, got %d: %s", res2.StatusCode, body2)
+	}
+	var out2 map[string]any
+	if err := json.Unmarshal(body2, &out2); err != nil {
+		t.Fatalf("decode second json: %v", err)
+	}
+	if v, ok := out2["suppressed"].(float64); !ok || int(v) != 1 {
+		t.Fatalf("second suppressed: got %v", out2["suppressed"])
 	}
 }
 

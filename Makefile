@@ -1,6 +1,6 @@
 SHELL := /bin/bash
 
-.PHONY: migrate rotate-db-secrets sbom server worker traps dev docker-up docker-up-bridge docker-logs compose-up compose-down compose-down-secrets compose-up-secrets compose-logs compose-logs-secrets compose-bridge-up compose-bridge-down compose-bridge-down-secrets compose-bridge-up-secrets compose-bridge-logs compose-bridge-logs-secrets clean backup-db restore-db smoke-test rbac-smoke init-secrets log-secrets-check slo-gates alert-rules-check shell-syntax-check tool-version-check https-policy-check compose-security-check openapi-breaking-check chaos-worker-check test test-race test-cover test-integration lint vuln gosec check-coverage e2e-http-smoke e2e-auth-smoke contract-http-spec load-http-readonly k6-readonly k6-session-csrf k6-logout-csrf k6-admin-csrf ci-local static-css check-static-css vendor-js
+.PHONY: migrate rotate-db-secrets metrics-backfill-legacy metrics-backfill-legacy-finalize sbom server worker traps dev docker-up docker-up-bridge docker-logs compose-up compose-down compose-down-secrets compose-up-secrets compose-logs compose-logs-secrets compose-bridge-up compose-bridge-down compose-bridge-down-secrets compose-bridge-up-secrets compose-bridge-logs compose-bridge-logs-secrets clean backup-db restore-db smoke-test grpc-auth-sync-check rbac-smoke init-secrets log-secrets-check slo-gates alert-rules-check shell-syntax-check tool-version-check https-policy-check compose-security-check openapi-breaking-check chaos-worker-check test test-race test-cover test-integration lint vuln gosec check-coverage e2e-http-smoke e2e-auth-smoke contract-http-spec load-http-readonly k6-readonly k6-session-csrf k6-logout-csrf k6-admin-csrf ci-local static-css check-static-css vendor-js
 
 # Если .env есть — подхватываем (docker, migrate, smoke). Без файла цели вроде `make test` всё равно работают.
 ifneq (,$(wildcard .env))
@@ -37,6 +37,12 @@ migrate:
 rotate-db-secrets:
 	go run ./cmd/rotate-db-secrets/
 
+metrics-backfill-legacy:
+	go run ./cmd/backfill-metrics-legacy/
+
+metrics-backfill-legacy-finalize:
+	go run ./cmd/backfill-metrics-legacy/ --finalize
+
 sbom:
 	./scripts/generate_sbom.sh
 
@@ -50,7 +56,15 @@ traps:
 	go run ./cmd/trap-receiver/
 
 dev:
-	$(MAKE) migrate && $(MAKE) server & sleep 3 && $(MAKE) worker &
+	@set -euo pipefail; \
+	$(MAKE) migrate; \
+	$(MAKE) server & \
+	server_pid=$$!; \
+	sleep 3; \
+	$(MAKE) worker & \
+	worker_pid=$$!; \
+	trap 'kill $$server_pid $$worker_pid 2>/dev/null || true; wait $$server_pid $$worker_pid 2>/dev/null || true' INT TERM EXIT; \
+	wait $$server_pid $$worker_pid
 
 docker-up:
 	@test -f .env || (echo "Missing .env in repo root"; exit 1)
@@ -124,6 +138,9 @@ restore-db:
 
 smoke-test:
 	./scripts/smoke_test.sh
+
+grpc-auth-sync-check:
+	./scripts/check_grpc_auth_sync.sh
 
 rbac-smoke:
 	./scripts/rbac_smoke_test.sh

@@ -9,11 +9,17 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"sync/atomic"
 	"strings"
 	"testing"
 	"time"
 
 	"NMS1/internal/config"
+
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/metadata"
+	"google.golang.org/grpc/status"
 
 	"go.uber.org/zap"
 )
@@ -151,5 +157,145 @@ func TestRun_GracefulShutdownAfterHealth(t *testing.T) {
 		}
 	case <-time.After(15 * time.Second):
 		t.Fatal("timeout waiting for shutdown")
+	}
+}
+
+func TestIsPublicBindAddress(t *testing.T) {
+	tests := []struct {
+		addr string
+		want bool
+	}{
+		{"", false},
+		{"127.0.0.1:9000", false},
+		{":9000", true},
+		{"0.0.0.0:9000", true},
+		{"[::]:9000", true},
+		{"localhost", false},
+	}
+	for _, tc := range tests {
+		if got := isPublicBindAddress(tc.addr); got != tc.want {
+			t.Fatalf("isPublicBindAddress(%q)=%v want %v", tc.addr, got, tc.want)
+		}
+	}
+}
+
+func TestEnvIntOrDefault(t *testing.T) {
+	t.Setenv("NMS_TEST_INT", "")
+	if got := envIntOrDefault("NMS_TEST_INT", 7); got != 7 {
+		t.Fatalf("empty env: got %d", got)
+	}
+	t.Setenv("NMS_TEST_INT", "11")
+	if got := envIntOrDefault("NMS_TEST_INT", 7); got != 11 {
+		t.Fatalf("valid env: got %d", got)
+	}
+	t.Setenv("NMS_TEST_INT", "bad")
+	if got := envIntOrDefault("NMS_TEST_INT", 7); got != 7 {
+		t.Fatalf("invalid env: got %d", got)
+	}
+}
+
+func TestEnvBoolOrDefault(t *testing.T) {
+	t.Setenv("NMS_TEST_BOOL", "")
+	if got := envBoolOrDefault("NMS_TEST_BOOL", true); !got {
+		t.Fatalf("empty env should use fallback")
+	}
+	t.Setenv("NMS_TEST_BOOL", "false")
+	if got := envBoolOrDefault("NMS_TEST_BOOL", true); got {
+		t.Fatalf("valid bool env should override fallback")
+	}
+	t.Setenv("NMS_TEST_BOOL", "oops")
+	if got := envBoolOrDefault("NMS_TEST_BOOL", false); got {
+		t.Fatalf("invalid bool env should use fallback")
+	}
+}
+
+func TestFirstMetadataValue(t *testing.T) {
+	if got := firstMetadataValue(nil); got != "" {
+		t.Fatalf("nil slice: got %q", got)
+	}
+	if got := firstMetadataValue([]string{"a", "b"}); got != "a" {
+		t.Fatalf("first value mismatch: %q", got)
+	}
+}
+
+func TestGRPCTokenInterceptor(t *testing.T) {
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return "ok", nil
+	}
+	info := &grpc.UnaryServerInfo{FullMethod: "/nms.Trap/Ingest"}
+
+	interceptorNoToken := grpcTokenInterceptor(func() string { return "" })
+	resp, err := interceptorNoToken(context.Background(), nil, info, handler)
+	if status.Code(err) != codes.Unauthenticated || resp != nil {
+		t.Fatalf("no token path should fail closed: resp=%v err=%v", resp, err)
+	}
+
+	interceptor := grpcTokenInterceptor(func() string { return "secret-token" })
+	_, err = interceptor(context.Background(), nil, info, handler)
+	if status.Code(err) != codes.Unauthenticated {
+		t.Fatalf("missing metadata: want unauthenticated, got %v", err)
+	}
+
+	ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs("authorization", "Bearer secret-token"))
+	resp, err = interceptor(ctx, nil, info, handler)
+	if err != nil || resp != "ok" {
+		t.Fatalf("bearer token path failed: resp=%v err=%v", resp, err)
+	}
+
+	ctx = metadata.NewIncomingContext(context.Background(), metadata.Pairs("x-nms-grpc-token", "secret-token"))
+	resp, err = interceptor(ctx, nil, info, handler)
+	if err != nil || resp != "ok" {
+		t.Fatalf("x-nms-grpc-token path failed: resp=%v err=%v", resp, err)
+	}
+}
+
+func TestNewCachedTokenProvider(t *testing.T) {
+	var calls int32
+	provider := newCachedTokenProvider(100*time.Millisecond, func() string {
+		atomic.AddInt32(&calls, 1)
+		return "token"
+	})
+	if got := provider(); got != "token" {
+		t.Fatalf("unexpected token: %q", got)
+	}
+	_ = provider()
+	if atomic.LoadInt32(&calls) != 1 {
+		t.Fatalf("expected single load call in ttl window, got %d", calls)
+	}
+	time.Sleep(120 * time.Millisecond)
+	_ = provider()
+	if atomic.LoadInt32(&calls) != 2 {
+		t.Fatalf("expected reload after ttl, got %d", calls)
+	}
+}
+
+func TestGRPCServerTLSCredsFromEnv(t *testing.T) {
+	t.Setenv("NMS_GRPC_TLS_CERT_FILE", "")
+	t.Setenv("NMS_GRPC_TLS_KEY_FILE", "")
+	creds, err := grpcServerTLSCredsFromEnv()
+	if err != nil || creds != nil {
+		t.Fatalf("empty tls env should disable tls: creds=%v err=%v", creds, err)
+	}
+
+	t.Setenv("NMS_GRPC_TLS_CERT_FILE", "/no/such/cert.pem")
+	t.Setenv("NMS_GRPC_TLS_KEY_FILE", "/no/such/key.pem")
+	creds, err = grpcServerTLSCredsFromEnv()
+	if err == nil || creds != nil {
+		t.Fatalf("invalid cert/key should return error")
+	}
+}
+
+func TestTrapIncidentSuppressionWindow(t *testing.T) {
+	t.Setenv("NMS_TRAP_INCIDENT_SUPPRESSION_WINDOW", "")
+	if got := trapIncidentSuppressionWindow(); got != 10*time.Minute {
+		t.Fatalf("default window mismatch: %v", got)
+	}
+	t.Setenv("NMS_TRAP_INCIDENT_SUPPRESSION_WINDOW", "30s")
+	if got := trapIncidentSuppressionWindow(); got != 30*time.Second {
+		t.Fatalf("configured window mismatch: %v", got)
+	}
+	t.Setenv("NMS_TRAP_INCIDENT_SUPPRESSION_WINDOW", "bad")
+	if got := trapIncidentSuppressionWindow(); got != 10*time.Minute {
+		t.Fatalf("invalid window should fallback, got %v", got)
 	}
 }

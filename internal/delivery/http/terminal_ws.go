@@ -32,6 +32,7 @@ const (
 	defaultTerminalWSReadLimit = int64(64 * 1024)
 	maxTerminalWSReadLimit     = int64(1024 * 1024)
 	maxTerminalAuthFieldBytes  = 256
+	terminalWSTokenMACContext  = "nms:terminal-ws:v1"
 )
 
 var terminalUpgrader = websocket.Upgrader{
@@ -192,6 +193,8 @@ func signTerminalWSToken(user string, rl role, deviceID int) (string, error) {
 	}
 	key := sessionSigningKey()
 	mac := hmac.New(sha256.New, key[:])
+	_, _ = mac.Write([]byte(terminalWSTokenMACContext))
+	_, _ = mac.Write([]byte{0})
 	_, _ = mac.Write(payload)
 	sig := mac.Sum(nil)
 	return base64.RawURLEncoding.EncodeToString(payload) + "." + base64.RawURLEncoding.EncodeToString(sig), nil
@@ -212,6 +215,8 @@ func verifyTerminalWSToken(token string, deviceID int) *authUser {
 	}
 	key := sessionSigningKey()
 	mac := hmac.New(sha256.New, key[:])
+	_, _ = mac.Write([]byte(terminalWSTokenMACContext))
+	_, _ = mac.Write([]byte{0})
 	_, _ = mac.Write(payload)
 	got := mac.Sum(nil)
 	if subtle.ConstantTimeCompare(got, wantSig) != 1 {
@@ -252,12 +257,10 @@ func terminalTokenFromSubprotocol(r *http.Request) string {
 // С сервера: бинарные кадры — вывод терминала; при ошибке — текст JSON {"type":"error",...}.
 func (h *Handlers) TerminalWS(w http.ResponseWriter, r *http.Request) {
 	// Дублируем в stderr: zap пишет в logs/nms-api.log, а docker logs показывает только stdout/stderr chi.
-	log.Printf("nms-api: terminal-ws request path=%s kind=%s remote=%s origin=%q host=%q",
-		r.URL.Path, r.URL.Query().Get("kind"), r.RemoteAddr, r.Header.Get("Origin"), r.Host)
+	log.Printf("nms-api: terminal-ws request path=%s kind=%s", r.URL.Path, r.URL.Query().Get("kind"))
 	h.logger.Info("terminal ws request",
 		zap.String("path", r.URL.Path),
 		zap.String("query_kind", r.URL.Query().Get("kind")),
-		zap.String("remote_addr", r.RemoteAddr),
 	)
 	id, err := deviceIDFromChi(r)
 	if err != nil {
@@ -275,15 +278,14 @@ func (h *Handlers) TerminalWS(w http.ResponseWriter, r *http.Request) {
 				retrySec = 1
 			}
 			w.Header().Set("Retry-After", fmt.Sprintf("%d", retrySec))
-			log.Printf("nms-api: terminal-ws 429 too many auth attempts device_id=%d remote=%s", id, r.RemoteAddr)
+			log.Printf("nms-api: terminal-ws 429 too many auth attempts device_id=%d", id)
 			http.Error(w, "Too many authentication attempts", http.StatusTooManyRequests)
 			return
 		}
 		u = authRes.user
 	}
 	if u == nil {
-		log.Printf("nms-api: terminal-ws 403 forbidden (no admin session/token) device_id=%d remote=%s origin=%q",
-			id, r.RemoteAddr, r.Header.Get("Origin"))
+		log.Printf("nms-api: terminal-ws 403 forbidden (no admin session/token) device_id=%d", id)
 		http.Error(w, "forbidden", http.StatusForbidden)
 		return
 	}
@@ -299,18 +301,14 @@ func (h *Handlers) TerminalWS(w http.ResponseWriter, r *http.Request) {
 
 	conn, err := terminalUpgrader.Upgrade(w, r, nil)
 	if err != nil {
-		log.Printf("nms-api: terminal-ws upgrade FAILED err=%v host=%q origin=%q xf_proto=%q remote=%s",
-			err, r.Host, r.Header.Get("Origin"), r.Header.Get("X-Forwarded-Proto"), r.RemoteAddr)
+		log.Printf("nms-api: terminal-ws upgrade FAILED err=%v host=%q", err, r.Host)
 		h.logger.Warn("terminal ws upgrade failed",
 			zap.Error(err),
 			zap.String("host", r.Host),
-			zap.String("origin", r.Header.Get("Origin")),
-			zap.String("xf_proto", r.Header.Get("X-Forwarded-Proto")),
-			zap.String("remote_addr", r.RemoteAddr),
 		)
 		return
 	}
-	log.Printf("nms-api: terminal-ws upgraded ok device_id=%d kind=%s remote=%s", id, kind, r.RemoteAddr)
+	log.Printf("nms-api: terminal-ws upgraded ok device_id=%d kind=%s", id, kind)
 	conn.SetReadLimit(terminalWSReadLimit())
 
 	pingStop := make(chan struct{})

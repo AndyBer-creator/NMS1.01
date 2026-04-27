@@ -4,11 +4,14 @@ import (
 	"NMS1/internal/config"
 	"NMS1/internal/infrastructure/postgres"
 	"context"
-	"crypto/subtle"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"NMS1/internal/services"
@@ -18,12 +21,102 @@ import (
 
 type alertmanagerWebhookPayload struct {
 	Status string `json:"status"`
-	Alerts []struct {
-		Status      string            `json:"status"`
-		Labels      map[string]string `json:"labels"`
-		Annotations map[string]string `json:"annotations"`
-		StartsAt    time.Time         `json:"startsAt"`
-	} `json:"alerts"`
+	Alerts []alertmanagerWebhookPayloadAlert `json:"alerts"`
+}
+
+type alertmanagerWebhookPayloadAlert struct {
+	Status      string            `json:"status"`
+	Labels      map[string]string `json:"labels"`
+	Annotations map[string]string `json:"annotations"`
+	StartsAt    time.Time         `json:"startsAt"`
+}
+
+type webhookRateState struct {
+	windowStart time.Time
+	count       int
+}
+
+var (
+	alertWebhookRateMu    sync.Mutex
+	alertWebhookRateState = map[string]webhookRateState{}
+	alertWebhookDedupeMu  sync.Mutex
+	alertWebhookDedupe    = map[string]time.Time{}
+)
+
+func alertWebhookRateLimitPerMinute() int {
+	v := strings.TrimSpace(config.EnvOrFile("NMS_ALERT_WEBHOOK_RATE_LIMIT_PER_MIN"))
+	if v == "" {
+		return 60
+	}
+	n, err := strconv.Atoi(v)
+	if err != nil || n <= 0 {
+		return 60
+	}
+	return n
+}
+
+func allowAlertWebhookRequest(ip string, now time.Time) (bool, time.Duration) {
+	limit := alertWebhookRateLimitPerMinute()
+	if limit <= 0 {
+		return true, 0
+	}
+	key := strings.TrimSpace(ip)
+	if key == "" {
+		key = "unknown"
+	}
+	alertWebhookRateMu.Lock()
+	defer alertWebhookRateMu.Unlock()
+	state := alertWebhookRateState[key]
+	if state.windowStart.IsZero() || now.Sub(state.windowStart) >= time.Minute {
+		state = webhookRateState{windowStart: now, count: 0}
+	}
+	if state.count >= limit {
+		retry := state.windowStart.Add(time.Minute).Sub(now)
+		if retry < 0 {
+			retry = 0
+		}
+		return false, retry
+	}
+	state.count++
+	alertWebhookRateState[key] = state
+	return true, 0
+}
+
+func alertWebhookIdempotencyTTL() time.Duration {
+	v := strings.TrimSpace(config.EnvOrFile("NMS_ALERT_WEBHOOK_IDEMPOTENCY_TTL"))
+	if v == "" {
+		return 2 * time.Minute
+	}
+	d, err := time.ParseDuration(v)
+	if err != nil || d <= 0 {
+		return 2 * time.Minute
+	}
+	return d
+}
+
+func alertFingerprint(a alertmanagerWebhookPayloadAlert) string {
+	b, _ := json.Marshal(a)
+	sum := sha256.Sum256(b)
+	return hex.EncodeToString(sum[:])
+}
+
+func shouldProcessAlertFingerprint(fp string, now time.Time) bool {
+	ttl := alertWebhookIdempotencyTTL()
+	if ttl <= 0 || fp == "" {
+		return true
+	}
+	alertWebhookDedupeMu.Lock()
+	defer alertWebhookDedupeMu.Unlock()
+	for k, exp := range alertWebhookDedupe {
+		if now.After(exp) {
+			delete(alertWebhookDedupe, k)
+		}
+	}
+	if exp, ok := alertWebhookDedupe[fp]; ok && now.Before(exp) {
+		return false
+	}
+	alertWebhookDedupe[fp] = now.Add(ttl)
+	return true
 }
 
 func (h *Handlers) alertWebhookToken(ctx context.Context) string {
@@ -46,10 +139,7 @@ func (h *Handlers) alertWebhookAuthorized(r *http.Request) bool {
 	if strings.HasPrefix(strings.ToLower(got), "bearer ") {
 		got = strings.TrimSpace(got[7:])
 	}
-	if len(got) != len(want) {
-		return false
-	}
-	return subtle.ConstantTimeCompare([]byte(got), []byte(want)) == 1
+	return constantTimeTokenEqual(got, want)
 }
 
 // AlertWebhook receives Alertmanager webhooks and forwards to Telegram/Email.
@@ -60,6 +150,15 @@ func (h *Handlers) AlertWebhook(w http.ResponseWriter, r *http.Request) {
 	}
 	if !h.alertWebhookAuthorized(r) {
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+	if allowed, retryAfter := allowAlertWebhookRequest(clientIP(r), time.Now()); !allowed {
+		secs := int(retryAfter.Seconds()) + 1
+		if secs < 1 {
+			secs = 1
+		}
+		w.Header().Set("Retry-After", fmt.Sprintf("%d", secs))
+		http.Error(w, "Too Many Requests", http.StatusTooManyRequests)
 		return
 	}
 	var p alertmanagerWebhookPayload
@@ -110,9 +209,13 @@ func (h *Handlers) AlertWebhook(w http.ResponseWriter, r *http.Request) {
 		telegramChatID,
 	)
 
-	var sent, skipped int
+	var sent, skipped, suppressed int
 	for _, a := range p.Alerts {
 		if strings.ToLower(strings.TrimSpace(a.Status)) != "firing" {
+			continue
+		}
+		if !shouldProcessAlertFingerprint(alertFingerprint(a), time.Now()) {
+			suppressed++
 			continue
 		}
 		name := strings.TrimSpace(a.Labels["alertname"])
@@ -155,7 +258,8 @@ func (h *Handlers) AlertWebhook(w http.ResponseWriter, r *http.Request) {
 	h.logger.Info("alert webhook processed",
 		zap.Int("alerts_total", len(p.Alerts)),
 		zap.Int("email_sent", sent),
-		zap.Int("email_skipped", skipped))
+		zap.Int("email_skipped", skipped),
+		zap.Int("suppressed", suppressed))
 
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]any{
@@ -163,6 +267,7 @@ func (h *Handlers) AlertWebhook(w http.ResponseWriter, r *http.Request) {
 		"alerts_total":  len(p.Alerts),
 		"email_sent":    sent,
 		"email_skipped": skipped,
+		"suppressed":    suppressed,
 	})
 }
 

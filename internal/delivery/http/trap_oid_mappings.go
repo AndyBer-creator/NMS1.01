@@ -16,7 +16,7 @@ func (h *Handlers) TrapOIDMappingsPage(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handlers) ListTrapOIDMappings(w http.ResponseWriter, r *http.Request) {
-	if h.TrapsRepo == nil {
+	if h.trapHTTPRepo == nil {
 		http.Error(w, "traps repository is not configured", http.StatusInternalServerError)
 		return
 	}
@@ -30,7 +30,7 @@ func (h *Handlers) ListTrapOIDMappings(w http.ResponseWriter, r *http.Request) {
 		}
 		enabled = &v
 	}
-	items, err := h.TrapsRepo.ListOIDMappings(r.Context(), vendor, enabled)
+	items, err := h.trapHTTPRepo.ListOIDMappings(r.Context(), vendor, enabled)
 	if err != nil {
 		h.logger.Error("ListOIDMappings failed", zap.Error(err))
 		http.Error(w, "failed to load trap OID mappings", http.StatusInternalServerError)
@@ -41,7 +41,7 @@ func (h *Handlers) ListTrapOIDMappings(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handlers) CreateTrapOIDMapping(w http.ResponseWriter, r *http.Request) {
-	if h.TrapsRepo == nil {
+	if h.trapHTTPRepo == nil {
 		http.Error(w, "traps repository is not configured", http.StatusInternalServerError)
 		return
 	}
@@ -50,7 +50,7 @@ func (h *Handlers) CreateTrapOIDMapping(w http.ResponseWriter, r *http.Request) 
 		http.Error(w, "invalid json body", http.StatusBadRequest)
 		return
 	}
-	created, err := h.TrapsRepo.CreateOIDMapping(r.Context(), &input)
+	created, err := h.trapHTTPRepo.CreateOIDMapping(r.Context(), &input)
 	if err != nil {
 		h.logger.Warn("CreateOIDMapping failed", zap.Error(err))
 		http.Error(w, "invalid trap OID mapping", http.StatusBadRequest)
@@ -61,7 +61,7 @@ func (h *Handlers) CreateTrapOIDMapping(w http.ResponseWriter, r *http.Request) 
 }
 
 func (h *Handlers) UpdateTrapOIDMapping(w http.ResponseWriter, r *http.Request) {
-	if h.TrapsRepo == nil {
+	if h.trapHTTPRepo == nil {
 		http.Error(w, "traps repository is not configured", http.StatusInternalServerError)
 		return
 	}
@@ -75,7 +75,7 @@ func (h *Handlers) UpdateTrapOIDMapping(w http.ResponseWriter, r *http.Request) 
 		http.Error(w, "invalid json body", http.StatusBadRequest)
 		return
 	}
-	updated, err := h.TrapsRepo.UpdateOIDMapping(r.Context(), id, &input)
+	updated, err := h.trapHTTPRepo.UpdateOIDMapping(r.Context(), id, &input)
 	if err != nil {
 		h.logger.Warn("UpdateOIDMapping failed", zap.Int64("id", id), zap.Error(err))
 		http.Error(w, "invalid trap OID mapping update", http.StatusBadRequest)
@@ -90,7 +90,7 @@ func (h *Handlers) UpdateTrapOIDMapping(w http.ResponseWriter, r *http.Request) 
 }
 
 func (h *Handlers) DeleteTrapOIDMapping(w http.ResponseWriter, r *http.Request) {
-	if h.TrapsRepo == nil {
+	if h.trapHTTPRepo == nil {
 		http.Error(w, "traps repository is not configured", http.StatusInternalServerError)
 		return
 	}
@@ -99,7 +99,7 @@ func (h *Handlers) DeleteTrapOIDMapping(w http.ResponseWriter, r *http.Request) 
 		http.Error(w, "bad mapping id", http.StatusBadRequest)
 		return
 	}
-	deleted, err := h.TrapsRepo.DeleteOIDMapping(r.Context(), id)
+	deleted, err := h.trapHTTPRepo.DeleteOIDMapping(r.Context(), id)
 	if err != nil {
 		h.logger.Error("DeleteOIDMapping failed", zap.Int64("id", id), zap.Error(err))
 		http.Error(w, "failed to delete trap OID mapping", http.StatusInternalServerError)

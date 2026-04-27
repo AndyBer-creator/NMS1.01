@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"strings"
 	"testing"
+	"unicode/utf8"
 )
 
 func TestTelegramAlert_SendCriticalTrap_OK(t *testing.T) {
@@ -70,6 +71,55 @@ func TestTelegramAlert_SendCriticalTrap_APIError(t *testing.T) {
 	err := ta.SendCriticalTrap("1.1.1.1", "o", "v")
 	if err == nil || !strings.Contains(err.Error(), "telegram API error") {
 		t.Fatalf("want API error, got %v", err)
+	}
+}
+
+func TestTelegramAlert_SendCriticalTrap_TruncatesVarsByRunes(t *testing.T) {
+	var payload map[string]string
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Fatalf("read body: %v", err)
+		}
+		if err := json.Unmarshal(body, &payload); err != nil {
+			t.Fatalf("json: %v", err)
+		}
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"ok":true}`))
+	}))
+	defer ts.Close()
+
+	ta := NewTelegramAlert("t", "1")
+	ta.HTTPClient = &http.Client{Transport: &rewriteHostTransport{
+		base:   http.DefaultTransport,
+		target: ts.URL,
+	}}
+
+	// 150 runes, all non-ASCII, to verify rune-safe truncation.
+	vars := strings.Repeat("Ж", 150)
+	if err := ta.SendCriticalTrap("10.0.0.1", "1.3.6", vars); err != nil {
+		t.Fatalf("SendCriticalTrap: %v", err)
+	}
+	if !utf8.ValidString(payload["text"]) {
+		t.Fatalf("telegram text must stay valid utf-8: %q", payload["text"])
+	}
+	if strings.Count(payload["text"], "Ж") < 100 {
+		t.Fatalf("expected at least 100 rune chars preserved in text: %q", payload["text"])
+	}
+	if strings.Contains(payload["text"], strings.Repeat("Ж", 130)) {
+		t.Fatalf("vars were not truncated to expected size: %q", payload["text"])
+	}
+}
+
+func TestTruncateRunes(t *testing.T) {
+	if got := truncateRunes("abcdef", 3); got != "abc" {
+		t.Fatalf("ascii truncate mismatch: %q", got)
+	}
+	if got := truncateRunes("Привет", 4); got != "Прив" {
+		t.Fatalf("unicode truncate mismatch: %q", got)
+	}
+	if got := truncateRunes("ok", 0); got != "" {
+		t.Fatalf("zero max should return empty string: %q", got)
 	}
 }
 

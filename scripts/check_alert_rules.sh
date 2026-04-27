@@ -10,20 +10,27 @@ if [[ ! -f "$RULES_FILE" ]]; then
   exit 1
 fi
 
-docker run --rm \
-  --entrypoint promtool \
-  -v "$PWD:/work" \
-  -w /work \
-  "$PROM_IMAGE" \
-  check rules "$RULES_FILE"
-
-if [[ -f "$RULES_TEST_FILE" ]]; then
+run_promtool() {
+  if command -v promtool >/dev/null 2>&1; then
+    promtool "$@"
+    return
+  fi
+  if ! command -v docker >/dev/null 2>&1; then
+    echo "alert-rules: neither promtool nor docker found in PATH" >&2
+    exit 1
+  fi
   docker run --rm \
     --entrypoint promtool \
     -v "$PWD:/work" \
     -w /work \
     "$PROM_IMAGE" \
-    test rules "$RULES_TEST_FILE"
+    "$@"
+}
+
+run_promtool check rules "$RULES_FILE"
+
+if [[ -f "$RULES_TEST_FILE" ]]; then
+  run_promtool test rules "$RULES_TEST_FILE"
   echo "alert-rules: unit tests OK ($RULES_TEST_FILE)"
 fi
 

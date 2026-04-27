@@ -174,43 +174,38 @@ func (r *Repo) RecordPollFailureTransition(ctx context.Context, deviceID int, st
 	}
 	errText = strings.TrimSpace(errText)
 
-	tx, err := r.db.BeginTx(ctx, nil)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = tx.Rollback() }()
-
-	var previousStatus string
-	if err := tx.QueryRowContext(ctx, `SELECT COALESCE(status, '') FROM devices WHERE id = $1 FOR UPDATE`, deviceID).Scan(&previousStatus); err != nil {
-		return err
-	}
-
-	if pollStatusWasOK(previousStatus) {
-		detail := status
-		if errText != "" {
-			detail += ": " + errText
-		}
-		if err := insertAvailabilityEventTx(ctx, tx, deviceID, "unavailable", detail); err != nil {
+	return r.InTx(ctx, func(tx *sql.Tx) error {
+		var previousStatus string
+		if err := tx.QueryRowContext(ctx, `SELECT COALESCE(status, '') FROM devices WHERE id = $1 FOR UPDATE`, deviceID).Scan(&previousStatus); err != nil {
 			return err
 		}
-		if err := createOrTouchOpenIncidentTx(ctx, tx, deviceID, "SNMP device unavailable", "critical", "polling", incidentDetails, suppressionWindow); err != nil {
-			return err
-		}
-	}
 
-	if _, err := tx.ExecContext(ctx, `
+		if pollStatusWasOK(previousStatus) {
+			detail := status
+			if errText != "" {
+				detail += ": " + errText
+			}
+			if err := insertAvailabilityEventTx(ctx, tx, deviceID, "unavailable", detail); err != nil {
+				return err
+			}
+			if err := createOrTouchOpenIncidentTx(ctx, tx, deviceID, "SNMP device unavailable", "critical", "polling", incidentDetails, suppressionWindow); err != nil {
+				return err
+			}
+		}
+
+		if _, err := tx.ExecContext(ctx, `
 		UPDATE devices
 		   SET status = $1,
 		       last_seen = NOW(),
 		       last_error = $2,
 		       last_error_at = NOW()
 		 WHERE id = $3`,
-		status, errText, deviceID,
-	); err != nil {
-		return err
-	}
-
-	return tx.Commit()
+			status, errText, deviceID,
+		); err != nil {
+			return err
+		}
+		return nil
+	})
 }
 
 func (r *Repo) RecordPollRecoveryTransition(ctx context.Context, deviceID int) error {
@@ -218,27 +213,22 @@ func (r *Repo) RecordPollRecoveryTransition(ctx context.Context, deviceID int) e
 		return fmt.Errorf("deviceID is required")
 	}
 
-	tx, err := r.db.BeginTx(ctx, nil)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = tx.Rollback() }()
-
-	var previousStatus string
-	if err := tx.QueryRowContext(ctx, `SELECT COALESCE(status, '') FROM devices WHERE id = $1 FOR UPDATE`, deviceID).Scan(&previousStatus); err != nil {
-		return err
-	}
-
-	if pollStatusWasFailure(previousStatus) {
-		if err := insertAvailabilityEventTx(ctx, tx, deviceID, "available", "SNMP опрос восстановлен"); err != nil {
+	return r.InTx(ctx, func(tx *sql.Tx) error {
+		var previousStatus string
+		if err := tx.QueryRowContext(ctx, `SELECT COALESCE(status, '') FROM devices WHERE id = $1 FOR UPDATE`, deviceID).Scan(&previousStatus); err != nil {
 			return err
 		}
-		if _, err := resolveOpenIncidentsBySourceTx(ctx, tx, deviceID, "polling", "system", "auto-resolved: SNMP poll restored"); err != nil {
-			return err
-		}
-	}
 
-	if _, err := tx.ExecContext(ctx, `
+		if pollStatusWasFailure(previousStatus) {
+			if err := insertAvailabilityEventTx(ctx, tx, deviceID, "available", "SNMP опрос восстановлен"); err != nil {
+				return err
+			}
+			if _, err := resolveOpenIncidentsBySourceTx(ctx, tx, deviceID, "polling", "system", "auto-resolved: SNMP poll restored"); err != nil {
+				return err
+			}
+		}
+
+		if _, err := tx.ExecContext(ctx, `
 		UPDATE devices
 		   SET status = 'active',
 		       last_seen = NOW(),
@@ -246,10 +236,10 @@ func (r *Repo) RecordPollRecoveryTransition(ctx context.Context, deviceID int) e
 		       last_error = NULL,
 		       last_error_at = NULL
 		 WHERE id = $1`,
-		deviceID,
-	); err != nil {
-		return err
-	}
-
-	return tx.Commit()
+			deviceID,
+		); err != nil {
+			return err
+		}
+		return nil
+	})
 }

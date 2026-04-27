@@ -30,6 +30,7 @@ import (
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
+	"golang.org/x/sync/singleflight"
 
 	"go.uber.org/zap"
 )
@@ -85,7 +86,7 @@ func grpcTokenInterceptor(tokenProvider func() string) grpc.UnaryServerIntercept
 	return func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
 		required := strings.TrimSpace(tokenProvider())
 		if required == "" {
-			return handler(ctx, req)
+			return nil, status.Error(codes.Unauthenticated, "missing token configuration")
 		}
 		md, ok := metadata.FromIncomingContext(ctx)
 		if !ok {
@@ -104,12 +105,36 @@ func grpcTokenInterceptor(tokenProvider func() string) grpc.UnaryServerIntercept
 	}
 }
 
+func grpcTokenStreamInterceptor(tokenProvider func() string) grpc.StreamServerInterceptor {
+	return func(srv interface{}, ss grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
+		required := strings.TrimSpace(tokenProvider())
+		if required == "" {
+			return status.Error(codes.Unauthenticated, "missing token configuration")
+		}
+		md, ok := metadata.FromIncomingContext(ss.Context())
+		if !ok {
+			return status.Error(codes.Unauthenticated, "missing metadata")
+		}
+		authz := strings.TrimSpace(firstMetadataValue(md.Get("authorization")))
+		if strings.HasPrefix(strings.ToLower(authz), "bearer ") {
+			authz = strings.TrimSpace(authz[7:])
+		} else if authz == "" {
+			authz = strings.TrimSpace(firstMetadataValue(md.Get("x-nms-grpc-token")))
+		}
+		if subtle.ConstantTimeCompare([]byte(authz), []byte(required)) != 1 {
+			return status.Error(codes.Unauthenticated, "invalid token")
+		}
+		return handler(srv, ss)
+	}
+}
+
 type cachedTokenProvider struct {
 	mu        sync.RWMutex
 	value     string
 	expiresAt time.Time
 	ttl       time.Duration
 	load      func() string
+	sf        singleflight.Group
 }
 
 func newCachedTokenProvider(ttl time.Duration, load func() string) func() string {
@@ -126,15 +151,24 @@ func newCachedTokenProvider(ttl time.Duration, load func() string) func() string
 			return v
 		}
 		p.mu.RUnlock()
-		p.mu.Lock()
-		defer p.mu.Unlock()
-		now = time.Now()
-		if now.Before(p.expiresAt) {
-			return p.value
-		}
-		p.value = strings.TrimSpace(p.load())
-		p.expiresAt = now.Add(p.ttl)
-		return p.value
+		v, _, _ := p.sf.Do("token", func() (interface{}, error) {
+			now := time.Now()
+			p.mu.RLock()
+			if now.Before(p.expiresAt) {
+				cached := p.value
+				p.mu.RUnlock()
+				return cached, nil
+			}
+			p.mu.RUnlock()
+			loaded := strings.TrimSpace(p.load())
+			p.mu.Lock()
+			p.value = loaded
+			p.expiresAt = now.Add(p.ttl)
+			p.mu.Unlock()
+			return loaded, nil
+		})
+		s, _ := v.(string)
+		return s
 	}
 }
 
@@ -156,8 +190,10 @@ func grpcServerTLSCredsFromEnv() (credentials.TransportCredentials, error) {
 		return nil, fmt.Errorf("load grpc tls cert/key: %w", err)
 	}
 	tlsCfg := &tls.Config{
-		MinVersion:   tls.VersionTLS12,
+		// Harden gRPC transport to modern protocol only.
+		MinVersion:   tls.VersionTLS13,
 		Certificates: []tls.Certificate{cert},
+		NextProtos:   []string{"h2"},
 	}
 	clientCAPath := strings.TrimSpace(os.Getenv("NMS_GRPC_TLS_CLIENT_CA_FILE"))
 	if clientCAPath != "" {
@@ -268,10 +304,19 @@ func run(ctx context.Context, cfg *config.Config, log *zap.Logger, onListen func
 				return strings.TrimSpace(config.EnvOrFile("NMS_GRPC_AUTH_TOKEN"))
 			},
 		)
+		allowInsecureIngest := envBoolOrDefault("NMS_GRPC_ALLOW_INSECURE_INGEST", false)
+		requiredToken := strings.TrimSpace(tokenProvider())
+		if requiredToken == "" && !allowInsecureIngest {
+			return fmt.Errorf("grpc ingest token is empty: set DB key %q or NMS_GRPC_AUTH_TOKEN, or explicitly set NMS_GRPC_ALLOW_INSECURE_INGEST=true", postgres.SettingKeyGRPCAuthTokenSecret)
+		}
 		grpcOpts = append(grpcOpts, grpc.UnaryInterceptor(grpcTokenInterceptor(tokenProvider)))
+		grpcOpts = append(grpcOpts, grpc.StreamInterceptor(grpcTokenStreamInterceptor(tokenProvider)))
 		tlsCreds, tlsErr := grpcServerTLSCredsFromEnv()
 		if tlsErr != nil {
 			return fmt.Errorf("grpc tls: %w", tlsErr)
+		}
+		if tlsCreds == nil && !allowInsecureIngest {
+			return fmt.Errorf("grpc ingest tls is disabled: configure NMS_GRPC_TLS_CERT_FILE/NMS_GRPC_TLS_KEY_FILE or explicitly set NMS_GRPC_ALLOW_INSECURE_INGEST=true")
 		}
 		if tlsCreds != nil {
 			grpcOpts = append(grpcOpts, grpc.Creds(tlsCreds))
@@ -289,7 +334,8 @@ func run(ctx context.Context, cfg *config.Config, log *zap.Logger, onListen func
 		log.Info("gRPC trap ingest enabled",
 			zap.String("addr", grpcAddr),
 			zap.Bool("tls_enabled", tlsCreds != nil),
-			zap.Bool("token_auth_enabled", strings.TrimSpace(tokenProvider()) != ""))
+			zap.Bool("token_auth_enabled", requiredToken != ""),
+			zap.Bool("insecure_ingest_override", allowInsecureIngest))
 	}
 
 	select {

@@ -21,6 +21,29 @@ RTO_TARGET_MINUTES="${RTO_TARGET_MINUTES:-120}"
 OFFSITE_SYNC_CMD="${BACKUP_OFFSITE_SYNC_CMD:-}"
 IMMUTABLE_COPY_CMD="${BACKUP_IMMUTABLE_COPY_CMD:-}"
 
+run_backup_hook() {
+  local hook="$1"
+  local hook_name="$2"
+  if [[ -z "$hook" ]]; then
+    echo "[backup] WARN: ${hook_name} is empty (skipped)"
+    return 0
+  fi
+  if [[ "$hook" == *" "* ]]; then
+    echo "[backup] WARN: ${hook_name} must be a script path without arguments (got: $hook)"
+    return 1
+  fi
+  local hook_path="$hook"
+  if [[ "$hook_path" != /* ]]; then
+    hook_path="$ROOT_DIR/$hook_path"
+  fi
+  if [[ ! -f "$hook_path" || ! -x "$hook_path" ]]; then
+    echo "[backup] WARN: ${hook_name} script not found/executable: $hook_path"
+    return 1
+  fi
+  env BACKUP_FILE="$out_file" BACKUP_SHA256_FILE="${out_file}.sha256" BACKUP_META_FILE="$manifest_file" \
+    "$hook_path"
+}
+
 timestamp="$(date +%Y-%m-%dT%H-%M-%S)"
 mkdir -p "$BACKUP_DIR"
 out_file="$BACKUP_DIR/${DB_NAME}_${timestamp}.dump"
@@ -46,8 +69,7 @@ echo "[backup] manifest: $manifest_file"
 
 if [[ -n "$OFFSITE_SYNC_CMD" ]]; then
   echo "[backup] offsite sync start"
-  env BACKUP_FILE="$out_file" BACKUP_SHA256_FILE="${out_file}.sha256" BACKUP_META_FILE="$manifest_file" \
-    bash -lc "$OFFSITE_SYNC_CMD"
+  run_backup_hook "$OFFSITE_SYNC_CMD" "BACKUP_OFFSITE_SYNC_CMD"
   echo "[backup] offsite sync done"
 else
   echo "[backup] WARN: BACKUP_OFFSITE_SYNC_CMD is empty (offsite copy skipped)"
@@ -55,8 +77,7 @@ fi
 
 if [[ -n "$IMMUTABLE_COPY_CMD" ]]; then
   echo "[backup] immutable copy start"
-  env BACKUP_FILE="$out_file" BACKUP_SHA256_FILE="${out_file}.sha256" BACKUP_META_FILE="$manifest_file" \
-    bash -lc "$IMMUTABLE_COPY_CMD"
+  run_backup_hook "$IMMUTABLE_COPY_CMD" "BACKUP_IMMUTABLE_COPY_CMD"
   echo "[backup] immutable copy done"
 else
   echo "[backup] WARN: BACKUP_IMMUTABLE_COPY_CMD is empty (immutable copy skipped)"

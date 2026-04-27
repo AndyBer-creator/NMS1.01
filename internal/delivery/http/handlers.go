@@ -69,7 +69,7 @@ type Handlers struct {
 	repo                        *postgres.Repo
 	snmp                        *snmp.Client
 	scanner                     *discovery.Scanner
-	TrapsRepo                   *repository.TrapsRepo
+	trapHTTPRepo                repository.TrapHTTPRepository
 	logger                      *zap.Logger
 	dashboardTmpl               *template.Template
 	devicesTmpl                 *template.Template // devicesTable + devicesPage
@@ -88,7 +88,7 @@ type Handlers struct {
 }
 
 // NewHandlers wires HTTP handlers with repositories, services and templates.
-func NewHandlers(repo *postgres.Repo, snmpClient *snmp.Client, scanner *discovery.Scanner, trapsRepo *repository.TrapsRepo, logger *zap.Logger, mibUploadDir string, mib *mibresolver.Resolver) *Handlers {
+func NewHandlers(repo *postgres.Repo, snmpClient *snmp.Client, scanner *discovery.Scanner, trapsRepo repository.TrapHTTPRepository, logger *zap.Logger, mibUploadDir string, mib *mibresolver.Resolver) *Handlers {
 	setSessionRevocationStore(repo)
 	dashboardTmpl := template.Must(template.ParseFiles("templates/dashboard.html"))
 	devicesTmpl := template.Must(template.ParseFiles(
@@ -115,7 +115,7 @@ func NewHandlers(repo *postgres.Repo, snmpClient *snmp.Client, scanner *discover
 		repo:                        repo,
 		snmp:                        snmpClient,
 		scanner:                     scanner,
-		TrapsRepo:                   trapsRepo,
+		trapHTTPRepo:                trapsRepo,
 		logger:                      logger,
 		dashboardTmpl:               dashboardTmpl,
 		devicesTmpl:                 devicesTmpl,

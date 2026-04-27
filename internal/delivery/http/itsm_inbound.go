@@ -4,6 +4,7 @@ import (
 	"NMS1/internal/config"
 	"NMS1/internal/domain"
 	"context"
+	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/json"
 	"net/http"
@@ -92,10 +93,14 @@ func requestITSMToken(r *http.Request) string {
 }
 
 func constantTimeTokenEqual(a, b string) bool {
-	if len(a) != len(b) || a == "" {
+	a = strings.TrimSpace(a)
+	b = strings.TrimSpace(b)
+	if a == "" || b == "" {
 		return false
 	}
-	return subtle.ConstantTimeCompare([]byte(a), []byte(b)) == 1
+	ha := sha256.Sum256([]byte(a))
+	hb := sha256.Sum256([]byte(b))
+	return subtle.ConstantTimeCompare(ha[:], hb[:]) == 1
 }
 
 func decodeAndResolveITSMInbound(w http.ResponseWriter, r *http.Request, resolveMapping func(ctx context.Context, provider, status, priority, owner string) (*domain.ITSMInboundMapping, error)) (*itsmInboundResolved, int, string) {

@@ -23,6 +23,28 @@ func ResolveLogDir() string {
 	return "./logs"
 }
 
+func resolveLogLevel() zapcore.Level {
+	raw := strings.TrimSpace(strings.ToLower(os.Getenv("NMS_LOG_LEVEL")))
+	switch raw {
+	case "debug":
+		return zapcore.DebugLevel
+	case "warn", "warning":
+		return zapcore.WarnLevel
+	case "error":
+		return zapcore.ErrorLevel
+	case "dpanic":
+		return zapcore.DPanicLevel
+	case "panic":
+		return zapcore.PanicLevel
+	case "fatal":
+		return zapcore.FatalLevel
+	case "", "info":
+		return zapcore.InfoLevel
+	default:
+		return zapcore.InfoLevel
+	}
+}
+
 // NewZapFile builds a production-style zap logger writing JSON lines to
 // <logDir>/<serviceName>.log with rotation (lumberjack).
 func NewZapFile(serviceName string) (*zap.Logger, error) {
@@ -43,7 +65,7 @@ func NewZapFile(serviceName string) (*zap.Logger, error) {
 	core := zapcore.NewCore(
 		zapcore.NewJSONEncoder(zap.NewProductionEncoderConfig()),
 		zapcore.AddSync(hook),
-		zapcore.InfoLevel,
+		resolveLogLevel(),
 	)
 
 	return zap.New(core, zap.AddCaller()), nil

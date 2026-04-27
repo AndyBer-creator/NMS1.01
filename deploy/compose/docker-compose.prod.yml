@@ -35,6 +35,10 @@ services:
       NMS_ENV: production
       DB_SSLMODE: require
 
+  postgres-exporter:
+    environment:
+      DB_SSLMODE_EXPORTER: require
+
   trap-receiver:
     environment:
       NMS_ENV: production

@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -65,7 +66,7 @@ func TestRun_CancelBeforeFirstPoll(t *testing.T) {
 	}
 }
 
-func TestRun_InvalidMetricsAddrStillRuns(t *testing.T) {
+func TestRun_InvalidMetricsAddrFailsFast(t *testing.T) {
 	cfg := testWorkerConfig(junkWorkerDSN())
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -76,8 +77,11 @@ func TestRun_InvalidMetricsAddrStillRuns(t *testing.T) {
 	}()
 
 	err := run(ctx, cfg, zap.NewNop(), workerOpts{metricsAddr: "127.0.0.1:99999"})
-	if err != nil {
-		t.Fatalf("expected nil, got %v", err)
+	if err == nil {
+		t.Fatal("expected metrics server startup error")
+	}
+	if !strings.Contains(err.Error(), "metrics server failed to start") {
+		t.Fatalf("unexpected error: %v", err)
 	}
 }
 

@@ -40,10 +40,16 @@ func Load() (*Config, error) {
 	viper.SetConfigType("yaml")
 	viper.AddConfigPath(".")
 	// Config file is optional: defaults + env still work when absent.
-	_ = viper.ReadInConfig()
+	if err := viper.ReadInConfig(); err != nil {
+		if _, ok := err.(viper.ConfigFileNotFoundError); !ok {
+			return nil, fmt.Errorf("read config.yaml: %w", err)
+		}
+	}
 
 	var cfg Config
-	_ = viper.Unmarshal(&cfg)
+	if err := viper.Unmarshal(&cfg); err != nil {
+		return nil, fmt.Errorf("parse config.yaml: %w", err)
+	}
 
 	// DSN from DB_DSN_FILE/DB_DSN secret sources.
 	if dsn := EnvOrFile("DB_DSN"); dsn != "" {

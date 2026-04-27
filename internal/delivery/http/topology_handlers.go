@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+
+	"go.uber.org/zap"
 )
 
 type topologyNode struct {
@@ -50,13 +52,15 @@ func (h *Handlers) LldpTopologyPage(w http.ResponseWriter, r *http.Request) {
 func (h *Handlers) LldpTopologyData(w http.ResponseWriter, r *http.Request) {
 	scanID, err := h.repo.GetLatestLldpScanID(r.Context())
 	if err != nil {
-		http.Error(w, "Failed to load latest LLDP scan: "+err.Error(), http.StatusInternalServerError)
+		h.logger.Error("Failed to load latest LLDP scan", zap.Error(err))
+		http.Error(w, "Failed to load latest LLDP scan", http.StatusInternalServerError)
 		return
 	}
 
 	links, err := h.repo.GetLatestLldpLinks(r.Context())
 	if err != nil {
-		http.Error(w, "Failed to load LLDP links: "+err.Error(), http.StatusInternalServerError)
+		h.logger.Error("Failed to load LLDP links", zap.Error(err))
+		http.Error(w, "Failed to load LLDP links", http.StatusInternalServerError)
 		return
 	}
 

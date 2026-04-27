@@ -38,6 +38,15 @@ func (r *Repo) CreateLldpScan(ctx context.Context) (int64, error) {
 	return id, err
 }
 
+// DeleteLldpScan removes one LLDP snapshot and cascades all related links.
+func (r *Repo) DeleteLldpScan(ctx context.Context, scanID int64) error {
+	if scanID <= 0 {
+		return nil
+	}
+	_, err := r.db.ExecContext(ctx, `DELETE FROM lldp_topology_scans WHERE id = $1`, scanID)
+	return err
+}
+
 // InsertLldpLink inserts one LLDP link and returns affected rows.
 func (r *Repo) InsertLldpLink(ctx context.Context, scanID int64, link LldpLink) (int64, error) {
 	// remote_device_ip may be NULL, represented by *string.

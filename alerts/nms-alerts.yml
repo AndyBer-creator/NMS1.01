@@ -114,7 +114,7 @@ groups:
           description: "Host filesystem usage is above 90% for 15 minutes."
 
       - alert: NMSPostgresConnectionsHigh
-        expr: (count(up{job=~"postgres|postgres-exporter"} == 1) > 0) and ((sum(pg_stat_activity_count{datname!=""}) / clamp_min(max(pg_settings_max_connections), 1)) > 0.80)
+        expr: (count(up{job="postgres-exporter"} == 1) > 0) and ((sum(pg_stat_activity_count{datname!=""}) / clamp_min(max(pg_settings_max_connections), 1)) > 0.80)
         for: 10m
         labels:
           severity: warning

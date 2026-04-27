@@ -42,9 +42,9 @@ func (h *Handlers) ListTraps(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "Device not found", http.StatusNotFound)
 			return
 		}
-		traps, err = h.TrapsRepo.ByDevice(ctx, dev.IP, limit)
+		traps, err = h.trapHTTPRepo.ByDevice(ctx, dev.IP, limit)
 	} else {
-		traps, err = h.TrapsRepo.List(ctx, limit)
+		traps, err = h.trapHTTPRepo.List(ctx, limit)
 	}
 	if err != nil {
 		h.logger.Error("Failed to list traps", zap.Error(err))

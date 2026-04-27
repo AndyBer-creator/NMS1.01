@@ -59,6 +59,25 @@ func TestSNMPClientConfig(t *testing.T) {
 	}
 }
 
+func TestEnvDurationOrDefault(t *testing.T) {
+	t.Setenv("NMS_TEST_DURATION", "")
+	if got := EnvDurationOrDefault("NMS_TEST_DURATION", 5*time.Second); got != 5*time.Second {
+		t.Fatalf("empty env should use fallback, got %v", got)
+	}
+	t.Setenv("NMS_TEST_DURATION", "1500ms")
+	if got := EnvDurationOrDefault("NMS_TEST_DURATION", 5*time.Second); got != 1500*time.Millisecond {
+		t.Fatalf("valid duration mismatch, got %v", got)
+	}
+	t.Setenv("NMS_TEST_DURATION", "not-a-duration")
+	if got := EnvDurationOrDefault("NMS_TEST_DURATION", 5*time.Second); got != 5*time.Second {
+		t.Fatalf("invalid duration should use fallback, got %v", got)
+	}
+	t.Setenv("NMS_TEST_DURATION", "-2s")
+	if got := EnvDurationOrDefault("NMS_TEST_DURATION", 5*time.Second); got != 5*time.Second {
+		t.Fatalf("non-positive duration should use fallback, got %v", got)
+	}
+}
+
 func TestStandardOIDs_IncludesSysName(t *testing.T) {
 	oids := StandardOIDs()
 	if len(oids) == 0 {

@@ -25,7 +25,7 @@ func newCSPNonce() string {
 		// Extremely unlikely; empty nonce will fail closed by blocking inline scripts/styles.
 		return ""
 	}
-	return base64.RawStdEncoding.EncodeToString(b[:])
+	return base64.RawURLEncoding.EncodeToString(b[:])
 }
 
 func isHTTPSRequest(r *http.Request) bool {

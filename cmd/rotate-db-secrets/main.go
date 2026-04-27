@@ -25,6 +25,10 @@ func main() {
 	logger := applog.MustNewZapFile("nms-rotate-db-secrets")
 	defer func() { _ = logger.Sync() }()
 
+	if err := config.ValidateRuntimeSecurityFor(config.RuntimeSecurityRoleWorker); err != nil {
+		logger.Fatal("validate runtime security", zap.Error(err))
+	}
+
 	dsn := config.EnvOrFile("DB_DSN")
 	oldKey := config.EnvOrFile("NMS_DB_ENCRYPTION_OLD_KEY")
 	newKey := config.EnvOrFile("NMS_DB_ENCRYPTION_KEY")

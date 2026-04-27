@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"go.uber.org/zap/zapcore"
 )
 
 func TestResolveLogDir(t *testing.T) {
@@ -49,5 +51,26 @@ func TestNewZapFileWritesFile(t *testing.T) {
 	}
 	if !strings.Contains(string(b), "hello from test") {
 		t.Fatalf("log file missing message: %q", string(b))
+	}
+}
+
+func TestResolveLogLevel(t *testing.T) {
+	cases := []struct {
+		name  string
+		raw   string
+		level zapcore.Level
+	}{
+		{name: "default info", raw: "", level: zapcore.InfoLevel},
+		{name: "debug", raw: "debug", level: zapcore.DebugLevel},
+		{name: "warn alias", raw: "warning", level: zapcore.WarnLevel},
+		{name: "invalid fallback", raw: "verbose", level: zapcore.InfoLevel},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv("NMS_LOG_LEVEL", tc.raw)
+			if got := resolveLogLevel(); got != tc.level {
+				t.Fatalf("resolveLogLevel(%q)=%v want %v", tc.raw, got, tc.level)
+			}
+		})
 	}
 }

@@ -122,7 +122,7 @@ func TestIntegration_DeviceHealthAndAudit(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = repo.DeleteByID(context.Background(), d.ID) })
 
-	if err := repo.UpdateDeviceError(d.ID, "failed", "timeout"); err != nil {
+	if err := repo.UpdateDeviceError(context.Background(), d.ID, "failed", "timeout"); err != nil {
 		t.Fatalf("UpdateDeviceError: %v", err)
 	}
 	afterErr, err := repo.GetDeviceByID(context.Background(), d.ID)
@@ -130,7 +130,7 @@ func TestIntegration_DeviceHealthAndAudit(t *testing.T) {
 		t.Fatalf("after error: %+v err=%v", afterErr, err)
 	}
 
-	if err := repo.MarkDevicePollSuccess(d.ID); err != nil {
+	if err := repo.MarkDevicePollSuccess(context.Background(), d.ID); err != nil {
 		t.Fatalf("MarkDevicePollSuccess: %v", err)
 	}
 	ok, err := repo.GetDeviceByID(context.Background(), d.ID)
@@ -181,7 +181,7 @@ func TestIntegration_DeviceRepo_UpdateDeviceLastSeen(t *testing.T) {
 		t.Fatalf("GetDeviceByID: %v %+v", err, before)
 	}
 	time.Sleep(50 * time.Millisecond)
-	if err := repo.UpdateDeviceLastSeen(d.ID); err != nil {
+	if err := repo.UpdateDeviceLastSeen(context.Background(), d.ID); err != nil {
 		t.Fatalf("UpdateDeviceLastSeen: %v", err)
 	}
 	after, err := repo.GetDeviceByID(context.Background(), d.ID)
@@ -202,7 +202,7 @@ func TestIntegration_DeviceRepo_UpdateDeviceStatus(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = repo.DeleteByID(context.Background(), d.ID) })
 
-	if err := repo.UpdateDeviceStatus(d.ID, "maintenance"); err != nil {
+	if err := repo.UpdateDeviceStatus(context.Background(), d.ID, "maintenance"); err != nil {
 		t.Fatalf("UpdateDeviceStatus: %v", err)
 	}
 	got, err := repo.GetDeviceByID(context.Background(), d.ID)

@@ -29,6 +29,14 @@ curl -sS http://localhost:8080/metrics | head
 curl -sS http://localhost:8081/metrics | head
 ```
 
+Если сервис не стартует после изменения `config.yaml`, сначала проверьте синтаксис файла:
+
+```bash
+go run ./cmd/server
+```
+
+При ошибке в YAML процесс завершится сразу с понятной ошибкой (`read config.yaml` / `parse config.yaml`).
+
 ## 1) API недоступен / 5xx растут
 
 Симптомы:

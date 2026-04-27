@@ -256,7 +256,11 @@ func grpcClientTransportCreds() (credentials.TransportCredentials, error) {
 	if caPath == "" && certPath == "" && keyPath == "" && serverName == "" {
 		return insecure.NewCredentials(), nil
 	}
-	tlsCfg := &tls.Config{MinVersion: tls.VersionTLS12}
+	tlsCfg := &tls.Config{
+		// Keep client policy aligned with server-side hardening.
+		MinVersion: tls.VersionTLS13,
+		NextProtos: []string{"h2"},
+	}
 	if caPath != "" {
 		caPEM, err := os.ReadFile(caPath)
 		if err != nil {

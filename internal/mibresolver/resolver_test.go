@@ -3,6 +3,7 @@ package mibresolver
 import (
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestIsNumericOID(t *testing.T) {
@@ -71,5 +72,57 @@ func TestPickSNMPValue(t *testing.T) {
 	}
 	if got := PickSNMPValue(map[string]string{"a": "x", "b": "y"}, "1.1.1"); got != "" {
 		t.Fatalf("ambiguous multi-key: want empty, got %q", got)
+	}
+}
+
+func TestResolverNegativeCacheExpires(t *testing.T) {
+	r := &Resolver{
+		cache:            make(map[string]resolveCacheEntry),
+		negativeCacheTTL: 20 * time.Millisecond,
+	}
+	r.storeNegativeResolution("IF-MIB::noSuch", "snmptranslate: unknown object identifier")
+	_, errMsg, ok := r.cachedResolution("IF-MIB::noSuch")
+	if !ok || errMsg == "" {
+		t.Fatalf("expected cached negative entry, got ok=%v errMsg=%q", ok, errMsg)
+	}
+
+	time.Sleep(30 * time.Millisecond)
+	_, _, ok = r.cachedResolution("IF-MIB::noSuch")
+	if ok {
+		t.Fatal("expected negative cache entry to expire")
+	}
+}
+
+func TestResolverPositiveCachePersists(t *testing.T) {
+	r := &Resolver{cache: make(map[string]resolveCacheEntry)}
+	r.storePositiveResolution("IF-MIB::sysDescr.0", "1.3.6.1.2.1.1.1.0")
+	oid, errMsg, ok := r.cachedResolution("IF-MIB::sysDescr.0")
+	if !ok || errMsg != "" || oid != "1.3.6.1.2.1.1.1.0" {
+		t.Fatalf("unexpected positive cache state: ok=%v oid=%q err=%q", ok, oid, errMsg)
+	}
+}
+
+func TestIsTranslateNotFoundError(t *testing.T) {
+	cases := []struct {
+		msg  string
+		want bool
+	}{
+		{"Unknown Object Identifier", true},
+		{"Cannot find module (IF-MIB)", true},
+		{"some transport error", false},
+	}
+	for _, tc := range cases {
+		if got := isTranslateNotFoundError(tc.msg); got != tc.want {
+			t.Fatalf("isTranslateNotFoundError(%q)=%v want=%v", tc.msg, got, tc.want)
+		}
+	}
+}
+
+func TestResolveToNumeric_UsesNegativeCache(t *testing.T) {
+	r := &Resolver{cache: make(map[string]resolveCacheEntry), negativeCacheTTL: time.Minute}
+	r.storeNegativeResolution("IF-MIB::missing", "snmptranslate: unknown object identifier")
+	_, err := r.ResolveToNumeric("IF-MIB::missing")
+	if err == nil || !strings.Contains(err.Error(), "unknown object identifier") {
+		t.Fatalf("expected cached negative error, got %v", err)
 	}
 }

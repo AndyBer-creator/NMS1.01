@@ -12,7 +12,7 @@ type DeviceRepository interface {
 	ListDevices(ctx context.Context) ([]*domain.Device, error)
 	DeleteByID(ctx context.Context, id int) error
 	UpdateDeviceByID(ctx context.Context, id int, patch *domain.Device) (*domain.Device, error)
-	UpdateDeviceLastSeen(deviceID int) error
+	UpdateDeviceLastSeen(ctx context.Context, deviceID int) error
 }
 
 // MetricRepository defines metric persistence and retention operations.

@@ -3,6 +3,7 @@ package http
 import (
 	"net/http"
 	"net/http/httptest"
+	"regexp"
 	"testing"
 )
 
@@ -53,5 +54,26 @@ func TestSecurityHeaders_HSTSWhenForwardedHTTPS(t *testing.T) {
 
 	if got := rr.Header().Get("Strict-Transport-Security"); got == "" {
 		t.Fatal("expected HSTS when request is forwarded as HTTPS")
+	}
+}
+
+func TestSecurityHeaders_CSPNonceIsURLSafe(t *testing.T) {
+	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
+	h := SecurityHeaders(next)
+
+	rr := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	h.ServeHTTP(rr, req)
+
+	csp := rr.Header().Get("Content-Security-Policy")
+	re := regexp.MustCompile(`nonce-([A-Za-z0-9_-]+)'`)
+	m := re.FindStringSubmatch(csp)
+	if len(m) < 2 {
+		t.Fatalf("nonce not found in CSP: %q", csp)
+	}
+	if nonce := m[1]; len(nonce) == 0 {
+		t.Fatalf("nonce must not be empty: %q", csp)
 	}
 }

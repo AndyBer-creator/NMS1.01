@@ -2,7 +2,8 @@
 set -euo pipefail
 
 root_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-secrets_dir="${root_dir}/.secrets"
+default_runtime_dir="${XDG_RUNTIME_DIR:-/tmp}"
+secrets_dir="${NMS_SECRETS_DIR:-${default_runtime_dir}/nms/secrets}"
 mkdir -p "${secrets_dir}"
 chmod 700 "${secrets_dir}"
 
@@ -21,6 +22,7 @@ if [[ -f "${root_dir}/.env" ]]; then
 fi
 
 write_secret "db_dsn" "${DB_DSN:-}"
+write_secret "postgres_password" "${POSTGRES_PASSWORD:-}"
 write_secret "nms_admin_user" "${NMS_ADMIN_USER:-}"
 write_secret "nms_admin_pass" "${NMS_ADMIN_PASS:-}"
 write_secret "nms_viewer_user" "${NMS_VIEWER_USER:-}"

@@ -87,6 +87,82 @@ func TestDecodeAndResolveITSMInbound(t *testing.T) {
 	}
 }
 
+func TestDecodeAndResolveITSMInbound_EmptyStatusUsesMappedStatusForJira(t *testing.T) {
+	body := `{"incident_id":42,"provider":"jira","status":"","priority":"","owner":""}`
+	req := httptest.NewRequest(http.MethodPost, "/itsm/inbound/dry-run", strings.NewReader(body))
+	rr := httptest.NewRecorder()
+	req.Header.Set("Authorization", "Bearer test-token")
+	t.Setenv("NMS_ITSM_INBOUND_TOKEN", "test-token")
+
+	resolved, code, msg := decodeAndResolveITSMInbound(rr, req, func(_ context.Context, provider, status, priority, owner string) (*domain.ITSMInboundMapping, error) {
+		if provider != "jira" {
+			t.Fatalf("expected jira provider, got %q", provider)
+		}
+		if status != "" || priority != "" || owner != "" {
+			t.Fatalf("expected empty mapping keys, got status=%q priority=%q owner=%q", status, priority, owner)
+		}
+		return &domain.ITSMInboundMapping{
+			ID:           101,
+			MappedStatus: "in-progress",
+		}, nil
+	})
+	if code != http.StatusOK {
+		t.Fatalf("code=%d msg=%s", code, msg)
+	}
+	if resolved.Status != "in_progress" {
+		t.Fatalf("expected mapped normalized status, got %q", resolved.Status)
+	}
+}
+
+func TestDecodeAndResolveITSMInbound_EmptyStatusUsesMappedStatusForSNOW(t *testing.T) {
+	body := `{"incident_id":42,"provider":"snow","status":"","priority":"","owner":"NOC"}`
+	req := httptest.NewRequest(http.MethodPost, "/itsm/inbound/dry-run", strings.NewReader(body))
+	rr := httptest.NewRecorder()
+	req.Header.Set("Authorization", "Bearer test-token")
+	t.Setenv("NMS_ITSM_INBOUND_TOKEN", "test-token")
+
+	resolved, code, msg := decodeAndResolveITSMInbound(rr, req, func(_ context.Context, provider, status, priority, owner string) (*domain.ITSMInboundMapping, error) {
+		if provider != "snow" {
+			t.Fatalf("expected snow provider, got %q", provider)
+		}
+		if owner != "NOC" {
+			t.Fatalf("expected owner passthrough, got %q", owner)
+		}
+		return &domain.ITSMInboundMapping{
+			ID:           202,
+			MappedStatus: "ack",
+		}, nil
+	})
+	if code != http.StatusOK {
+		t.Fatalf("code=%d msg=%s", code, msg)
+	}
+	if resolved.Status != "acknowledged" {
+		t.Fatalf("expected mapped normalized status, got %q", resolved.Status)
+	}
+}
+
+func TestDecodeAndResolveITSMInbound_EmptyStatusAndAssigneeRejectsWhenMappingEmpty(t *testing.T) {
+	body := `{"incident_id":42,"provider":"jira","status":"","priority":"","owner":""}`
+	req := httptest.NewRequest(http.MethodPost, "/itsm/inbound/dry-run", strings.NewReader(body))
+	rr := httptest.NewRecorder()
+	req.Header.Set("Authorization", "Bearer test-token")
+	t.Setenv("NMS_ITSM_INBOUND_TOKEN", "test-token")
+
+	_, code, msg := decodeAndResolveITSMInbound(rr, req, func(_ context.Context, provider, status, priority, owner string) (*domain.ITSMInboundMapping, error) {
+		return &domain.ITSMInboundMapping{
+			ID:             303,
+			MappedStatus:   "",
+			MappedAssignee: "",
+		}, nil
+	})
+	if code != http.StatusBadRequest {
+		t.Fatalf("expected bad request, got %d (%s)", code, msg)
+	}
+	if !strings.Contains(msg, "at least one of status or assignee") {
+		t.Fatalf("unexpected error: %s", msg)
+	}
+}
+
 func TestDecodeJSONBodyRejectsUnknownFieldsAndTrailingJSON(t *testing.T) {
 	t.Run("unknown field", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodPost, "/x", strings.NewReader(`{"incident_id":42,"extra":"x"}`))

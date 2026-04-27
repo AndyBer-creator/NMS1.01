@@ -60,28 +60,31 @@ SELECT ensure_metrics_partition_for(NOW() + interval '2 month');
 
 CREATE TABLE IF NOT EXISTS metrics_default PARTITION OF metrics DEFAULT;
 
+-- IMPORTANT:
+-- Data backfill from metrics_legacy is intentionally NOT executed inside this migration.
+-- Use controlled offline job cmd/backfill-metrics-legacy to migrate large datasets in batches
+-- and finalize drop of metrics_legacy after verification.
+
+CREATE SEQUENCE IF NOT EXISTS metrics_id_seq;
+ALTER TABLE metrics ALTER COLUMN id SET DEFAULT nextval('metrics_id_seq');
+-- Keep sequence ahead of both partitioned and legacy tables during transition period.
 -- +goose StatementBegin
 DO $$
+DECLARE
+    metrics_max bigint := 0;
+    legacy_max bigint := 0;
 BEGIN
+    SELECT COALESCE(MAX(id), 0) INTO metrics_max FROM metrics;
     IF EXISTS (
         SELECT 1
         FROM information_schema.tables
         WHERE table_schema = 'public' AND table_name = 'metrics_legacy'
     ) THEN
-        EXECUTE '
-            INSERT INTO metrics (id, device_id, oid, value, "timestamp")
-            SELECT id, device_id, oid, value, "timestamp"
-            FROM metrics_legacy
-        ';
+        EXECUTE 'SELECT COALESCE(MAX(id), 0) FROM metrics_legacy' INTO legacy_max;
     END IF;
+    PERFORM setval('metrics_id_seq', GREATEST(metrics_max, legacy_max) + 1, false);
 END $$;
 -- +goose StatementEnd
-
-DROP TABLE IF EXISTS metrics_legacy CASCADE;
-
-CREATE SEQUENCE IF NOT EXISTS metrics_id_seq;
-ALTER TABLE metrics ALTER COLUMN id SET DEFAULT nextval('metrics_id_seq');
-SELECT setval('metrics_id_seq', COALESCE((SELECT MAX(id) FROM metrics), 0) + 1, false);
 
 CREATE INDEX IF NOT EXISTS idx_metrics_device_oid ON metrics(device_id, oid);
 CREATE INDEX IF NOT EXISTS idx_metrics_device_time ON metrics(device_id, "timestamp" DESC);

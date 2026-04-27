@@ -150,7 +150,7 @@ func (o workerOpts) metricsListenAddr() string {
 func run(ctx context.Context, cfg *config.Config, log *zap.Logger, opts workerOpts) error {
 	var metricsShutdown func()
 	if srv, _, err := startMetricsHTTPServer(opts.metricsListenAddr(), log); err != nil {
-		log.Warn("Metrics server failed to start", zap.Error(err))
+		return fmt.Errorf("metrics server failed to start: %w", err)
 	} else {
 		metricsShutdown = func() {
 			shutdownCtx, c := context.WithTimeout(context.Background(), 3*time.Second)

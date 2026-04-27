@@ -156,7 +156,7 @@ func (s *Scanner) ScanNetwork(ctx context.Context, p ScanParams) (*ScanResult, e
 			if ctx.Err() != nil {
 				return
 			}
-			if p.TCPPrefilter && !tcpPing(ipStr) {
+			if p.TCPPrefilter && !tcpPing(ctx, ipStr) {
 				continue
 			}
 
@@ -279,13 +279,17 @@ func deviceNameFromDescr(ip, descr string) string {
 }
 
 // tcpPing checks whether host has at least one common management TCP port open.
-func tcpPing(host string) bool {
+func tcpPing(ctx context.Context, host string) bool {
 	ports := []string{"80", "443", "22", "21", "161"}
+	dialer := &net.Dialer{Timeout: 1 * time.Second}
 	for _, port := range ports {
-		conn, err := net.DialTimeout("tcp", host+":"+port, 1*time.Second)
+		conn, err := dialer.DialContext(ctx, "tcp", host+":"+port)
 		if err == nil {
 			_ = conn.Close()
 			return true
+		}
+		if ctx.Err() != nil {
+			return false
 		}
 	}
 	return false
@@ -294,13 +298,18 @@ func tcpPing(host string) bool {
 // generateIPs returns probe candidates, skipping network/broadcast for common IPv4 ranges.
 func generateIPs(ipNet *net.IPNet) []net.IP {
 	var ips []net.IP
-	for ip := ipNet.IP.Mask(ipNet.Mask); ipNet.Contains(ip); incIP(ip) {
+	start := ipNet.IP.Mask(ipNet.Mask)
+	if v4 := start.To4(); v4 != nil {
+		start = v4
+	}
+	for ip := append(net.IP(nil), start...); ipNet.Contains(ip); incIP(ip) {
 		ips = append(ips, append(net.IP(nil), ip...))
 	}
 	if len(ips) == 0 {
 		return nil
 	}
-	if len(ips) <= 2 {
+	// IPv6 has no broadcast address; keep full host set.
+	if !isIPv4Net(ipNet) || len(ips) <= 2 {
 		return ips
 	}
 	return ips[1 : len(ips)-1]
@@ -308,10 +317,21 @@ func generateIPs(ipNet *net.IPNet) []net.IP {
 
 // incIP increments an IP address in-place by one.
 func incIP(ip net.IP) {
+	if v4 := ip.To4(); v4 != nil && len(ip) == net.IPv6len {
+		// For 16-byte IPv4-mapped values, increment only the IPv4 part.
+		ip = ip[12:]
+	}
 	for j := len(ip) - 1; j >= 0; j-- {
 		ip[j]++
 		if ip[j] > 0 {
 			break
 		}
 	}
+}
+
+func isIPv4Net(n *net.IPNet) bool {
+	if n == nil {
+		return false
+	}
+	return n.IP.To4() != nil
 }

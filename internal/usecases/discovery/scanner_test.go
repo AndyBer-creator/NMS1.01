@@ -53,6 +53,20 @@ func TestGenerateIPs_skipsNetworkAndBroadcast(t *testing.T) {
 	}
 }
 
+func TestGenerateIPs_IPv6DoesNotDropBoundaryAddresses(t *testing.T) {
+	_, n, err := net.ParseCIDR("2001:db8::/126")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ips := generateIPs(n)
+	if len(ips) != 4 {
+		t.Fatalf("want 4 hosts in /126, got %d", len(ips))
+	}
+	if ips[0].String() != "2001:db8::" || ips[len(ips)-1].String() != "2001:db8::3" {
+		t.Fatalf("range: first=%s last=%s", ips[0], ips[len(ips)-1])
+	}
+}
+
 func TestEmptyScanHints_tcpPrefilter(t *testing.T) {
 	h := emptyScanHints(ScanParams{TCPPrefilter: true, SNMPVersion: "v2c"})
 	found := false
@@ -91,5 +105,23 @@ func TestScanNetwork_v3requiresAuth(t *testing.T) {
 	}
 	if !strings.Contains(se.Msg, "auth") {
 		t.Fatalf("msg: %q", se.Msg)
+	}
+}
+
+func TestTCPPing_RespectsContextCancellation(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if got := tcpPing(ctx, "127.0.0.1"); got {
+		t.Fatal("tcpPing should return false when context is canceled")
+	}
+}
+
+func TestScanNetwork_RespectsCanceledContext(t *testing.T) {
+	s := NewScanner(nil, nil, zap.NewNop())
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	_, err := s.ScanNetwork(ctx, ScanParams{CIDR: "192.0.2.0/24"})
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("expected context canceled, got %v", err)
 	}
 }

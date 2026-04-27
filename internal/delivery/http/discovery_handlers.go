@@ -91,7 +91,7 @@ func (h *Handlers) DiscoverScan(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		h.logger.Error("DiscoverScan failed", zap.Error(err))
-		h.writeAPIError(w, http.StatusInternalServerError, "scan_failed", "Scan failed: "+err.Error())
+		h.writeAPIError(w, http.StatusInternalServerError, "scan_failed", "Scan failed")
 		return
 	}
 

@@ -4,7 +4,9 @@ import (
 	"NMS1/internal/config"
 	"NMS1/internal/infrastructure/postgres"
 	"context"
+	"net"
 	"net/http"
+	"net/netip"
 	"net/url"
 	"strings"
 	"time"
@@ -27,9 +29,44 @@ func parseURLOrEmpty(raw string) *url.URL {
 	return u
 }
 
+func isPrivateOrLocalIP(ip netip.Addr) bool {
+	return ip.IsPrivate() || ip.IsLoopback() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() || ip.IsMulticast() || ip.IsUnspecified()
+}
+
+func externalEndpointAllowed(u *url.URL) bool {
+	if u == nil {
+		return false
+	}
+	scheme := strings.ToLower(strings.TrimSpace(u.Scheme))
+	if scheme != "http" && scheme != "https" {
+		return false
+	}
+	host := strings.TrimSpace(u.Hostname())
+	if host == "" {
+		return false
+	}
+	if strings.EqualFold(host, "localhost") {
+		return false
+	}
+	if ip, err := netip.ParseAddr(host); err == nil {
+		return !isPrivateOrLocalIP(ip)
+	}
+	addrs, err := net.LookupIP(host)
+	if err != nil {
+		return false
+	}
+	for _, a := range addrs {
+		ip, ok := netip.AddrFromSlice(a)
+		if !ok || isPrivateOrLocalIP(ip) {
+			return false
+		}
+	}
+	return true
+}
+
 func (h *Handlers) probeExternalEndpoint(ctx context.Context, rawURL string) string {
 	u := parseURLOrEmpty(rawURL)
-	if u == nil {
+	if u == nil || !externalEndpointAllowed(u) {
 		return "not_configured"
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)

@@ -1,6 +1,6 @@
 # NMS1 Production Readiness Checklist
 
-Дата обновления: 2026-04-15 (enterprise: readiness, OpenAPI, security.txt, coverage 35%, strict CI gates)
+Дата обновления: 2026-04-27 (critical hardening mostly closed; remaining items tracked)
 
 Этот файл фиксирует минимальные требования для безопасного go-live и текущий статус проекта.
 
@@ -41,6 +41,7 @@
 - [x] Конфиг через env
   - Учетки и сессия поддерживаются через `NMS_ADMIN_*`, `NMS_VIEWER_*`, `NMS_SESSION_SECRET`.
   - Добавлена формальная политика: `SECRETS_POLICY.md` (классификация, ротация, инцидент-процедура).
+  - Если локальный `config.yaml` содержит синтаксические ошибки, сервис теперь падает на старте (fail-fast), а не молча уходит в дефолты.
 
 - [x] Полный secret-management процесс
   - Добавлена поддержка `*_FILE` для критичных секретов в коде (`DB_DSN`, auth/session, Telegram, SMTP).
@@ -71,7 +72,7 @@
 
 - [x] Алертинг (Alertmanager / Telegram route / и т.д.)
   - Добавлены расширенные Prometheus rules: `alerts/nms-alerts.yml` (API/worker down, high 5xx, polling failure spike/ratio, backoff spike, slow polling cycle).
-  - Включена CI-валидация правил: `promtool check rules` + `promtool test rules` (`make alert-rules-check`, workflow job `alert-rules`).
+  - Включена CI-валидация правил: `promtool check rules` + `promtool test rules` (`make alert-rules-check`, сначала локальный `promtool`, при его отсутствии Docker fallback; workflow job `alert-rules`).
   - Добавлен Alertmanager в compose + webhook `POST /alerts/webhook` (Prometheus -> Alertmanager -> API).
   - Реализована доставка в Telegram (best-effort) и Email через SMTP (получатель настраивается в admin UI).
   - Добавлена fail-fast валидация SMTP-конфига для production: `SMTP_HOST`/`SMTP_PORT`/`SMTP_FROM` только вместе, `SMTP_HOST` без URL-схемы/пути/встроенного порта, `SMTP_PORT` в диапазоне `1..65535` и только `465`/`587`, `SMTP_FROM` валидный email, `SMTP_USER`/`SMTP_PASS` только вместе, `NMS_SMTP_ALLOW_PLAINTEXT` запрещён.
@@ -152,4 +153,20 @@
 - Настраиваемый интервал опроса устройств через UI.
 
 Репозиторий закрывает заявленные **enterprise hygiene** пункты (см. §7 и `ENTERPRISE.md`). Для регулируемых сред дополнительно нужны организационные меры: комплаенс, DLP, SIEM, пентест и согласованные SLO/SLA.
+
+---
+
+## Remaining Items After Critical Hardening
+
+- [x] `metrics_legacy` migration hardening: двухэтапный rollout реализован.
+  - `migrations/011_partition_metrics.sql` больше не делает массовый backfill/drop внутри migration-run.
+  - Добавлен controlled backfill job: `make metrics-backfill-legacy` (`cmd/backfill-metrics-legacy`).
+  - Добавлена отдельная finalize-команда: `make metrics-backfill-legacy-finalize` (drop `metrics_legacy` только после проверки `remaining=0`).
+- [ ] Повысить coverage threshold поэтапно (например `35 -> 40 -> 45`) после стабилизации новых тестов.
+- [~] Продолжить архитектурную чистку `postgres/repository` слоев (этап декомпозиции существенно продвинут, но эпик не завершен полностью).
+  - Вынесены отдельные модули: `device_repo.go`, `metrics_repo.go`, `audit_repo.go`, `tx.go`.
+  - `incidents` разделен на read/write (`incident_read_repo.go`, `incident_write_repo.go`) + общий policy-файл.
+  - `settings` разделен на read/write (`settings_read_repo.go`, `settings_write_repo.go`) с сохранением `...WithExec`-паттерна.
+
+Текущее состояние критичных пунктов из production issue: security/correctness/hardening блоки закрыты или закрыты с оговорками, пункты выше относятся к next-phase quality rollout.
 
