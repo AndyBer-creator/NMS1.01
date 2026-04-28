@@ -5,6 +5,11 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"time"
+
+	"NMS1/internal/domain"
+
+	"github.com/gosnmp/gosnmp"
 )
 
 func TestSNMPError_ErrorAndUnwrap(t *testing.T) {
@@ -61,4 +66,94 @@ func TestPduValueString(t *testing.T) {
 	if got := pduValueString(42); got != fmt.Sprintf("%v", 42) {
 		t.Fatalf("default: %q", got)
 	}
+}
+
+func TestClient_ConfigAndApplyRuntimeConfig(t *testing.T) {
+	t.Parallel()
+	c := New(161, 2*time.Second, 1)
+	got := c.Config()
+	if got.Port != 161 || got.Timeout != 2*time.Second || got.Retries != 1 {
+		t.Fatalf("unexpected config: %+v", got)
+	}
+
+	c.ApplyRuntimeConfig(5*time.Second, 3)
+	got = c.Config()
+	if got.Timeout != 5*time.Second || got.Retries != 3 {
+		t.Fatalf("unexpected config after apply: %+v", got)
+	}
+}
+
+func TestClient_AuthAndPrivProtocolMapping(t *testing.T) {
+	t.Parallel()
+	c := New(161, time.Second, 0)
+
+	if got := c.authProtocol("sha256"); got != gosnmp.SHA256 {
+		t.Fatalf("auth sha256: got %v", got)
+	}
+	if got := c.authProtocol("bad"); got != gosnmp.NoAuth {
+		t.Fatalf("auth bad: got %v", got)
+	}
+
+	if got := c.privProtocol("aes"); got != gosnmp.AES {
+		t.Fatalf("priv aes: got %v", got)
+	}
+	if got := c.privProtocol("aes256"); got != gosnmp.AES256 {
+		t.Fatalf("priv aes256: got %v", got)
+	}
+	if got := c.privProtocol("bad"); got != gosnmp.NoPriv {
+		t.Fatalf("priv bad: got %v", got)
+	}
+}
+
+func TestClient_NewV3ConnValidation(t *testing.T) {
+	t.Parallel()
+	c := New(161, time.Second, 0)
+
+	t.Run("missing username", func(t *testing.T) {
+		_, err := c.newV3Conn(&domain.Device{IP: "10.0.0.1", SNMPVersion: "v3"})
+		if err == nil || !strings.Contains(err.Error(), "username") {
+			t.Fatalf("expected username error, got %v", err)
+		}
+	})
+
+	t.Run("priv requires auth", func(t *testing.T) {
+		_, err := c.newV3Conn(&domain.Device{
+			IP:          "10.0.0.1",
+			SNMPVersion: "v3",
+			Community:   "user",
+			PrivProto:   "AES",
+			PrivPass:    "p",
+		})
+		if err == nil || !strings.Contains(err.Error(), "priv requires auth") {
+			t.Fatalf("expected priv requires auth error, got %v", err)
+		}
+	})
+
+	t.Run("unsupported auth proto", func(t *testing.T) {
+		_, err := c.newV3Conn(&domain.Device{
+			IP:          "10.0.0.1",
+			SNMPVersion: "v3",
+			Community:   "user",
+			AuthProto:   "BAD",
+			AuthPass:    "p",
+		})
+		if err == nil || !strings.Contains(err.Error(), "unsupported auth_proto") {
+			t.Fatalf("expected unsupported auth_proto error, got %v", err)
+		}
+	})
+
+	t.Run("unsupported priv proto", func(t *testing.T) {
+		_, err := c.newV3Conn(&domain.Device{
+			IP:          "10.0.0.1",
+			SNMPVersion: "v3",
+			Community:   "user",
+			AuthProto:   "SHA",
+			AuthPass:    "p",
+			PrivProto:   "BAD",
+			PrivPass:    "p2",
+		})
+		if err == nil || !strings.Contains(err.Error(), "unsupported priv_proto") {
+			t.Fatalf("expected unsupported priv_proto error, got %v", err)
+		}
+	})
 }
