@@ -163,10 +163,11 @@
   - Добавлен controlled backfill job: `make metrics-backfill-legacy` (`cmd/backfill-metrics-legacy`).
   - Добавлена отдельная finalize-команда: `make metrics-backfill-legacy-finalize` (drop `metrics_legacy` только после проверки `remaining=0`).
 - [x] Coverage uplift: общий coverage поднят до `40%+`, CI-gate в `.github/workflows/test.yml` выставлен на `40%`.
-- [~] Продолжить архитектурную чистку `postgres/repository` слоев (этап декомпозиции существенно продвинут, но эпик не завершен полностью).
+- [x] Архитектурная чистка `postgres/repository` слоев доведена до целевого decomposition baseline.
   - Вынесены отдельные модули: `device_repo.go`, `metrics_repo.go`, `audit_repo.go`, `tx.go`.
   - `incidents` разделен на read/write (`incident_read_repo.go`, `incident_write_repo.go`) + общий policy-файл.
   - `settings` разделен на read/write (`settings_read_repo.go`, `settings_write_repo.go`) с сохранением `...WithExec`-паттерна.
+  - Контракт слоя и transaction/executor pattern зафиксированы в `doc/POSTGRES_REPOSITORY.md`.
 - [x] Снят secrets-footgun в compose overlay: `deploy/compose/docker-compose.secrets.yml` теперь требует явный `NMS_SECRETS_DIR` (без fallback в workspace).
 - [x] Базовый `Dockerfile` переведен на non-root runtime (`USER nms:nms`); healthcheck проверяет и HTTP, и HTTPS для совместимости с `NMS_ENFORCE_HTTPS=true`.
 

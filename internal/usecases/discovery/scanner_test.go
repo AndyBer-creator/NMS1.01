@@ -67,6 +67,17 @@ func TestGenerateIPs_IPv6DoesNotDropBoundaryAddresses(t *testing.T) {
 	}
 }
 
+func TestIncIP_IPv6Progression(t *testing.T) {
+	ip := net.ParseIP("2001:db8::ff")
+	if ip == nil {
+		t.Fatal("expected IPv6 address")
+	}
+	incIP(ip)
+	if got := ip.String(); got != "2001:db8::100" {
+		t.Fatalf("expected IPv6 increment to carry, got %s", got)
+	}
+}
+
 func TestEmptyScanHints_tcpPrefilter(t *testing.T) {
 	h := emptyScanHints(ScanParams{TCPPrefilter: true, SNMPVersion: "v2c"})
 	found := false

@@ -87,7 +87,7 @@ services:
     image: prometheuscommunity/postgres-exporter:v0.15.0
     container_name: nms-postgres-exporter
     environment:
-      DATA_SOURCE_NAME: "postgresql://nms-user:${POSTGRES_PASSWORD}@postgres:5432/NMS?sslmode=${DB_SSLMODE_EXPORTER:-disable}"
+      DATA_SOURCE_NAME: "postgresql://nms-user:${POSTGRES_PASSWORD}@postgres:5432/NMS?sslmode=${DB_SSLMODE_EXPORTER:-require}"
     expose:
       - "9187"
     depends_on:
