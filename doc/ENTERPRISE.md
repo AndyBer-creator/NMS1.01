@@ -30,7 +30,7 @@
 
 | Элемент | Назначение |
 |---------|------------|
-| Порог **coverage** в CI | Текущий gate в `test.yml`: **35%** (`MIN_COVERAGE_PERCENT=35`); локальный дефолт `scripts/check_coverage.sh` — 25%. |
+| Порог **coverage** в CI | Текущий gate в `test.yml`: **40%** (`MIN_COVERAGE_PERCENT=40`). Локальный дефолт `scripts/check_coverage.sh` — 25%. |
 | **static-css-sync** | Закоммиченный Tailwind совпадает с билдом. |
 | **Интеграционные тесты** | PostgreSQL в CI; локально — `make test-integration`. |
 | **Smoke / RBAC** | `make smoke-test`, `make rbac-smoke`. |

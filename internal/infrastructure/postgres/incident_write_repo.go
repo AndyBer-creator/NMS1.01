@@ -10,19 +10,21 @@ import (
 	"time"
 )
 
-func (r *Repo) insertIncidentInTx(ctx context.Context, tx *sql.Tx, devID sql.NullInt64, title, severity, source string, details json.RawMessage) error {
+func (r *Repo) insertIncidentInTx(ctx context.Context, tx *sql.Tx, devID sql.NullInt64, title, severity, source string, details json.RawMessage) (int64, error) {
 	var assignee sql.NullString
 	effectiveAssignee := defaultIncidentAssignee(source, severity)
 	if effectiveAssignee != nil && strings.TrimSpace(*effectiveAssignee) != "" {
 		assignee = sql.NullString{String: strings.TrimSpace(*effectiveAssignee), Valid: true}
 	}
-	_, err := tx.ExecContext(
+	var id int64
+	err := tx.QueryRowContext(
 		ctx,
 		`INSERT INTO incidents (device_id, assignee, title, severity, status, source, details)
-         VALUES ($1, $2, $3, $4, 'new', $5, $6::jsonb)`,
+         VALUES ($1, $2, $3, $4, 'new', $5, $6::jsonb)
+         RETURNING id`,
 		devID, assignee, title, severity, source, []byte(details),
-	)
-	return err
+	).Scan(&id)
+	return id, err
 }
 
 func (r *Repo) updateIncidentStatusInTx(ctx context.Context, tx *sql.Tx, incidentID int64, toStatus string) error {
@@ -255,6 +257,7 @@ func (r *Repo) CreateOrTouchOpenIncident(ctx context.Context, deviceID *int, tit
 	}
 	lockKey := incidentDedupLockKey(devID, title, sv, src)
 	var touchedID int64
+	created := false
 	err = r.InTx(ctx, func(tx *sql.Tx) error {
 		if _, err := tx.ExecContext(ctx, `SELECT pg_advisory_xact_lock($1)`, lockKey); err != nil {
 			return err
@@ -284,67 +287,22 @@ func (r *Repo) CreateOrTouchOpenIncident(ctx context.Context, deviceID *int, tit
 		if updateErr != sql.ErrNoRows {
 			return updateErr
 		}
-		return r.insertIncidentInTx(ctx, tx, devID, title, sv, src, details)
+		id, err := r.insertIncidentInTx(ctx, tx, devID, title, sv, src, details)
+		if err != nil {
+			return err
+		}
+		touchedID = id
+		created = true
+		return nil
 	})
 	if err != nil {
 		return nil, false, err
 	}
-	if touchedID > 0 {
-		item, gerr := r.GetIncidentByID(ctx, touchedID)
-		return item, false, gerr
+	if touchedID <= 0 {
+		return nil, false, fmt.Errorf("incident create/touch invariant violated")
 	}
-	var assignee sql.NullString
-	effectiveAssignee := defaultIncidentAssignee(src, sv)
-	if effectiveAssignee != nil && strings.TrimSpace(*effectiveAssignee) != "" {
-		assignee = sql.NullString{String: strings.TrimSpace(*effectiveAssignee), Valid: true}
-	}
-	var out domain.Incident
-	var outDevID sql.NullInt64
-	var outAssignee sql.NullString
-	var ackAt, resolvedAt, closedAt sql.NullTime
-	err = r.db.QueryRowContext(
-		ctx,
-		`INSERT INTO incidents (device_id, assignee, title, severity, status, source, details)
-         VALUES ($1, $2, $3, $4, 'new', $5, $6::jsonb)
-         RETURNING id, device_id, assignee, title, severity, status, source, details,
-                   created_at, updated_at, acknowledged_at, resolved_at, closed_at`,
-		devID, assignee, title, sv, src, []byte(details),
-	).Scan(
-		&out.ID,
-		&outDevID,
-		&outAssignee,
-		&out.Title,
-		&out.Severity,
-		&out.Status,
-		&out.Source,
-		&out.Details,
-		&out.CreatedAt,
-		&out.UpdatedAt,
-		&ackAt,
-		&resolvedAt,
-		&closedAt,
-	)
-	if err != nil {
-		return nil, false, err
-	}
-	if outDevID.Valid {
-		v := int(outDevID.Int64)
-		out.DeviceID = &v
-	}
-	if outAssignee.Valid {
-		a := strings.TrimSpace(outAssignee.String)
-		out.Assignee = &a
-	}
-	if ackAt.Valid {
-		out.AcknowledgedAt = &ackAt.Time
-	}
-	if resolvedAt.Valid {
-		out.ResolvedAt = &resolvedAt.Time
-	}
-	if closedAt.Valid {
-		out.ClosedAt = &closedAt.Time
-	}
-	return &out, true, nil
+	item, gerr := r.GetIncidentByID(ctx, touchedID)
+	return item, created, gerr
 }
 
 func (r *Repo) ApplyITSMInboundUpdate(ctx context.Context, incidentID int64, toStatus, assignee, changedBy, comment string) (*domain.Incident, bool, bool, error) {

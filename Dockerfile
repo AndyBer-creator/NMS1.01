@@ -37,12 +37,11 @@ RUN chmod 755 /app/docker-entrypoint-nms.sh
 RUN chown -R nms:nms /app
 
 WORKDIR /app
-# Запуск от root только для entrypoint: chown bind-mount logs → su-exec nms (см. скрипт).
-USER root
+USER nms:nms
 EXPOSE 8080 162/udp
 
 ENTRYPOINT ["/app/docker-entrypoint-nms.sh"]
 CMD ["./nms-api"]
 
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-    CMD wget -q -O- http://localhost:8080/health || exit 1
+    CMD wget -q -O- http://localhost:8080/health || wget -q --no-check-certificate -O- https://localhost:8080/health || exit 1

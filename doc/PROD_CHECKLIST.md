@@ -97,7 +97,7 @@
 - [x] Интеграционные тесты критичных сценариев
   - HTTP: RBAC/CSRF (viewer vs admin), CRUD устройств, настройки worker/email, discovery/MIB/SNMP/test-alert; `internal/testdb` для ping БД; `make test-integration` и пакет `internal/delivery/http` (`-run Integration`).
   - PostgreSQL/traps: `internal/infrastructure/postgres`, `internal/repository` при `DB_DSN`.
-  - CI: unit + integration + e2e/contract gates (см. `.github/workflows/test.yml`), job **static-css-sync** (Tailwind `app.css` совпадает с билдом), порог покрытия по `scripts/check_coverage.sh` — **35%**.
+  - CI: unit + integration + e2e/contract gates (см. `.github/workflows/test.yml`), job **static-css-sync** (Tailwind `app.css` совпадает с билдом), порог покрытия по `scripts/check_coverage.sh` — **40%**.
   - Добавлены обязательные gates: `e2e-http-smoke`, `e2e-auth-smoke`, `contract-http-spec` (auth-aware OpenAPI + public security.txt), `alert-rules`, `compose-security`, `shell-syntax`, `tool-version-policy`, `trivy`, `gosec`, `sbom-sign`.
   - Добавлен manual promotion flow `stage -> prod` с environment approvals и rollback handoff (`.github/workflows/promote.yml`).
   - В nightly-lite добавлены регулярные guardrails: `lint`, `govulncheck`, `alert-rules`, `tool-version-policy`.
@@ -162,11 +162,13 @@
   - `migrations/011_partition_metrics.sql` больше не делает массовый backfill/drop внутри migration-run.
   - Добавлен controlled backfill job: `make metrics-backfill-legacy` (`cmd/backfill-metrics-legacy`).
   - Добавлена отдельная finalize-команда: `make metrics-backfill-legacy-finalize` (drop `metrics_legacy` только после проверки `remaining=0`).
-- [ ] Повысить coverage threshold поэтапно (например `35 -> 40 -> 45`) после стабилизации новых тестов.
+- [x] Coverage uplift: общий coverage поднят до `40%+`, CI-gate в `.github/workflows/test.yml` выставлен на `40%`.
 - [~] Продолжить архитектурную чистку `postgres/repository` слоев (этап декомпозиции существенно продвинут, но эпик не завершен полностью).
   - Вынесены отдельные модули: `device_repo.go`, `metrics_repo.go`, `audit_repo.go`, `tx.go`.
   - `incidents` разделен на read/write (`incident_read_repo.go`, `incident_write_repo.go`) + общий policy-файл.
   - `settings` разделен на read/write (`settings_read_repo.go`, `settings_write_repo.go`) с сохранением `...WithExec`-паттерна.
+- [x] Снят secrets-footgun в compose overlay: `deploy/compose/docker-compose.secrets.yml` теперь требует явный `NMS_SECRETS_DIR` (без fallback в workspace).
+- [x] Базовый `Dockerfile` переведен на non-root runtime (`USER nms:nms`); healthcheck проверяет и HTTP, и HTTPS для совместимости с `NMS_ENFORCE_HTTPS=true`.
 
 Текущее состояние критичных пунктов из production issue: security/correctness/hardening блоки закрыты или закрыты с оговорками, пункты выше относятся к next-phase quality rollout.
 
