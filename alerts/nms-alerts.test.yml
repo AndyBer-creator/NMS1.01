@@ -101,3 +101,22 @@ tests:
             exp_annotations:
               summary: "PostgreSQL connection saturation"
               description: "PostgreSQL active connections exceed 80% of max_connections for 10 minutes."
+
+  - name: metrics-default-growing-alert-fires
+    interval: 1m
+    input_series:
+      - series: up{job="postgres-exporter",instance="db1"}
+        values: 1+0x40
+      - series: pg_stat_user_tables_n_live_tup{relname="metrics_default",instance="db1"}
+        values: 0+150000x40
+    alert_rule_test:
+      - alertname: NMSMetricsDefaultGrowing
+        eval_time: 20m
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              instance: db1
+              relname: metrics_default
+            exp_annotations:
+              summary: "metrics_default partition is growing"
+              description: "metrics_default has more than 100k live rows for 15 minutes. This may indicate failed partition creation/retention; investigate ensure_metrics_partition_for and prune_old_metrics_partitions."

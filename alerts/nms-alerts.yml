@@ -122,3 +122,12 @@ groups:
           summary: "PostgreSQL connection saturation"
           description: "PostgreSQL active connections exceed 80% of max_connections for 10 minutes."
 
+      - alert: NMSMetricsDefaultGrowing
+        expr: (pg_stat_user_tables_n_live_tup{relname="metrics_default"} > 100000) and on() (up{job="postgres-exporter"} == 1)
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "metrics_default partition is growing"
+          description: "metrics_default has more than 100k live rows for 15 minutes. This may indicate failed partition creation/retention; investigate ensure_metrics_partition_for and prune_old_metrics_partitions."
+
