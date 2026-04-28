@@ -50,6 +50,7 @@ func (r *Repo) ListITSMInboundMappings(ctx context.Context, provider string, ena
 	                 mapped_status, mapped_assignee, enabled, priority, created_at
 	            FROM itsm_inbound_mappings`
 	if len(conds) > 0 {
+		// #nosec G202 -- conditions are constructed from fixed column names and placeholders only.
 		query += " WHERE " + strings.Join(conds, " AND ")
 	}
 	query += " ORDER BY priority ASC, id ASC"

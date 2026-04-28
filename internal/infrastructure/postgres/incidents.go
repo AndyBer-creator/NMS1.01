@@ -77,13 +77,14 @@ func normalizeIncidentStatus(v string) (string, error) {
 
 func incidentDedupLockKey(deviceID sql.NullInt64, title, severity, source string) int64 {
 	h := fnv.New64a()
-	fmt.Fprintf(h, "incident|src=%s|sev=%s|title=%s|dev_valid=%t|dev_id=%d",
+	_, _ = fmt.Fprintf(h, "incident|src=%s|sev=%s|title=%s|dev_valid=%t|dev_id=%d",
 		strings.TrimSpace(strings.ToLower(source)),
 		strings.TrimSpace(strings.ToLower(severity)),
 		strings.TrimSpace(strings.ToLower(title)),
 		deviceID.Valid,
 		deviceID.Int64,
 	)
+	// #nosec G115 -- advisory lock keys accept signed bigint; wraparound is acceptable for hash-based lock keys.
 	return int64(h.Sum64())
 }
 

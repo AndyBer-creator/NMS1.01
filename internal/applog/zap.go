@@ -49,7 +49,7 @@ func resolveLogLevel() zapcore.Level {
 // <logDir>/<serviceName>.log with rotation (lumberjack).
 func NewZapFile(serviceName string) (*zap.Logger, error) {
 	logDir := ResolveLogDir()
-	if err := os.MkdirAll(logDir, 0o755); err != nil {
+	if err := os.MkdirAll(logDir, 0o750); err != nil {
 		return nil, fmt.Errorf("create log dir %s: %w", logDir, err)
 	}
 

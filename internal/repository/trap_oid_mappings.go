@@ -48,6 +48,7 @@ func (r *TrapsRepo) ListOIDMappings(ctx context.Context, vendor string, enabled 
 	query := `SELECT id, vendor, oid_pattern, signal_kind, title, severity, is_recovery, priority, enabled, created_at
               FROM trap_oid_mappings`
 	if len(conds) > 0 {
+		// #nosec G202 -- conditions are constructed from fixed column names and placeholders only.
 		query += " WHERE " + strings.Join(conds, " AND ")
 	}
 	query += " ORDER BY priority DESC, id ASC"

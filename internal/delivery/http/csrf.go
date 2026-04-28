@@ -42,6 +42,7 @@ func ensureCSRFCookie(w http.ResponseWriter, r *http.Request) (string, error) {
 		return "", err
 	}
 	secure := isHTTPSRequest(r)
+	// #nosec G124 -- CSRF token cookie is intentionally readable by JS (double-submit), Secure is conditional on HTTPS for local dev.
 	http.SetCookie(w, &http.Cookie{
 		Name:     csrfCookieName,
 		Value:    token,

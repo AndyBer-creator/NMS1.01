@@ -10,6 +10,7 @@ import (
 func EnvOrFile(name string) string {
 	filePath := strings.TrimSpace(os.Getenv(name + "_FILE"))
 	if filePath != "" {
+		// #nosec -- file path is controlled by deployment; production guardrails validate *_FILE as absolute readable paths.
 		if b, err := os.ReadFile(filePath); err == nil {
 			if v := strings.TrimSpace(string(b)); v != "" {
 				return v

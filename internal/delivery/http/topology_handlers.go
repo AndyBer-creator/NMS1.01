@@ -1,7 +1,7 @@
 package http
 
 import (
-	"crypto/sha1"
+	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -34,7 +34,7 @@ type topologyResponse struct {
 }
 
 func hashShort(s string) string {
-	sum := sha1.Sum([]byte(s))
+	sum := sha256.Sum256([]byte(s))
 	hexed := hex.EncodeToString(sum[:])
 	if len(hexed) > 10 {
 		return hexed[:10]

@@ -245,6 +245,7 @@ func TestTerminalWSTokenSignVerify(t *testing.T) {
 	u := verifyTerminalWSToken(token, 42)
 	if u == nil {
 		t.Fatal("verifyTerminalWSToken returned nil for valid token")
+		return
 	}
 	if u.username != "admin" || u.role != roleAdmin {
 		t.Fatalf("unexpected user: %+v", u)

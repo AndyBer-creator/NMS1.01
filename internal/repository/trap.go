@@ -163,11 +163,12 @@ func trapVendorsFromInput(oid string, trapVars map[string]string) []string {
 
 func trapIncidentDedupLockKey(deviceID sql.NullInt64, title string) int64 {
 	h := fnv.New64a()
-	fmt.Fprintf(h, "trap-incident|title=%s|dev_valid=%t|dev_id=%d",
+	_, _ = fmt.Fprintf(h, "trap-incident|title=%s|dev_valid=%t|dev_id=%d",
 		strings.TrimSpace(strings.ToLower(title)),
 		deviceID.Valid,
 		deviceID.Int64,
 	)
+	// #nosec G115 -- advisory lock keys accept signed bigint; wraparound is acceptable for hash-based lock keys.
 	return int64(h.Sum64())
 }
 
@@ -199,21 +200,6 @@ func trapSignalKindFromString(v string) trapSignalKind {
 		return trapSignalBFDUp
 	default:
 		return trapSignalGeneric
-	}
-}
-
-func trapSignalKindString(v trapSignalKind) string {
-	switch v {
-	case trapSignalLinkDown:
-		return "link_down"
-	case trapSignalLinkUp:
-		return "link_up"
-	case trapSignalBFDDown:
-		return "bfd_down"
-	case trapSignalBFDUp:
-		return "bfd_up"
-	default:
-		return "generic"
 	}
 }
 

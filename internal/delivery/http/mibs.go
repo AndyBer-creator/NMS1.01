@@ -134,6 +134,7 @@ func (h *Handlers) MibUpload(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
+	// #nosec G120 -- ParseMultipartForm is bounded by mibUploadMaxBytes and copy is additionally limited below.
 	if err := r.ParseMultipartForm(mibUploadMaxBytes); err != nil {
 		h.mibUploadError(w, r, "Слишком большой файл или ошибка формы")
 		return
@@ -153,6 +154,7 @@ func (h *Handlers) MibUpload(w http.ResponseWriter, r *http.Request) {
 
 	dest := filepath.Join(h.mibUploadDir, safe)
 	tmp := dest + ".tmp"
+	// #nosec -- destination is rooted under configured upload dir and filename is validated by safeMibFilename.
 	out, err := os.Create(tmp)
 	if err != nil {
 		h.logger.Error("mib create tmp", zap.Error(err))
@@ -163,16 +165,20 @@ func (h *Handlers) MibUpload(w http.ResponseWriter, r *http.Request) {
 
 	n, err := io.Copy(out, io.LimitReader(file, mibUploadMaxBytes+1))
 	if err != nil {
+		// #nosec -- tmp path is rooted under configured upload dir and filename is validated by safeMibFilename.
 		_ = os.Remove(tmp)
 		h.mibUploadError(w, r, "Ошибка записи")
 		return
 	}
 	if n > mibUploadMaxBytes {
+		// #nosec -- tmp path is rooted under configured upload dir and filename is validated by safeMibFilename.
 		_ = os.Remove(tmp)
 		h.mibUploadError(w, r, "Файл больше 10 MiB")
 		return
 	}
+	// #nosec -- paths are rooted under configured upload dir and filename is validated by safeMibFilename.
 	if err := os.Rename(tmp, dest); err != nil {
+		// #nosec -- tmp path is rooted under configured upload dir and filename is validated by safeMibFilename.
 		_ = os.Remove(tmp)
 		h.mibUploadError(w, r, "Не удалось завершить загрузку")
 		return
@@ -235,6 +241,7 @@ func (h *Handlers) MibDelete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	path := filepath.Join(h.mibUploadDir, safe)
+	// #nosec -- path is rooted under configured upload dir and filename is validated by safeMibFilename.
 	if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
 		h.logger.Error("mib delete", zap.String("path", path), zap.Error(err))
 		h.mibUploadError(w, r, "Не удалось удалить")

@@ -244,6 +244,7 @@ func TestIntegration_ApplyITSMInboundUpdate_IsAtomic(t *testing.T) {
 	}
 	if out == nil {
 		t.Fatal("expected updated incident")
+		return
 	}
 	if !statusChanged || !assigneeChanged {
 		t.Fatalf("expected both status and assignee changed, got statusChanged=%v assigneeChanged=%v", statusChanged, assigneeChanged)

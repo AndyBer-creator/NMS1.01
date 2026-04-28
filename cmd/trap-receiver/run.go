@@ -102,7 +102,8 @@ func run(ctx context.Context, log *zap.Logger, dsn string, grpcTarget string, ud
 			trapOID = packet.Enterprise
 		}
 
-		uptime := int64(packet.Timestamp)
+		// #nosec G115 -- Timestamp is a monotonic tick counter; clamp to int64 to avoid overflow on conversion.
+		uptime := int64(uint64(packet.Timestamp) & uint64(^uint64(0)>>1))
 		if useGRPC {
 			callCtx, callCancel := context.WithTimeout(ctx, 5*time.Second)
 			_, err := client.IngestTrap(callCtx, &grpcapi.TrapIngestRequest{
@@ -262,6 +263,7 @@ func grpcClientTransportCreds() (credentials.TransportCredentials, error) {
 		NextProtos: []string{"h2"},
 	}
 	if caPath != "" {
+		// #nosec -- path is supplied by deployment; production guardrails validate *_FILE paths as absolute readable files.
 		caPEM, err := os.ReadFile(caPath)
 		if err != nil {
 			return nil, fmt.Errorf("read grpc ca: %w", err)

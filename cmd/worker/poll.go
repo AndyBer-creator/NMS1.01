@@ -220,7 +220,14 @@ func (b *deviceBackoff) onFailure(ip, errText string, now time.Time) time.Durati
 	if st.failures > 5 {
 		st.failures = 5
 	}
-	delay := time.Minute * time.Duration(1<<uint(st.failures-1))
+	shift := st.failures - 1
+	if shift < 0 {
+		shift = 0
+	}
+	if shift > 30 {
+		shift = 30
+	}
+	delay := time.Minute * time.Duration(1<<shift)
 	if delay > b.maxGap {
 		delay = b.maxGap
 	}
@@ -441,14 +448,4 @@ func getValue(result map[string]string, oid string) string {
 	return "N/A"
 }
 
-// snmpPollWasOK reports whether status indicates a healthy poll state.
-func snmpPollWasOK(status string) bool {
-	s := strings.TrimSpace(strings.ToLower(status))
-	return s == "" || s == "active"
-}
-
-// snmpPollWasFailure reports whether status is any failed_* poll state.
-func snmpPollWasFailure(status string) bool {
-	s := strings.TrimSpace(status)
-	return strings.HasPrefix(s, "failed")
-}
+// NOTE: keep poll status classification centralized in postgres poll transition helpers.

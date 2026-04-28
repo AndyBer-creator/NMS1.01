@@ -18,6 +18,7 @@ const (
 	SettingKeyTelegramTokenSecret   = "telegram_token_secret"
 	SettingKeyTelegramChatIDSecret  = "telegram_chat_id_secret"
 	SettingKeyAlertWebhookSecret    = "alert_webhook_token_secret"
+	// #nosec G101 -- settings key name, not a credential.
 	SettingKeyGRPCAuthTokenSecret   = "grpc_auth_token_secret"
 
 	DefaultWorkerPollIntervalSeconds = 60

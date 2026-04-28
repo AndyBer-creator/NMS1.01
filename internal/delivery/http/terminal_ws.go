@@ -11,7 +11,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
 	"net"
 	"net/http"
 	"net/url"
@@ -32,6 +31,7 @@ const (
 	defaultTerminalWSReadLimit = int64(64 * 1024)
 	maxTerminalWSReadLimit     = int64(1024 * 1024)
 	maxTerminalAuthFieldBytes  = 256
+	// #nosec G101 -- constant domain-separation context string for HMAC, not a secret.
 	terminalWSTokenMACContext  = "nms:terminal-ws:v1"
 )
 
@@ -70,6 +70,7 @@ func terminalCheckOrigin(r *http.Request) bool {
 
 func terminalSSHHostKeyCallback() (ssh.HostKeyCallback, error) {
 	if envBool("NMS_TERMINAL_ALLOW_INSECURE_HOSTKEY") {
+		// #nosec G106 -- explicitly controlled by env flag; production guardrails disallow insecure hostkey mode.
 		return ssh.InsecureIgnoreHostKey(), nil
 	}
 	knownHostsPath := strings.TrimSpace(config.EnvOrFile("NMS_TERMINAL_SSH_KNOWN_HOSTS"))
@@ -256,15 +257,12 @@ func terminalTokenFromSubprotocol(r *http.Request) string {
 // Далее: бинарные кадры — ввод в PTY/TCP; текст JSON {"type":"resize","cols":n,"rows":m} для SSH.
 // С сервера: бинарные кадры — вывод терминала; при ошибке — текст JSON {"type":"error",...}.
 func (h *Handlers) TerminalWS(w http.ResponseWriter, r *http.Request) {
-	// Дублируем в stderr: zap пишет в logs/nms-api.log, а docker logs показывает только stdout/stderr chi.
-	log.Printf("nms-api: terminal-ws request path=%s kind=%s", r.URL.Path, r.URL.Query().Get("kind"))
 	h.logger.Info("terminal ws request",
 		zap.String("path", r.URL.Path),
 		zap.String("query_kind", r.URL.Query().Get("kind")),
 	)
 	id, err := deviceIDFromChi(r)
 	if err != nil {
-		log.Printf("nms-api: terminal-ws 400 bad device id: %v", err)
 		http.Error(w, "bad device id", http.StatusBadRequest)
 		return
 	}
@@ -278,14 +276,12 @@ func (h *Handlers) TerminalWS(w http.ResponseWriter, r *http.Request) {
 				retrySec = 1
 			}
 			w.Header().Set("Retry-After", fmt.Sprintf("%d", retrySec))
-			log.Printf("nms-api: terminal-ws 429 too many auth attempts device_id=%d", id)
 			http.Error(w, "Too many authentication attempts", http.StatusTooManyRequests)
 			return
 		}
 		u = authRes.user
 	}
 	if u == nil {
-		log.Printf("nms-api: terminal-ws 403 forbidden (no admin session/token) device_id=%d", id)
 		http.Error(w, "forbidden", http.StatusForbidden)
 		return
 	}
@@ -294,21 +290,18 @@ func (h *Handlers) TerminalWS(w http.ResponseWriter, r *http.Request) {
 
 	dev, err := h.repo.GetDeviceByID(r.Context(), id)
 	if err != nil || dev == nil {
-		log.Printf("nms-api: terminal-ws 404 device id=%d err=%v", id, err)
 		http.Error(w, "device not found", http.StatusNotFound)
 		return
 	}
 
 	conn, err := terminalUpgrader.Upgrade(w, r, nil)
 	if err != nil {
-		log.Printf("nms-api: terminal-ws upgrade FAILED err=%v host=%q", err, r.Host)
 		h.logger.Warn("terminal ws upgrade failed",
 			zap.Error(err),
 			zap.String("host", r.Host),
 		)
 		return
 	}
-	log.Printf("nms-api: terminal-ws upgraded ok device_id=%d kind=%s", id, kind)
 	conn.SetReadLimit(terminalWSReadLimit())
 
 	pingStop := make(chan struct{})
@@ -603,18 +596,6 @@ func wsWriteBinary(conn *websocket.Conn, mu *sync.Mutex, payload []byte) error {
 	}
 	_ = conn.SetWriteDeadline(time.Now().Add(30 * time.Second))
 	return conn.WriteMessage(websocket.BinaryMessage, payload)
-}
-
-type byteReader struct {
-	r   io.Reader
-	buf [1]byte
-}
-
-func newByteReader(r io.Reader) *byteReader { return &byteReader{r: r} }
-
-func (b *byteReader) ReadByte() (byte, error) {
-	_, err := io.ReadFull(b.r, b.buf[:])
-	return b.buf[0], err
 }
 
 // TerminalPage — HTML с xterm для /devices/{id}/terminal.

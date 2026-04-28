@@ -222,6 +222,7 @@ func sessionUserFromCookie(r *http.Request) *authUser {
 
 func setSessionCookie(w http.ResponseWriter, r *http.Request, token string) {
 	secure := isHTTPSRequest(r)
+	// #nosec G124 -- attributes are set explicitly; Secure is conditional on HTTPS to support local dev without TLS.
 	http.SetCookie(w, &http.Cookie{
 		Name:     sessionCookieName,
 		Value:    token,
@@ -235,6 +236,7 @@ func setSessionCookie(w http.ResponseWriter, r *http.Request, token string) {
 
 func clearSessionCookie(w http.ResponseWriter, r *http.Request) {
 	secure := isHTTPSRequest(r)
+	// #nosec G124 -- attributes are set explicitly; Secure is conditional on HTTPS to support local dev without TLS.
 	http.SetCookie(w, &http.Cookie{
 		Name:     sessionCookieName,
 		Value:    "",

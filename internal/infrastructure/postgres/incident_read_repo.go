@@ -115,6 +115,7 @@ func (r *Repo) listIncidentsPageWithExec(ctx context.Context, exec sqlExecutor, 
                      created_at, updated_at, acknowledged_at, resolved_at, closed_at
               FROM incidents`
 	if len(conds) > 0 {
+		// #nosec G202 -- conditions are constructed from fixed column names and placeholders only.
 		query += " WHERE " + strings.Join(conds, " AND ")
 	}
 	query += fmt.Sprintf(" ORDER BY updated_at DESC, id DESC LIMIT $%d", len(args))

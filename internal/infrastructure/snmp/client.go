@@ -129,6 +129,13 @@ func (c *Client) ApplyRuntimeConfig(timeout time.Duration, retries int) {
 	c.Retries = retries
 }
 
+func snmpPortUint16(port int) uint16 {
+	if port < 1 || port > 65535 {
+		return 161
+	}
+	return uint16(port)
+}
+
 // pduValueString converts PDU values to API/UI friendly strings.
 // OCTET STRING values often come as []byte and require text conversion.
 func pduValueString(v interface{}) string {
@@ -199,7 +206,7 @@ func (c *Client) getV2c(ip string, community string, oids []string) (map[string]
 	cfg := c.Config()
 	conn := &gosnmp.GoSNMP{
 		Target:    ip,
-		Port:      uint16(cfg.Port),
+		Port:      snmpPortUint16(cfg.Port),
 		Community: community,
 		Timeout:   cfg.Timeout,
 		Version:   gosnmp.Version2c,
@@ -246,7 +253,7 @@ func (c *Client) walkV2c(ip string, community string, baseOID string) (map[strin
 	cfg := c.Config()
 	conn := &gosnmp.GoSNMP{
 		Target:         ip,
-		Port:           uint16(cfg.Port),
+		Port:           snmpPortUint16(cfg.Port),
 		Community:      community,
 		Timeout:        cfg.Timeout,
 		Version:        gosnmp.Version2c,
@@ -306,7 +313,7 @@ func (c *Client) setV2c(ip, community, oid string, pduType gosnmp.Asn1BER, value
 	cfg := c.Config()
 	conn := &gosnmp.GoSNMP{
 		Target:    ip,
-		Port:      uint16(cfg.Port),
+		Port:      snmpPortUint16(cfg.Port),
 		Community: community,
 		Timeout:   cfg.Timeout,
 		Version:   gosnmp.Version2c,
@@ -387,7 +394,7 @@ func (c *Client) newV3Conn(device *domain.Device) (*gosnmp.GoSNMP, error) {
 
 	conn := &gosnmp.GoSNMP{
 		Target:        device.IP,
-		Port:          uint16(cfg.Port),
+		Port:          snmpPortUint16(cfg.Port),
 		Version:       gosnmp.Version3,
 		Timeout:       cfg.Timeout,
 		Retries:       cfg.Retries,

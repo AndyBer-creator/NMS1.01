@@ -207,6 +207,7 @@ func validateOptionalSecretFileVar(name string) error {
 	if !filepath.IsAbs(path) {
 		return fmt.Errorf("production guardrail: %s_FILE must be an absolute path", name)
 	}
+	// #nosec -- file path is validated as absolute and used only for reading required secret material.
 	b, err := os.ReadFile(path)
 	if err != nil {
 		return fmt.Errorf("production guardrail: %s_FILE is not readable: %w", name, err)
@@ -232,6 +233,7 @@ func validateKnownHostsFile(path string) error {
 	if info.IsDir() {
 		return fmt.Errorf("production guardrail: NMS_TERMINAL_SSH_KNOWN_HOSTS must point to a file, got directory %q", filepath.Clean(p))
 	}
+	// #nosec -- path is validated as absolute and must point to a readable known_hosts file.
 	b, err := os.ReadFile(p)
 	if err != nil {
 		return fmt.Errorf("production guardrail: NMS_TERMINAL_SSH_KNOWN_HOSTS is not readable: %w", err)
@@ -305,13 +307,13 @@ func validateDBDSNShape(dsn string) error {
 	// key=value DSN.
 	fields := parseDSNKeyValueFields(raw)
 	if strings.TrimSpace(fields["host"]) == "" {
-		return fmt.Errorf("production guardrail: DB_DSN must include host=...")
+		return fmt.Errorf("production guardrail: DB_DSN must include host")
 	}
 	if strings.TrimSpace(fields["user"]) == "" {
-		return fmt.Errorf("production guardrail: DB_DSN must include user=...")
+		return fmt.Errorf("production guardrail: DB_DSN must include user")
 	}
 	if strings.TrimSpace(fields["dbname"]) == "" {
-		return fmt.Errorf("production guardrail: DB_DSN must include dbname=...")
+		return fmt.Errorf("production guardrail: DB_DSN must include dbname")
 	}
 	if err := validateOptionalPortValue(fields["port"], "DB_DSN"); err != nil {
 		return err

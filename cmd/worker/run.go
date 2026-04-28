@@ -148,21 +148,17 @@ func (o workerOpts) metricsListenAddr() string {
 
 // run выполняет циклы SNMP-опроса и LLDP до отмены ctx.
 func run(ctx context.Context, cfg *config.Config, log *zap.Logger, opts workerOpts) error {
-	var metricsShutdown func()
-	if srv, _, err := startMetricsHTTPServer(opts.metricsListenAddr(), log); err != nil {
+	srv, _, err := startMetricsHTTPServer(opts.metricsListenAddr(), log)
+	if err != nil {
 		return fmt.Errorf("metrics server failed to start: %w", err)
-	} else {
-		metricsShutdown = func() {
-			shutdownCtx, c := context.WithTimeout(context.Background(), 3*time.Second)
-			defer c()
-			if err := srv.Shutdown(shutdownCtx); err != nil {
-				log.Warn("metrics shutdown", zap.Error(err))
-			}
+	}
+	defer func() {
+		shutdownCtx, c := context.WithTimeout(context.Background(), 3*time.Second)
+		defer c()
+		if err := srv.Shutdown(shutdownCtx); err != nil {
+			log.Warn("metrics shutdown", zap.Error(err))
 		}
-	}
-	if metricsShutdown != nil {
-		defer metricsShutdown()
-	}
+	}()
 
 	repo, err := postgres.New(cfg.DB.DSN)
 	if err != nil {

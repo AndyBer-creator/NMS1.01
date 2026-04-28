@@ -197,6 +197,7 @@ func grpcServerTLSCredsFromEnv() (credentials.TransportCredentials, error) {
 	}
 	clientCAPath := strings.TrimSpace(os.Getenv("NMS_GRPC_TLS_CLIENT_CA_FILE"))
 	if clientCAPath != "" {
+		// #nosec -- path is supplied by deployment; production guardrails validate *_FILE paths as absolute readable files.
 		caPEM, err := os.ReadFile(clientCAPath)
 		if err != nil {
 			return nil, fmt.Errorf("read grpc client ca: %w", err)
@@ -231,7 +232,7 @@ func buildApp(cfg *config.Config, log *zap.Logger) (http.Handler, *postgres.Repo
 		_ = db.Close()
 	}
 
-	if err := os.MkdirAll(cfg.Paths.MibUploadDir, 0o755); err != nil {
+	if err := os.MkdirAll(cfg.Paths.MibUploadDir, 0o750); err != nil {
 		cleanup()
 		return nil, nil, nil, nil, fmt.Errorf("mib upload dir: %w", err)
 	}

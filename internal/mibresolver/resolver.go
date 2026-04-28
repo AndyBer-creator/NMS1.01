@@ -152,6 +152,7 @@ func (r *Resolver) ResolveToNumeric(symbol string) (string, error) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
+	// #nosec G204 -- executable is resolved via LookPath, arguments are fixed and symbol is validated by ValidateSymbol.
 	cmd := exec.CommandContext(ctx, bin, "-On", "-IR", s)
 	cmd.Env = append(os.Environ(),
 		"MIBDIRS="+r.mibDirsEnv(),

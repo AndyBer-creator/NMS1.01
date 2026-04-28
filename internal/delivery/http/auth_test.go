@@ -192,6 +192,7 @@ func TestRequireAuth_AllowsBasicAdminAndSetsContextUser(t *testing.T) {
 		u := userFromContext(r.Context())
 		if u == nil {
 			t.Fatal("expected user in context")
+			return
 		}
 		if u.username != "admin" || u.role != roleAdmin {
 			t.Fatalf("unexpected auth user: %+v", u)
@@ -222,6 +223,7 @@ func TestRequireAuth_AllowsBasicViewerAndSetsContextUser(t *testing.T) {
 		u := userFromContext(r.Context())
 		if u == nil {
 			t.Fatal("expected user in context")
+			return
 		}
 		if u.username != "viewer" || u.role != roleViewer {
 			t.Fatalf("unexpected auth user: %+v", u)
@@ -258,6 +260,7 @@ func TestRequireAuth_AllowsValidSessionCookie(t *testing.T) {
 		u := userFromContext(r.Context())
 		if u == nil {
 			t.Fatal("expected user in context from session cookie")
+			return
 		}
 		if u.username != "admin" || u.role != roleAdmin {
 			t.Fatalf("unexpected auth user from session: %+v", u)

@@ -18,7 +18,7 @@ func InitFromEnv() {
 	}
 	loc, err := time.LoadLocation(tz)
 	if err != nil {
-		log.Printf("timezone: invalid TZ=%q: %v", tz, err)
+		log.Printf("timezone: invalid TZ: %v", err)
 		return
 	}
 	time.Local = loc
