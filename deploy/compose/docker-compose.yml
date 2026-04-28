@@ -144,11 +144,14 @@ services:
       NMS_PROMETHEUS_BASE_URL: "${NMS_PROMETHEUS_BASE_URL}"
       PROMETHEUS_BASE_URL: "${PROMETHEUS_BASE_URL}"
       NMS_GRPC_ADDR: "${NMS_GRPC_ADDR:-127.0.0.1:9091}"
+      NMS_GRPC_AUTH_TOKEN: "${NMS_GRPC_AUTH_TOKEN:-change-me-grpc-ingest-token}"
+      NMS_GRPC_ALLOW_INSECURE_INGEST: "${NMS_GRPC_ALLOW_INSECURE_INGEST:-true}"
       NMS_ADMIN_USER: "${NMS_ADMIN_USER}"
       NMS_ADMIN_PASS: "${NMS_ADMIN_PASS}"
       NMS_VIEWER_USER: "${NMS_VIEWER_USER}"
       NMS_VIEWER_PASS: "${NMS_VIEWER_PASS}"
       NMS_SESSION_SECRET: "${NMS_SESSION_SECRET}"
+      NMS_DB_ENCRYPTION_KEY: "${NMS_DB_ENCRYPTION_KEY}"
       NMS_TERMINAL_SSH_KNOWN_HOSTS: "${NMS_TERMINAL_SSH_KNOWN_HOSTS}"
     volumes:
       - ../../logs:/app/logs:delegated
@@ -157,9 +160,8 @@ services:
       - ../../.secrets:/app/secrets:ro
     cap_drop:
       - ALL
-    security_opt:
-      - no-new-privileges:true
-    command: ["./nms-api"]
+    entrypoint: ["./nms-api"]
+    command: []
     depends_on:
       postgres:
         condition: service_healthy
@@ -269,9 +271,8 @@ services:
       - ../../mibs:/app/mibs:ro
     cap_drop:
       - ALL
-    security_opt:
-      - no-new-privileges:true
-    command: ["./nms-worker"]
+    entrypoint: ["./nms-worker"]
+    command: []
     depends_on:
       postgres:
         condition: service_healthy
@@ -302,13 +303,12 @@ services:
       - ALL
     cap_add:
       - NET_BIND_SERVICE
-    security_opt:
-      - no-new-privileges:true
     environment:
       TZ: ${TZ:-UTC}
       NMS_ENV: docker
       DB_DSN: "host=127.0.0.1 port=5432 user=nms-user password=${POSTGRES_PASSWORD} dbname=NMS sslmode=${DB_SSLMODE:-disable}"
       NMS_TRAP_GRPC_TARGET: "${NMS_TRAP_GRPC_TARGET:-127.0.0.1:9091}"
+      NMS_TRAP_GRPC_AUTH_TOKEN: "${NMS_TRAP_GRPC_AUTH_TOKEN:-${NMS_GRPC_AUTH_TOKEN:-change-me-grpc-ingest-token}}"
       TELEGRAM_TOKEN: "${TELEGRAM_TOKEN}"
       TELEGRAM_CHAT_ID: "${TELEGRAM_CHAT_ID}"
     volumes:

@@ -114,6 +114,9 @@ func devicesTableViewModelFromDevices(devices []*domain.Device) devicesTableView
 		lastPollOK := "Нет успешного опроса"
 		if !d.LastPollOKAt.IsZero() {
 			lastPollOK = d.LastPollOKAt.Format("15:04 02.01")
+		} else if d.Status == "active" && !d.LastSeen.IsZero() {
+			// Backward-compatible fallback for devices marked active before last_poll_ok_at was populated.
+			lastPollOK = d.LastSeen.Format("15:04 02.01")
 		}
 		lastError := "—"
 		if strings.TrimSpace(d.LastError) != "" {

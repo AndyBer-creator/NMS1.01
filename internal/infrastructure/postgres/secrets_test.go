@@ -56,3 +56,15 @@ func TestSecretProtector_PlaintextFallbackWhenDisabled(t *testing.T) {
 		t.Fatalf("merge fallback mismatch: got %q", got)
 	}
 }
+
+func TestSecretProtector_MergeEncryptedWhenDisabled(t *testing.T) {
+	p, err := newSecretProtector("")
+	if err != nil {
+		t.Fatalf("newSecretProtector: %v", err)
+	}
+
+	_, err = p.mergeSecretFromStorage("", sql.NullString{String: encryptedSecretPrefix + "AQID", Valid: true})
+	if err == nil {
+		t.Fatal("expected error for encrypted payload with disabled protector")
+	}
+}

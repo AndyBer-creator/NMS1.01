@@ -58,12 +58,18 @@ func (p *secretProtector) splitSecretForStorage(raw string) (plain sql.NullStrin
 
 func (p *secretProtector) mergeSecretFromStorage(plain string, enc sql.NullString) (string, error) {
 	if enc.Valid && strings.TrimSpace(enc.String) != "" {
+		if p == nil || !p.enabled || p.aead == nil {
+			return "", fmt.Errorf("db encryption: encrypted payload present but protector is disabled")
+		}
 		return p.decrypt(enc.String)
 	}
 	return plain, nil
 }
 
 func (p *secretProtector) encrypt(plain string) (string, error) {
+	if p == nil || !p.enabled || p.aead == nil {
+		return "", fmt.Errorf("db encryption: protector is disabled")
+	}
 	nonce := make([]byte, p.aead.NonceSize())
 	if _, err := rand.Read(nonce); err != nil {
 		return "", fmt.Errorf("db encryption nonce: %w", err)
@@ -74,6 +80,9 @@ func (p *secretProtector) encrypt(plain string) (string, error) {
 }
 
 func (p *secretProtector) decrypt(encoded string) (string, error) {
+	if p == nil || !p.enabled || p.aead == nil {
+		return "", fmt.Errorf("db encryption: protector is disabled")
+	}
 	if !strings.HasPrefix(encoded, encryptedSecretPrefix) {
 		return "", fmt.Errorf("db encryption: unsupported payload format")
 	}

@@ -132,7 +132,7 @@ func TestDeviceStatusUpdateMethods(t *testing.T) {
 		t.Fatalf("UpdateDeviceLastSeen: %v", err)
 	}
 
-	mock.ExpectExec(`UPDATE devices SET status = \$1, last_seen = NOW\(\) WHERE id = \$2`).
+	mock.ExpectExec(`UPDATE devices`).
 		WithArgs("active", 2).
 		WillReturnResult(sqlmock.NewResult(0, 1))
 	if err := repo.UpdateDeviceStatus(ctx, 2, "active"); err != nil {

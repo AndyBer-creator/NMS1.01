@@ -323,7 +323,18 @@ func (r *Repo) UpdateDeviceLastSeen(ctx context.Context, deviceID int) error {
 }
 
 func (r *Repo) UpdateDeviceStatus(ctx context.Context, deviceID int, status string) error {
-	_, err := r.db.ExecContext(ctx, "UPDATE devices SET status = $1, last_seen = NOW() WHERE id = $2", status, deviceID)
+	_, err := r.db.ExecContext(
+		ctx,
+		`UPDATE devices
+         SET status = $1,
+             last_seen = NOW(),
+             last_poll_ok_at = CASE
+                 WHEN $1 = 'active' THEN COALESCE(last_poll_ok_at, NOW())
+                 ELSE last_poll_ok_at
+             END
+         WHERE id = $2`,
+		status, deviceID,
+	)
 	return err
 }
 
