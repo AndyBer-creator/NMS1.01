@@ -8,6 +8,8 @@ import (
 	"time"
 
 	"NMS1/internal/config"
+
+	"go.uber.org/zap"
 )
 
 type escalationPolicyView struct {
@@ -104,7 +106,8 @@ func (h *Handlers) IncidentAutomationPanel(w http.ResponseWriter, r *http.Reques
 	enabled := true
 	mappings, err := h.repo.ListITSMInboundMappings(r.Context(), "", &enabled)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		h.logger.Error("ListITSMInboundMappings failed", zap.Error(err))
+		http.Error(w, "Database error", http.StatusInternalServerError)
 		return
 	}
 	vm := incidentAutomationPanelVM{
@@ -130,7 +133,8 @@ func (h *Handlers) IncidentAutomationSnapshot(w http.ResponseWriter, r *http.Req
 	enabled := true
 	items, err := h.repo.ListITSMInboundMappings(r.Context(), "", &enabled)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		h.logger.Error("ListITSMInboundMappings snapshot failed", zap.Error(err))
+		http.Error(w, "Database error", http.StatusInternalServerError)
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")

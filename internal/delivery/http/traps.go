@@ -104,7 +104,8 @@ func (h *Handlers) testAlert(w http.ResponseWriter, r *http.Request) {
 	err := telegram.SendCriticalTrap(input.DeviceIP, input.OID, trapVars)
 
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		h.logger.Error("SendCriticalTrap failed", zap.String("device_ip", input.DeviceIP), zap.String("oid", input.OID), zap.Error(err))
+		http.Error(w, "Delivery failed", http.StatusInternalServerError)
 		return
 	}
 
