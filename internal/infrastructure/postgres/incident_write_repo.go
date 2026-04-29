@@ -10,6 +10,30 @@ import (
 	"time"
 )
 
+var incidentStatusOrder = []string{"new", "acknowledged", "in_progress", "resolved", "closed"}
+
+func incidentStatusPath(from, to string) []string {
+	from = strings.ToLower(strings.TrimSpace(from))
+	to = strings.ToLower(strings.TrimSpace(to))
+	if from == "" || to == "" || from == to {
+		return nil
+	}
+	fromIdx := -1
+	toIdx := -1
+	for i, s := range incidentStatusOrder {
+		if s == from {
+			fromIdx = i
+		}
+		if s == to {
+			toIdx = i
+		}
+	}
+	if fromIdx < 0 || toIdx < 0 || toIdx <= fromIdx {
+		return nil
+	}
+	return append([]string(nil), incidentStatusOrder[fromIdx+1:toIdx+1]...)
+}
+
 func (r *Repo) insertIncidentInTx(ctx context.Context, tx *sql.Tx, devID sql.NullInt64, title, severity, source string, details json.RawMessage) (int64, error) {
 	var assignee sql.NullString
 	effectiveAssignee := defaultIncidentAssignee(source, severity)
@@ -157,18 +181,27 @@ func (r *Repo) TransitionIncidentStatus(ctx context.Context, incidentID int64, t
 			}
 			return err
 		}
-		if fromStatus == to {
+		from := strings.ToLower(strings.TrimSpace(fromStatus))
+		if from == to {
 			return fmt.Errorf("incident already in status %q", to)
 		}
-		nextAllowed := allowedIncidentTransitions[fromStatus]
-		if _, ok := nextAllowed[to]; !ok {
-			return fmt.Errorf("invalid status transition %q -> %q", fromStatus, to)
+		steps := incidentStatusPath(from, to)
+		if len(steps) == 0 {
+			return fmt.Errorf("invalid status transition %q -> %q", from, to)
 		}
-		if err := r.updateIncidentStatusInTx(ctx, tx, incidentID, to); err != nil {
-			return err
-		}
-		if err := r.insertIncidentTransitionInTx(ctx, tx, incidentID, fromStatus, to, changedBy, comment); err != nil {
-			return err
+		prev := from
+		for _, step := range steps {
+			nextAllowed := allowedIncidentTransitions[prev]
+			if _, ok := nextAllowed[step]; !ok {
+				return fmt.Errorf("invalid status transition %q -> %q", prev, step)
+			}
+			if err := r.updateIncidentStatusInTx(ctx, tx, incidentID, step); err != nil {
+				return err
+			}
+			if err := r.insertIncidentTransitionInTx(ctx, tx, incidentID, prev, step, changedBy, comment); err != nil {
+				return err
+			}
+			prev = step
 		}
 		return nil
 	}); err != nil {
@@ -360,7 +393,7 @@ func (r *Repo) ApplyITSMInboundUpdate(ctx context.Context, incidentID int64, toS
 			return err
 		}
 
-		fromStatus := out.Status
+		fromStatus := strings.ToLower(strings.TrimSpace(out.Status))
 		currentAssigneeStr := strings.TrimSpace(currentAssignee.String)
 
 		if statusRequested && toStatus != fromStatus {

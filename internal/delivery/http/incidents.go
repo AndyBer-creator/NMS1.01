@@ -205,6 +205,9 @@ func isIncidentListClientError(err error) bool {
 }
 
 func (h *Handlers) IncidentsPage(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "no-store, no-cache, must-revalidate")
+	w.Header().Set("Pragma", "no-cache")
+	w.Header().Set("Expires", "0")
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	_ = h.incidentsPageTmpl.Execute(w, map[string]any{"CSPNonce": cspNonceFromContext(r)})
 }

@@ -50,20 +50,30 @@ func SecurityHeaders(next http.Handler) http.Handler {
 		// Disable dangerous browser features by default.
 		w.Header().Set("Permissions-Policy", "geolocation=(), microphone=(), camera=()")
 
-		// CSP with per-request nonce for inline scripts/styles.
-		w.Header().Set(
-			"Content-Security-Policy",
-			"default-src 'self'; "+
-				"script-src 'self' 'nonce-"+nonce+"'; "+
-				"style-src 'self' 'nonce-"+nonce+"'; "+
-				"img-src 'self' data:; "+
-				"font-src 'self' data:; "+
-				"connect-src 'self'; "+
-				"object-src 'none'; "+
-				"frame-ancestors 'none'; "+
-				"base-uri 'self'; "+
-				"form-action 'self'",
-		)
+		csp := "default-src 'self'; " +
+			"script-src 'self' 'nonce-" + nonce + "'; " +
+			"style-src 'self' 'nonce-" + nonce + "'; " +
+			"img-src 'self' data:; " +
+			"font-src 'self' data:; " +
+			"connect-src 'self'; " +
+			"object-src 'none'; " +
+			"frame-ancestors 'none'; " +
+			"base-uri 'self'; " +
+			"form-action 'self'"
+		// Swagger UI injects inline bootstrap code/styles; allow only for swagger route.
+		if strings.HasPrefix(r.URL.Path, "/swagger") {
+			csp = "default-src 'self'; " +
+				"script-src 'self' 'unsafe-inline'; " +
+				"style-src 'self' 'unsafe-inline'; " +
+				"img-src 'self' data:; " +
+				"font-src 'self' data:; " +
+				"connect-src 'self'; " +
+				"object-src 'none'; " +
+				"frame-ancestors 'none'; " +
+				"base-uri 'self'; " +
+				"form-action 'self'"
+		}
+		w.Header().Set("Content-Security-Policy", csp)
 
 		// HSTS only when request is actually HTTPS (or forwarded as HTTPS).
 		if isHTTPSRequest(r) {

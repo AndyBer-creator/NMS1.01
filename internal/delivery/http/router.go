@@ -7,6 +7,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+	httpSwagger "github.com/swaggo/http-swagger/v2"
 )
 
 // Router returns root HTTP handler and routes terminal WS separately.
@@ -123,6 +124,12 @@ func mainRouter(handlers *Handlers) *chi.Mux {
 		r.With(RequireAdmin).Post("/incidents/bulk/status", handlers.BulkTransitionIncidents)
 
 		r.Get("/api/openapi.yaml", serveOpenAPISpec)
+		r.Get("/swagger/doc.json", serveOpenAPISpecJSON)
+		r.Get("/swagger/*", httpSwagger.Handler(
+			httpSwagger.URL("/api/openapi.yaml"),
+			httpSwagger.DocExpansion("list"),
+			httpSwagger.DeepLinking(true),
+		))
 
 		r.With(RequireAdmin).Post("/test-alert", handlers.testAlert)
 	})

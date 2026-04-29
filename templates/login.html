@@ -5,6 +5,20 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Вход — NMS1</title>
     <link rel="stylesheet" href="/static/css/app.css">
+    <script nonce="{{.CSPNonce}}">
+    document.addEventListener('DOMContentLoaded', function () {
+        var toggle = document.getElementById('toggle-password-visibility');
+        var input = document.getElementById('login-password');
+        var label = document.getElementById('toggle-password-label');
+        if (!toggle || !input || !label) return;
+        toggle.addEventListener('click', function () {
+            var show = input.type === 'password';
+            input.type = show ? 'text' : 'password';
+            label.textContent = show ? 'Скрыть' : 'Показать';
+            toggle.setAttribute('aria-pressed', show ? 'true' : 'false');
+        });
+    });
+    </script>
 </head>
 <body class="bg-gray-950 text-white min-h-screen flex flex-col items-center justify-center p-6">
 <div class="w-full max-w-md">
@@ -29,8 +43,14 @@
             </div>
             <div>
                 <label class="block text-sm text-gray-400 mb-2">Пароль</label>
-                <input name="password" type="password" autocomplete="current-password" required
-                       class="w-full p-3 bg-gray-800/80 border border-gray-600 rounded-xl focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-400">
+                <div class="space-y-2">
+                    <input id="login-password" name="password" type="password" autocomplete="current-password" required
+                           class="w-full p-3 bg-gray-800/80 border border-gray-600 rounded-xl focus:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-400">
+                    <button id="toggle-password-visibility" type="button" aria-pressed="false"
+                            class="text-sm text-blue-300 hover:text-blue-200 transition-colors">
+                        <span id="toggle-password-label">Показать</span> пароль
+                    </button>
+                </div>
             </div>
             <button type="submit"
                     class="w-full py-3 rounded-xl bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 font-semibold shadow-lg transition-all">

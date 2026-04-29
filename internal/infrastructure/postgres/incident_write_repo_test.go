@@ -147,9 +147,40 @@ func TestTransitionIncidentStatus(t *testing.T) {
 	mock.ExpectQuery(`SELECT status FROM incidents WHERE id = \$1 FOR UPDATE`).
 		WithArgs(int64(3)).
 		WillReturnRows(sqlmock.NewRows([]string{"status"}).AddRow("new"))
-	mock.ExpectRollback()
-	if _, err := repo.TransitionIncidentStatus(ctx, 3, "closed", "", ""); err == nil {
-		t.Fatalf("expected invalid transition error")
+	mock.ExpectExec(`UPDATE incidents`).
+		WithArgs("acknowledged", int64(3)).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectExec(`INSERT INTO incident_transitions`).
+		WithArgs(int64(3), "new", "acknowledged", "system", "").
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectExec(`UPDATE incidents`).
+		WithArgs("in_progress", int64(3)).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectExec(`INSERT INTO incident_transitions`).
+		WithArgs(int64(3), "acknowledged", "in_progress", "system", "").
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectExec(`UPDATE incidents`).
+		WithArgs("resolved", int64(3)).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectExec(`INSERT INTO incident_transitions`).
+		WithArgs(int64(3), "in_progress", "resolved", "system", "").
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectExec(`UPDATE incidents`).
+		WithArgs("closed", int64(3)).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectExec(`INSERT INTO incident_transitions`).
+		WithArgs(int64(3), "resolved", "closed", "system", "").
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectCommit()
+	mock.ExpectQuery(`FROM incidents i`).
+		WithArgs(int64(3)).
+		WillReturnRows(sqlmock.NewRows([]string{
+			"id", "device_id", "assignee", "title", "severity", "status", "source", "details",
+			"created_at", "updated_at", "acknowledged_at", "resolved_at", "closed_at", "ip",
+		}).AddRow(int64(3), nil, nil, "t", "warning", "closed", "manual", []byte(`{}`), now, now, now, now, now, nil))
+	it, err = repo.TransitionIncidentStatus(ctx, 3, "closed", "", "")
+	if err != nil || it == nil || it.Status != "closed" {
+		t.Fatalf("expected multi-step success to closed, got it=%+v err=%v", it, err)
 	}
 
 	mock.ExpectBegin()

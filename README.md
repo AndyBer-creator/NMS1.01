@@ -188,6 +188,13 @@ docker compose -f deploy/compose/docker-compose.yml -f deploy/compose/docker-com
 
 - Страница сервисных настроек `/settings/page`: интервал опроса (worker), email для алертов, runtime и secret settings.
 - Страница `/devices/list` содержит только таблицу устройств и быстрый переход «Настройки» в шапке.
+- Swagger UI в вебе: `/swagger/index.html` (после авторизации). Спецификация: `/api/openapi.yaml`, JSON для UI: `/swagger/doc.json`.
+
+### API Docs (Swagger)
+
+- Web UI: `/swagger/index.html` (требуется вход в NMS).
+- OpenAPI YAML: `/api/openapi.yaml`.
+- OpenAPI JSON (для Swagger UI): `/swagger/doc.json`.
 
 Веб-интерфейс подключает **htmx**, **Tailwind** (собранный CSS) и **vis-network** с **`/static`**, без CDN в рантайме. Готовые файлы лежат в `static/css/app.css` и `static/js/*.js` и попадают в Docker-образ как есть. После правок классов в `templates/` или `internal/**/*.go` пересоберите CSS: `make static-css` (нужны Node.js и npm; зависимости — `npm ci`). Перед коммитом можно проверить, что закоммиченный `app.css` совпадает с билдом: `make check-static-css` (тот же CI-шаг). Обновить версии vendor-JS: `./scripts/fetch_vendor_js.sh` или `make vendor-js`.
 

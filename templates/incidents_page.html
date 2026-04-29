@@ -108,8 +108,25 @@
     }
 
     function statusOptions(current) {
-        const all = ['acknowledged', 'in_progress', 'resolved', 'closed'];
-        return all.filter(function (s) { return s !== current; });
+        current = String(current || '').trim().toLowerCase();
+        const allReachable = {
+            'new': ['acknowledged', 'in_progress', 'resolved', 'closed'],
+            'acknowledged': ['in_progress', 'resolved', 'closed'],
+            'in_progress': ['resolved', 'closed'],
+            'resolved': ['closed'],
+            'closed': []
+        };
+        return allReachable[current] || [];
+    }
+
+    function transitionPath(current, target) {
+        const from = String(current || '').trim().toLowerCase();
+        const to = String(target || '').trim().toLowerCase();
+        const order = ['new', 'acknowledged', 'in_progress', 'resolved', 'closed'];
+        const iFrom = order.indexOf(from);
+        const iTo = order.indexOf(to);
+        if (iFrom < 0 || iTo < 0 || iTo <= iFrom) return [];
+        return order.slice(iFrom + 1, iTo + 1);
     }
 
     function buildQuery() {
@@ -146,7 +163,7 @@
             '<td class="p-3">' +
             '<div class="flex gap-2 items-center">' +
             '<button class="px-3 py-1 text-xs rounded bg-gray-700 hover:bg-gray-600" data-show="' + esc(i.id) + '">open</button>' +
-            (opts ? '<select data-transition-select="' + esc(i.id) + '" class="px-2 py-1 text-xs bg-gray-900 border border-gray-600 rounded">' + opts + '</select>' : '') +
+            (opts ? '<select data-transition-select="' + esc(i.id) + '" data-current-status="' + esc(i.status) + '" class="px-2 py-1 text-xs bg-gray-900 border border-gray-600 rounded">' + opts + '</select>' : '') +
             (opts ? '<button class="px-3 py-1 text-xs rounded bg-orange-700 hover:bg-orange-600" data-transition="' + esc(i.id) + '">set</button>' : '') +
             '</div>' +
             '</td>' +
@@ -216,23 +233,28 @@
     async function transitionIncident(id) {
         const select = document.querySelector('[data-transition-select="' + id + '"]');
         if (!select) return;
+        const currentStatus = (select.getAttribute('data-current-status') || '').trim();
         const targetStatus = (select.value || '').trim();
         if (!targetStatus) return;
+        const steps = transitionPath(currentStatus, targetStatus);
+        if (!steps.length) return;
         const csrf = (document.cookie.split('; ').find(function (x) { return x.indexOf('nms_csrf=') === 0; }) || '').split('=')[1] || '';
         try {
-            const res = await fetch('/incidents/' + encodeURIComponent(id) + '/status', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Accept': 'application/json',
-                    'X-CSRF-Token': decodeURIComponent(csrf || '')
-                },
-                body: JSON.stringify({ status: targetStatus, comment: 'ui transition' })
-            });
-            if (!res.ok) {
-                const text = await res.text();
-                alert('Transition error: ' + text);
-                return;
+            for (const stepStatus of steps) {
+                const res = await fetch('/incidents/' + encodeURIComponent(id) + '/status', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json',
+                        'X-CSRF-Token': decodeURIComponent(csrf || '')
+                    },
+                    body: JSON.stringify({ status: stepStatus, comment: 'ui transition' })
+                });
+                if (!res.ok) {
+                    const text = await res.text();
+                    alert('Transition error: ' + text);
+                    return;
+                }
             }
             await loadIncidents();
             await showIncident(id);
