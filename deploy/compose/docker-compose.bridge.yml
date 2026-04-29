@@ -127,6 +127,7 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+    profiles: ["migrate"]
     networks:
       - nms-network
 
@@ -158,11 +159,12 @@ services:
       NMS_VIEWER_USER: "${NMS_VIEWER_USER}"
       NMS_VIEWER_PASS: "${NMS_VIEWER_PASS}"
       NMS_SESSION_SECRET: "${NMS_SESSION_SECRET}"
-      NMS_DB_ENCRYPTION_KEY: "${NMS_DB_ENCRYPTION_KEY}"
+      NMS_DB_ENCRYPTION_KEY_FILE: "/app/secrets/nms_db_encryption_key"
     volumes:
       - ../../logs:/app/logs:delegated
       - ../../config.yaml:/app/config.yaml:ro
       - ../../mibs:/app/mibs:ro
+      - ../../.secrets:/app/secrets:ro
     cap_drop:
       - ALL
     entrypoint: ["./nms-api"]
@@ -170,8 +172,6 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-      migration:
-        condition: service_completed_successfully
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.nms.rule=Host(`${NMS_APP_HOST:-nms.test.com}`)"
@@ -275,10 +275,12 @@ services:
     environment:
       TZ: ${TZ:-UTC}
       DB_DSN: ${DB_DSN}
+      NMS_DB_ENCRYPTION_KEY_FILE: "/app/secrets/nms_db_encryption_key"
     volumes:
       - ../../logs:/app/logs:delegated
       - ../../config.yaml:/app/config.yaml:ro
       - ../../mibs:/app/mibs:ro
+      - ../../.secrets:/app/secrets:ro
     cap_drop:
       - ALL
     entrypoint: ["./nms-worker"]
@@ -286,8 +288,6 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-      migration:
-        condition: service_completed_successfully
     healthcheck:
       test: ["CMD-SHELL", "wget -q -O- http://127.0.0.1:8081/metrics >/dev/null"]
       interval: 20s
@@ -339,6 +339,20 @@ services:
           memory: 64M
         reservations:
           memory: 32M
+    restart: unless-stopped
+
+  node-exporter:
+    image: prom/node-exporter:v1.8.2
+    container_name: nms-node-exporter
+    networks:
+      - nms-network
+    command:
+      - '--path.rootfs=/host'
+      - '--web.listen-address=:9100'
+    volumes:
+      - /:/host:ro
+    cap_drop:
+      - ALL
     restart: unless-stopped
 
 volumes:

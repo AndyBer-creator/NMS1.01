@@ -54,6 +54,34 @@
         </div>
     </div>
 
+    <div class="bg-gradient-to-br from-slate-900/80 to-cyan-950/40 border border-cyan-700/40 p-6 rounded-xl shadow-xl mb-8">
+        <h2 class="text-xl font-semibold mb-3 flex items-center">
+            <span class="w-2 h-2 bg-cyan-400 rounded-full mr-2"></span>
+            ⏱ Интервал опроса (worker)
+        </h2>
+        <p class="text-sm text-gray-400 mb-3">Цикл опроса устройств воркером. То же значение доступно на <a href="/" class="text-cyan-400 hover:underline">главном дашборде</a>. Форма — у администратора.</p>
+        <div id="worker-poll-panel-wrap"
+             hx-get="/settings/worker-poll-panel"
+             hx-trigger="load"
+             hx-swap="innerHTML">
+            <p class="text-sm text-gray-500">Загрузка…</p>
+        </div>
+    </div>
+
+    <div class="bg-gradient-to-br from-slate-900/80 to-emerald-950/40 border border-emerald-700/40 p-6 rounded-xl shadow-xl mb-8">
+        <h2 class="text-xl font-semibold mb-3 flex items-center">
+            <span class="w-2 h-2 bg-emerald-400 rounded-full mr-2"></span>
+            ✉️ Email для алертов
+        </h2>
+        <p class="text-sm text-gray-400 mb-3">Получатель писем от Alertmanager webhook. Тот же параметр можно менять на <a href="/" class="text-emerald-400 hover:underline">дашборде</a>.</p>
+        <div id="alert-email-panel-wrap"
+             hx-get="/settings/alert-email-panel"
+             hx-trigger="load"
+             hx-swap="innerHTML">
+            <p class="text-sm text-gray-500">Загрузка…</p>
+        </div>
+    </div>
+
     <div class="bg-gradient-to-br from-slate-900/80 to-indigo-950/40 border border-indigo-700/40 p-6 rounded-xl shadow-xl mb-8">
         <h2 class="text-xl font-semibold mb-3 flex items-center">
             <span class="w-2 h-2 bg-indigo-400 rounded-full mr-2"></span>

@@ -65,6 +65,7 @@
                 <thead>
                 <tr class="bg-gray-700/50 border-b border-gray-600">
                     <th class="p-3 text-left text-gray-200">ID</th>
+                    <th class="p-3 text-left text-gray-200">IP-адрес</th>
                     <th class="p-3 text-left text-gray-200">Created</th>
                     <th class="p-3 text-left text-gray-200">Title</th>
                     <th class="p-3 text-left text-gray-200">Source</th>
@@ -75,7 +76,7 @@
                 </tr>
                 </thead>
                 <tbody id="inc-body">
-                <tr><td colspan="8" class="p-6 text-center text-gray-500">Загрузка...</td></tr>
+                <tr><td colspan="9" class="p-6 text-center text-gray-500">Загрузка...</td></tr>
                 </tbody>
             </table>
         </div>
@@ -127,8 +128,10 @@
         const opts = statusOptions(i.status).map(function (s) {
             return '<option value="' + esc(s) + '">' + esc(s) + '</option>';
         }).join('');
+        var ipDisp = i.device_ip ? esc(i.device_ip) : '<span class="text-gray-500">—</span>';
         return '<tr class="border-b border-gray-700/70 hover:bg-gray-700/30">' +
             '<td class="p-3 font-mono text-xs">' + esc(i.id) + '</td>' +
+            '<td class="p-3 font-mono text-xs text-cyan-200/90">' + ipDisp + '</td>' +
             '<td class="p-3 text-sm text-gray-300">' + esc(created) + '</td>' +
             '<td class="p-3 text-sm">' + esc(i.title) + '</td>' +
             '<td class="p-3 text-xs">' + esc(i.source) + '</td>' +
@@ -157,20 +160,20 @@
             const res = await fetch('/incidents?' + buildQuery(), { headers: { 'Accept': 'application/json' } });
             const text = await res.text();
             if (!res.ok) {
-                bodyEl.innerHTML = '<tr><td colspan="8" class="p-6 text-center text-red-400">Ошибка ' + res.status + ': ' + esc(text) + '</td></tr>';
+                bodyEl.innerHTML = '<tr><td colspan="9" class="p-6 text-center text-red-400">Ошибка ' + res.status + ': ' + esc(text) + '</td></tr>';
                 summaryEl.textContent = 'Ошибка загрузки';
                 return;
             }
             const items = JSON.parse(text);
             if (!Array.isArray(items) || items.length === 0) {
-                bodyEl.innerHTML = '<tr><td colspan="8" class="p-6 text-center text-gray-500">Инцидентов пока нет</td></tr>';
+                bodyEl.innerHTML = '<tr><td colspan="9" class="p-6 text-center text-gray-500">Инцидентов пока нет</td></tr>';
                 summaryEl.textContent = '0 incidents';
                 return;
             }
             bodyEl.innerHTML = items.map(row).join('');
             summaryEl.textContent = 'Показано ' + items.length + ' incidents';
         } catch (e) {
-            bodyEl.innerHTML = '<tr><td colspan="8" class="p-6 text-center text-red-400">' + esc(e && e.message ? e.message : e) + '</td></tr>';
+            bodyEl.innerHTML = '<tr><td colspan="9" class="p-6 text-center text-red-400">' + esc(e && e.message ? e.message : e) + '</td></tr>';
             summaryEl.textContent = 'Ошибка сети';
         } finally {
             refreshBtn.disabled = false;
@@ -200,6 +203,7 @@
                 '<div><span class="text-gray-500">Assignee:</span> ' + esc(incident.assignee || '—') + '</div>' +
                 '<div><span class="text-gray-500">Status:</span> ' + esc(incident.status) + '</div>' +
                 '<div><span class="text-gray-500">Severity:</span> ' + esc(incident.severity) + '</div>' +
+                '<div><span class="text-gray-500">IP:</span> ' + esc(incident.device_ip || '—') + '</div>' +
                 '<div><span class="text-gray-500">Source:</span> ' + esc(incident.source) + '</div>' +
                 '<div><span class="text-gray-500">Details:</span><pre class="bg-black/30 border border-gray-700 rounded p-3 mt-1 overflow-auto text-xs">' + esc(JSON.stringify(incident.details || {}, null, 2)) + '</pre></div>' +
                 '<div><span class="text-gray-500">Transitions:</span><ul class="mt-1 space-y-1 text-xs">' + (transitionsHtml || '<li class="text-gray-500">Нет переходов</li>') + '</ul></div>' +

@@ -7,6 +7,7 @@
     <title>NMS1 — Устройства</title>
     <link rel="stylesheet" href="/static/css/app.css">
     <script src="/static/js/htmx.min.js"></script>
+    <script src="/static/js/devices-table-resize.js" defer></script>
     <script nonce="{{.CSPNonce}}">
     (function () {
         function readCookie(name) {
@@ -47,51 +48,15 @@
                     Выйти
                 </button>
             </form>
+            <a href="/settings/page"
+               class="inline-flex items-center justify-center gap-2 px-5 py-3 rounded-xl bg-indigo-800/80 hover:bg-indigo-700 border border-indigo-600/60 text-sm font-medium transition-all hover:scale-[1.02] shadow-lg">
+                ⚙️ Настройки
+            </a>
             <a href="/"
                class="inline-flex items-center justify-center gap-2 px-5 py-3 rounded-xl bg-gray-800 hover:bg-gray-700 border border-gray-600 text-sm font-medium transition-all hover:scale-[1.02] shadow-lg">
                 ← На дашборд
             </a>
         </div>
-    </div>
-
-    <div class="bg-gradient-to-br from-slate-900/80 to-cyan-950/40 border border-cyan-700/40 p-6 rounded-xl shadow-xl mb-8">
-        <h2 class="text-xl font-semibold mb-3 flex items-center">
-            <span class="w-2 h-2 bg-cyan-400 rounded-full mr-2"></span>
-            ⏱ Интервал опроса (worker)
-        </h2>
-        <p class="text-sm text-gray-400 mb-3">То же значение, что на <a href="/" class="text-cyan-400 hover:underline">главном дашборде</a>. Форма — у администратора.</p>
-        <div id="worker-poll-panel-wrap"
-             hx-get="/settings/worker-poll-panel"
-             hx-trigger="load"
-             hx-swap="innerHTML">
-            <p class="text-sm text-gray-500">Загрузка…</p>
-        </div>
-    </div>
-
-    <div class="bg-gradient-to-br from-slate-900/80 to-emerald-950/40 border border-emerald-700/40 p-6 rounded-xl shadow-xl mb-8">
-        <h2 class="text-xl font-semibold mb-3 flex items-center">
-            <span class="w-2 h-2 bg-emerald-400 rounded-full mr-2"></span>
-            ✉️ Email для алертов
-        </h2>
-        <p class="text-sm text-gray-400 mb-3">Тот же параметр, что на главном дашборде.</p>
-        <div id="alert-email-panel-wrap"
-             hx-get="/settings/alert-email-panel"
-             hx-trigger="load"
-             hx-swap="innerHTML">
-            <p class="text-sm text-gray-500">Загрузка…</p>
-        </div>
-    </div>
-
-    <div class="bg-gradient-to-br from-slate-900/80 to-indigo-950/40 border border-indigo-700/40 p-6 rounded-xl shadow-xl mb-8">
-        <h2 class="text-xl font-semibold mb-3 flex items-center">
-            <span class="w-2 h-2 bg-indigo-400 rounded-full mr-2"></span>
-            ⚙️ Настройки вынесены отдельно
-        </h2>
-        <p class="text-sm text-gray-400 mb-4">Runtime и Secret settings перенесены на отдельную страницу для более чистого экрана устройств.</p>
-        <a href="/settings/page"
-           class="inline-flex items-center justify-center gap-2 px-5 py-3 rounded-xl bg-indigo-700 hover:bg-indigo-600 text-sm font-medium transition-all hover:scale-[1.02] shadow-lg">
-            Открыть страницу настроек
-        </a>
     </div>
 
     <div class="bg-gray-800 p-6 rounded-xl shadow-2xl border border-gray-700/50 mb-8">

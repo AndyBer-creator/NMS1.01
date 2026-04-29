@@ -15,6 +15,9 @@ RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /app/nms-worker ./cmd/
 # Build TRAP-RECEIVER 
 RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /app/trap-receiver ./cmd/trap-receiver
 
+# Build MIGRATION
+RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /app/nms-migration ./cmd/migration
+
 FROM alpine:3.22
 RUN apk --no-cache add tzdata ca-certificates net-snmp-tools su-exec && \
     addgroup -S nms && adduser -S -G nms -h /app -s /sbin/nologin nms && \

@@ -24,7 +24,7 @@ func TestGetIncidentByIDWithExec(t *testing.T) {
 		t.Fatalf("id<=0 should return nil,nil: got=%v err=%v", got, err)
 	}
 
-	mock.ExpectQuery(`FROM incidents WHERE id = \$1`).
+	mock.ExpectQuery(`FROM incidents i`).
 		WithArgs(int64(10)).
 		WillReturnError(errors.New("query failed"))
 	if _, err := repo.getIncidentByIDWithExec(ctx, db, 10); err == nil {
@@ -32,14 +32,14 @@ func TestGetIncidentByIDWithExec(t *testing.T) {
 	}
 
 	now := time.Now().UTC()
-	mock.ExpectQuery(`FROM incidents WHERE id = \$1`).
+	mock.ExpectQuery(`FROM incidents i`).
 		WithArgs(int64(11)).
 		WillReturnRows(sqlmock.NewRows([]string{
 			"id", "device_id", "assignee", "title", "severity", "status", "source", "details",
-			"created_at", "updated_at", "acknowledged_at", "resolved_at", "closed_at",
+			"created_at", "updated_at", "acknowledged_at", "resolved_at", "closed_at", "ip",
 		}).AddRow(
 			int64(11), int64(3), "ops", "title", "warning", "new", "manual", []byte(`{}`),
-			now, now, nil, nil, nil,
+			now, now, nil, nil, nil, "192.0.2.10",
 		))
 	it, err := repo.getIncidentByIDWithExec(ctx, db, 11)
 	if err != nil {
@@ -47,6 +47,9 @@ func TestGetIncidentByIDWithExec(t *testing.T) {
 	}
 	if it == nil || it.ID != 11 || it.DeviceID == nil || *it.DeviceID != 3 || it.Assignee == nil || *it.Assignee != "ops" {
 		t.Fatalf("unexpected incident payload: %+v", it)
+	}
+	if it.DeviceIP == nil || *it.DeviceIP != "192.0.2.10" {
+		t.Fatalf("unexpected device_ip: %+v", it.DeviceIP)
 	}
 
 	if err := mock.ExpectationsWereMet(); err != nil {
@@ -70,12 +73,12 @@ func TestListIncidentsPageWithExec(t *testing.T) {
 	}
 
 	now := time.Now().UTC()
-	mock.ExpectQuery(`SELECT id, device_id, assignee, title, severity, status, source, details`).
+	mock.ExpectQuery(`SELECT i\.id, i\.device_id, i\.assignee, i\.title, i\.severity, i\.status, i\.source, i\.details`).
 		WithArgs(201).
 		WillReturnRows(sqlmock.NewRows([]string{
 			"id", "device_id", "assignee", "title", "severity", "status", "source", "details",
-			"created_at", "updated_at", "acknowledged_at", "resolved_at", "closed_at",
-		}).AddRow(int64(1), nil, nil, "a", "warning", "new", "manual", []byte(`{}`), now, now, nil, nil, nil))
+			"created_at", "updated_at", "acknowledged_at", "resolved_at", "closed_at", "ip",
+		}).AddRow(int64(1), nil, nil, "a", "warning", "new", "manual", []byte(`{}`), now, now, nil, nil, nil, nil))
 	page, err := repo.listIncidentsPageWithExec(ctx, db, 200, nil, "", "", nil, nil)
 	if err != nil {
 		t.Fatalf("listIncidentsPageWithExec: %v", err)

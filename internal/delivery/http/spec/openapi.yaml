@@ -675,6 +675,10 @@ components:
         device_id:
           type: integer
           nullable: true
+        device_ip:
+          type: string
+          nullable: true
+          description: Device IP (from linked device), when incident has device_id
         assignee:
           type: string
           nullable: true

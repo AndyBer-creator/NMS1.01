@@ -19,13 +19,17 @@ func (r *Repo) getIncidentByIDWithExec(ctx context.Context, exec sqlExecutor, id
 	}
 	var out domain.Incident
 	var devID sql.NullInt64
+	var devIP sql.NullString
 	var assignee sql.NullString
 	var ackAt, resolvedAt, closedAt sql.NullTime
 	err := exec.QueryRowContext(
 		ctx,
-		`SELECT id, device_id, assignee, title, severity, status, source, details,
-                created_at, updated_at, acknowledged_at, resolved_at, closed_at
-         FROM incidents WHERE id = $1`,
+		`SELECT i.id, i.device_id, i.assignee, i.title, i.severity, i.status, i.source, i.details,
+                i.created_at, i.updated_at, i.acknowledged_at, i.resolved_at, i.closed_at,
+                d.ip::text
+         FROM incidents i
+         LEFT JOIN devices d ON d.id = i.device_id
+         WHERE i.id = $1`,
 		id,
 	).Scan(
 		&out.ID,
@@ -41,6 +45,7 @@ func (r *Repo) getIncidentByIDWithExec(ctx context.Context, exec sqlExecutor, id
 		&ackAt,
 		&resolvedAt,
 		&closedAt,
+		&devIP,
 	)
 	if err == sql.ErrNoRows {
 		return nil, nil
@@ -51,6 +56,12 @@ func (r *Repo) getIncidentByIDWithExec(ctx context.Context, exec sqlExecutor, id
 	if devID.Valid {
 		v := int(devID.Int64)
 		out.DeviceID = &v
+	}
+	if devIP.Valid {
+		s := strings.TrimSpace(devIP.String)
+		if s != "" {
+			out.DeviceIP = &s
+		}
 	}
 	if assignee.Valid {
 		a := strings.TrimSpace(assignee.String)
@@ -88,7 +99,7 @@ func (r *Repo) listIncidentsPageWithExec(ctx context.Context, exec sqlExecutor, 
 	conds := []string{}
 	if deviceID != nil && *deviceID > 0 {
 		args = append(args, *deviceID)
-		conds = append(conds, fmt.Sprintf("device_id = $%d", len(args)))
+		conds = append(conds, fmt.Sprintf("i.device_id = $%d", len(args)))
 	}
 	if strings.TrimSpace(status) != "" {
 		s, err := normalizeIncidentStatus(status)
@@ -96,7 +107,7 @@ func (r *Repo) listIncidentsPageWithExec(ctx context.Context, exec sqlExecutor, 
 			return nil, err
 		}
 		args = append(args, s)
-		conds = append(conds, fmt.Sprintf("status = $%d", len(args)))
+		conds = append(conds, fmt.Sprintf("i.status = $%d", len(args)))
 	}
 	if strings.TrimSpace(severity) != "" {
 		sv, err := normalizeIncidentSeverity(severity)
@@ -104,21 +115,23 @@ func (r *Repo) listIncidentsPageWithExec(ctx context.Context, exec sqlExecutor, 
 			return nil, err
 		}
 		args = append(args, sv)
-		conds = append(conds, fmt.Sprintf("severity = $%d", len(args)))
+		conds = append(conds, fmt.Sprintf("i.severity = $%d", len(args)))
 	}
 	if cursorUpdatedAt != nil && cursorID != nil && *cursorID > 0 {
 		args = append(args, *cursorUpdatedAt, *cursorID)
-		conds = append(conds, fmt.Sprintf("(updated_at, id) < ($%d, $%d)", len(args)-1, len(args)))
+		conds = append(conds, fmt.Sprintf("(i.updated_at, i.id) < ($%d, $%d)", len(args)-1, len(args)))
 	}
 	args = append(args, limit+1)
-	query := `SELECT id, device_id, assignee, title, severity, status, source, details,
-                     created_at, updated_at, acknowledged_at, resolved_at, closed_at
-              FROM incidents`
+	query := `SELECT i.id, i.device_id, i.assignee, i.title, i.severity, i.status, i.source, i.details,
+                     i.created_at, i.updated_at, i.acknowledged_at, i.resolved_at, i.closed_at,
+                     d.ip::text
+              FROM incidents i
+              LEFT JOIN devices d ON d.id = i.device_id`
 	if len(conds) > 0 {
 		// #nosec G202 -- conditions are constructed from fixed column names and placeholders only.
 		query += " WHERE " + strings.Join(conds, " AND ")
 	}
-	query += fmt.Sprintf(" ORDER BY updated_at DESC, id DESC LIMIT $%d", len(args))
+	query += fmt.Sprintf(" ORDER BY i.updated_at DESC, i.id DESC LIMIT $%d", len(args))
 	rows, err := exec.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
@@ -126,7 +139,7 @@ func (r *Repo) listIncidentsPageWithExec(ctx context.Context, exec sqlExecutor, 
 	defer func() { _ = rows.Close() }()
 	out := make([]domain.Incident, 0)
 	for rows.Next() {
-		it, err := scanIncidentRow(rows)
+		it, err := scanIncidentListRow(rows)
 		if err != nil {
 			return nil, err
 		}
@@ -147,9 +160,10 @@ type incidentScanner interface {
 	Scan(dest ...any) error
 }
 
-func scanIncidentRow(row incidentScanner) (*domain.Incident, error) {
+func scanIncidentListRow(row incidentScanner) (*domain.Incident, error) {
 	var it domain.Incident
 	var devID sql.NullInt64
+	var devIP sql.NullString
 	var assignee sql.NullString
 	var ackAt, resolvedAt, closedAt sql.NullTime
 	if err := row.Scan(
@@ -166,12 +180,19 @@ func scanIncidentRow(row incidentScanner) (*domain.Incident, error) {
 		&ackAt,
 		&resolvedAt,
 		&closedAt,
+		&devIP,
 	); err != nil {
 		return nil, err
 	}
 	if devID.Valid {
 		v := int(devID.Int64)
 		it.DeviceID = &v
+	}
+	if devIP.Valid {
+		s := strings.TrimSpace(devIP.String)
+		if s != "" {
+			it.DeviceIP = &s
+		}
 	}
 	if assignee.Valid {
 		a := strings.TrimSpace(assignee.String)

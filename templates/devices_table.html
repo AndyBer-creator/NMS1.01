@@ -1,19 +1,29 @@
 {{define "devicesTable"}}
 <div class="overflow-x-auto" id="devices-table-root">
-    <table class="w-full min-w-[1200px] table-auto bg-gray-800/80 rounded-lg shadow-xl border border-gray-700/50 text-[15px] sm:text-base leading-snug">
+    <table class="w-full min-w-[1200px] table-fixed bg-gray-800/80 rounded-lg shadow-xl border border-gray-700/50 text-[15px] sm:text-base leading-snug">
+        <colgroup>
+            <col>
+            <col>
+            <col>
+            <col>
+            <col>
+            <col>
+            <col>
+            <col>
+        </colgroup>
         <thead>
             <tr class="bg-gray-700/50 border-b border-gray-600">
-                <th class="px-4 py-3 sm:px-5 sm:py-4 text-left font-semibold text-gray-200 whitespace-nowrap w-14">ID</th>
-                <th class="px-4 py-3 sm:px-5 sm:py-4 text-left font-semibold text-gray-200 whitespace-nowrap">IP</th>
-                <th class="px-4 py-3 sm:px-5 sm:py-4 text-left font-semibold text-gray-200 min-w-[10rem]">Имя</th>
-                <th class="px-4 py-3 sm:px-5 sm:py-4 text-left font-semibold text-gray-200 whitespace-nowrap">Статус</th>
-                <th class="px-4 py-3 sm:px-5 sm:py-4 text-left font-semibold text-gray-200 whitespace-nowrap">Последняя активность</th>
-                <th class="px-4 py-3 sm:px-5 sm:py-4 text-left font-semibold text-gray-200 whitespace-nowrap">Последний успешный опрос</th>
-                <th class="px-4 py-3 sm:px-5 sm:py-4 text-left font-semibold text-gray-200 min-w-[14rem]">Последняя ошибка</th>
+                <th class="px-4 py-3 sm:px-5 sm:py-4 text-left font-semibold text-gray-200 break-words whitespace-normal leading-tight w-14">ID</th>
+                <th class="px-4 py-3 sm:px-5 sm:py-4 text-left font-semibold text-gray-200 break-words whitespace-normal leading-tight">IP</th>
+                <th class="px-4 py-3 sm:px-5 sm:py-4 text-left font-semibold text-gray-200 break-words whitespace-normal leading-tight min-w-[10rem]">Имя</th>
+                <th class="px-4 py-3 sm:px-5 sm:py-4 text-left font-semibold text-gray-200 break-words whitespace-normal leading-tight">Статус</th>
+                <th class="px-4 py-3 sm:px-5 sm:py-4 text-left font-semibold text-gray-200 break-words whitespace-normal leading-tight">Последняя активность</th>
+                <th class="px-4 py-3 sm:px-5 sm:py-4 text-left font-semibold text-gray-200 break-words whitespace-normal leading-tight">Последний успешный опрос</th>
+                <th class="px-4 py-3 sm:px-5 sm:py-4 text-left font-semibold text-gray-200 break-words whitespace-normal leading-tight min-w-[14rem]">Последняя ошибка</th>
                 {{if .Admin}}
-                <th class="px-4 py-3 sm:px-5 sm:py-4 text-right font-semibold min-w-[28rem] text-gray-200 whitespace-nowrap">Действия</th>
+                <th class="px-4 py-3 sm:px-5 sm:py-4 text-right font-semibold min-w-[28rem] text-gray-200 break-words whitespace-normal leading-tight">Действия</th>
                 {{else}}
-                <th class="px-4 py-3 sm:px-5 sm:py-4 text-right font-semibold w-28 text-gray-200 whitespace-nowrap">Доступ</th>
+                <th class="px-4 py-3 sm:px-5 sm:py-4 text-right font-semibold w-28 text-gray-200 break-words whitespace-normal leading-tight">Доступ</th>
                 {{end}}
             </tr>
         </thead>

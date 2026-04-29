@@ -27,6 +27,7 @@ func (p *JSONPayload) UnmarshalJSON(data []byte) error {
 type Incident struct {
 	ID             int64           `json:"id"`
 	DeviceID       *int            `json:"device_id,omitempty"`
+	DeviceIP       *string         `json:"device_ip,omitempty"`
 	Assignee       *string         `json:"assignee,omitempty"`
 	Title          string          `json:"title"`
 	Severity       string          `json:"severity"`

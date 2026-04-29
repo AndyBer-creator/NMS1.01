@@ -29,12 +29,12 @@ func TestCreateOrTouchOpenIncident_TouchPath(t *testing.T) {
 	mock.ExpectCommit()
 
 	now := time.Now().UTC()
-	mock.ExpectQuery(`FROM incidents WHERE id = \$1`).
+	mock.ExpectQuery(`FROM incidents i`).
 		WithArgs(int64(77)).
 		WillReturnRows(sqlmock.NewRows([]string{
 			"id", "device_id", "assignee", "title", "severity", "status", "source", "details",
-			"created_at", "updated_at", "acknowledged_at", "resolved_at", "closed_at",
-		}).AddRow(int64(77), nil, nil, "t", "warning", "new", "manual", []byte(`{}`), now, now, nil, nil, nil))
+			"created_at", "updated_at", "acknowledged_at", "resolved_at", "closed_at", "ip",
+		}).AddRow(int64(77), nil, nil, "t", "warning", "new", "manual", []byte(`{}`), now, now, nil, nil, nil, nil))
 
 	it, created, err := repo.CreateOrTouchOpenIncident(ctx, nil, "t", "warning", "manual", nil, 10*time.Second)
 	if err != nil {
@@ -72,12 +72,12 @@ func TestCreateOrTouchOpenIncident_CreatePath(t *testing.T) {
 	mock.ExpectCommit()
 
 	now := time.Now().UTC()
-	mock.ExpectQuery(`FROM incidents WHERE id = \$1`).
+	mock.ExpectQuery(`FROM incidents i`).
 		WithArgs(int64(88)).
 		WillReturnRows(sqlmock.NewRows([]string{
 			"id", "device_id", "assignee", "title", "severity", "status", "source", "details",
-			"created_at", "updated_at", "acknowledged_at", "resolved_at", "closed_at",
-		}).AddRow(int64(88), nil, nil, "t", "warning", "new", "manual", []byte(`{}`), now, now, nil, nil, nil))
+			"created_at", "updated_at", "acknowledged_at", "resolved_at", "closed_at", "ip",
+		}).AddRow(int64(88), nil, nil, "t", "warning", "new", "manual", []byte(`{}`), now, now, nil, nil, nil, nil))
 
 	it, created, err := repo.CreateOrTouchOpenIncident(ctx, nil, "t", "warning", "manual", nil, 10*time.Second)
 	if err != nil {
@@ -123,12 +123,12 @@ func TestTransitionIncidentStatus(t *testing.T) {
 		WillReturnResult(sqlmock.NewResult(0, 1))
 	mock.ExpectCommit()
 	now := time.Now().UTC()
-	mock.ExpectQuery(`FROM incidents WHERE id = \$1`).
+	mock.ExpectQuery(`FROM incidents i`).
 		WithArgs(int64(1)).
 		WillReturnRows(sqlmock.NewRows([]string{
 			"id", "device_id", "assignee", "title", "severity", "status", "source", "details",
-			"created_at", "updated_at", "acknowledged_at", "resolved_at", "closed_at",
-		}).AddRow(int64(1), nil, nil, "t", "warning", "acknowledged", "manual", []byte(`{}`), now, now, now, nil, nil))
+			"created_at", "updated_at", "acknowledged_at", "resolved_at", "closed_at", "ip",
+		}).AddRow(int64(1), nil, nil, "t", "warning", "acknowledged", "manual", []byte(`{}`), now, now, now, nil, nil, nil))
 	it, err := repo.TransitionIncidentStatus(ctx, 1, "acknowledged", "", "")
 	if err != nil || it == nil || it.Status != "acknowledged" {
 		t.Fatalf("TransitionIncidentStatus success: it=%+v err=%v", it, err)
@@ -189,12 +189,12 @@ func TestAssignIncidentAndApplyITSMInboundUpdate(t *testing.T) {
 		WithArgs(int64(5), "new", "new", "system", "assigned to ops").
 		WillReturnResult(sqlmock.NewResult(0, 1))
 	mock.ExpectCommit()
-	mock.ExpectQuery(`FROM incidents WHERE id = \$1`).
+	mock.ExpectQuery(`FROM incidents i`).
 		WithArgs(int64(5)).
 		WillReturnRows(sqlmock.NewRows([]string{
 			"id", "device_id", "assignee", "title", "severity", "status", "source", "details",
-			"created_at", "updated_at", "acknowledged_at", "resolved_at", "closed_at",
-		}).AddRow(int64(5), nil, "ops", "t", "warning", "new", "manual", []byte(`{}`), now, now, nil, nil, nil))
+			"created_at", "updated_at", "acknowledged_at", "resolved_at", "closed_at", "ip",
+		}).AddRow(int64(5), nil, "ops", "t", "warning", "new", "manual", []byte(`{}`), now, now, nil, nil, nil, nil))
 	it, err := repo.AssignIncident(ctx, 5, "ops", "", "")
 	if err != nil || it == nil || it.Assignee == nil || *it.Assignee != "ops" {
 		t.Fatalf("AssignIncident: it=%+v err=%v", it, err)
@@ -220,12 +220,12 @@ func TestAssignIncidentAndApplyITSMInboundUpdate(t *testing.T) {
 		WithArgs(int64(6), "acknowledged", "acknowledged", "system", "assigned to new-owner").
 		WillReturnResult(sqlmock.NewResult(0, 1))
 	mock.ExpectCommit()
-	mock.ExpectQuery(`FROM incidents WHERE id = \$1`).
+	mock.ExpectQuery(`FROM incidents i`).
 		WithArgs(int64(6)).
 		WillReturnRows(sqlmock.NewRows([]string{
 			"id", "device_id", "assignee", "title", "severity", "status", "source", "details",
-			"created_at", "updated_at", "acknowledged_at", "resolved_at", "closed_at",
-		}).AddRow(int64(6), nil, "new-owner", "t", "warning", "acknowledged", "manual", []byte(`{}`), now, now, now, nil, nil))
+			"created_at", "updated_at", "acknowledged_at", "resolved_at", "closed_at", "ip",
+		}).AddRow(int64(6), nil, "new-owner", "t", "warning", "acknowledged", "manual", []byte(`{}`), now, now, now, nil, nil, nil))
 	it, statusChanged, assigneeChanged, err := repo.ApplyITSMInboundUpdate(ctx, 6, "acknowledged", "new-owner", "", "")
 	if err != nil || it == nil || !statusChanged || !assigneeChanged {
 		t.Fatalf("ApplyITSMInboundUpdate success: it=%+v statusChanged=%t assigneeChanged=%t err=%v", it, statusChanged, assigneeChanged, err)
@@ -289,12 +289,12 @@ func TestEscalateAndBulkTransition(t *testing.T) {
 		WillReturnResult(sqlmock.NewResult(0, 1))
 	mock.ExpectCommit()
 	now := time.Now().UTC()
-	mock.ExpectQuery(`FROM incidents WHERE id = \$1`).
+	mock.ExpectQuery(`FROM incidents i`).
 		WithArgs(int64(9)).
 		WillReturnRows(sqlmock.NewRows([]string{
 			"id", "device_id", "assignee", "title", "severity", "status", "source", "details",
-			"created_at", "updated_at", "acknowledged_at", "resolved_at", "closed_at",
-		}).AddRow(int64(9), nil, nil, "t", "warning", "acknowledged", "manual", []byte(`{}`), now, now, now, nil, nil))
+			"created_at", "updated_at", "acknowledged_at", "resolved_at", "closed_at", "ip",
+		}).AddRow(int64(9), nil, nil, "t", "warning", "acknowledged", "manual", []byte(`{}`), now, now, now, nil, nil, nil))
 	items, err := repo.TransitionIncidentsStatus(ctx, []int64{0, 9, 9}, "acknowledged", "", "")
 	if err != nil || len(items) != 1 || items[0].ID != 9 {
 		t.Fatalf("TransitionIncidentsStatus: items=%+v err=%v", items, err)
